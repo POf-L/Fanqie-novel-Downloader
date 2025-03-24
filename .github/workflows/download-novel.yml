@@ -7,7 +7,7 @@ on:
         description: '小说ID (从番茄小说URL中获取)'
         required: true
       threads:
-        description: '下载线程数 (1-10)'
+        description: '下载线程数 (1-10, 如果大于10将自动设置为10)'
         required: true
         default: '5'
       format:
@@ -15,11 +15,9 @@ on:
         required: true
         type: choice
         options:
-          - txt
           - epub
-        default: 'txt'
+        default: 'epub'
 
-# 添加必要的权限
 permissions:
   contents: read  # 允许读取仓库内容
   actions: write  # 允许上传构建产物
@@ -30,340 +28,56 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v3
-        
+
       - name: 设置Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
           cache: 'pip'
-          
+      
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          
+      
       - name: 确保cookie.json存在
         run: |
           if [ ! -f "./cookie.json" ]; then
             echo '""' > "./cookie.json"
           fi
-          
+      
       - name: 安装虚拟显示服务
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
-          
-      - name: 准备下载脚本
+      
+      - name: 检查线程数
         run: |
-          cat > download_novel.py << 'EOF'
-          import sys
-          import os
-          import time
-          import requests
-          import bs4
-          import re
-          import json
-          import random
-          from concurrent.futures import ThreadPoolExecutor, as_completed
-          from collections import OrderedDict
-          
-          # 小说ID和保存路径
-          novel_id = sys.argv[1]
-          output_format = sys.argv[2].lower()
-          threads_count = int(sys.argv[3])
-          save_path = "novel_output"
-          
-          # 确保输出目录存在
-          os.makedirs(save_path, exist_ok=True)
-          
-          # 从GUI.py复制必要的函数和配置
-          CONFIG = {
-              "max_workers": threads_count,
-              "max_retries": 3,
-              "request_timeout": 15,
-              "status_file": "chapter.json",
-              "user_agents": [
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
-                  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-              ]
-          }
-          
-          def get_headers(cookie=None):
-              """生成随机请求头"""
-              return {
-                  "User-Agent": random.choice(CONFIG["user_agents"]),
-                  "Cookie": cookie if cookie else get_cookie()
-              }
-          
-          def get_cookie():
-              """生成或加载Cookie"""
-              cookie_path = "cookie.json"
-              if os.path.exists(cookie_path):
-                  try:
-                      with open(cookie_path, 'r') as f:
-                          return json.load(f)
-                  except:
-                      pass
-              
-              # 生成新Cookie
-              for _ in range(10):
-                  novel_web_id = random.randint(10**18, 10**19-1)
-                  cookie = f'novel_web_id={novel_web_id}'
-                  try:
-                      resp = requests.get(
-                          'https://fanqienovel.com',
-                          headers={"User-Agent": random.choice(CONFIG["user_agents"])},
-                          cookies={"novel_web_id": str(novel_web_id)},
-                          timeout=10
-                      )
-                      if resp.ok:
-                          with open(cookie_path, 'w') as f:
-                              json.dump(cookie, f)
-                          return cookie
-                  except Exception as e:
-                      print(f"Cookie生成失败: {str(e)}")
-                      time.sleep(0.5)
-              raise Exception("无法获取有效Cookie")
-          
-          def down_text(it):
-              """下载章节内容"""
-              max_retries = CONFIG.get('max_retries', 3)
-              retry_count = 0
-              content = ""
-              
-              while retry_count < max_retries:
-                  try:
-                      api_url = f"https://api.cenguigui.cn/api/tomato/content.php?item_id={it}"
-                      response = requests.get(api_url, timeout=CONFIG["request_timeout"])
-                      data = response.json()
-                      
-                      if data.get("code") == 200:
-                          content = data.get("data", {}).get("content", "")
-                          
-                          # 移除HTML标签
-                          content = re.sub(r'<header>.*?</header>', '', content, flags=re.DOTALL)
-                          content = re.sub(r'<footer>.*?</footer>', '', content, flags=re.DOTALL)
-                          content = re.sub(r'</?article>', '', content)
-                          content = re.sub(r'<p idx="\d+">', '\n', content)
-                          content = re.sub(r'</p>', '\n', content)
-                          content = re.sub(r'<[^>]+>', '', content)
-                          content = re.sub(r'\\u003c|\\u003e', '', content)
-                          
-                          # 处理可能的重复章节标题行
-                          title = data.get("data", {}).get("title", "")
-                          if title and content.startswith(title):
-                              content = content[len(title):].lstrip()
-                          
-                          content = re.sub(r'\n{2,}', '\n', content).strip()
-                          content = '\n'.join(['    ' + line if line.strip() else line for line in content.split('\n')])
-                          break
-                  except Exception as e:
-                      print(f"请求失败: {str(e)}, 重试第{retry_count + 1}次...")
-                      retry_count += 1
-                      time.sleep(1 * retry_count)
-              
-              return content
-          
-          def get_book_info(book_id, headers):
-              """获取书名、作者、简介"""
-              url = f'https://fanqienovel.com/page/{book_id}'
-              response = requests.get(url, headers=headers)
-              if response.status_code != 200:
-                  print(f"网络请求失败，状态码: {response.status_code}")
-                  return None, None, None
-          
-              soup = bs4.BeautifulSoup(response.text, 'html.parser')
-              
-              # 获取书名
-              name_element = soup.find('h1')
-              name = name_element.text if name_element else "未知书名"
-              
-              # 获取作者
-              author_name_element = soup.find('div', class_='author-name')
-              author_name = None
-              if author_name_element:
-                  author_name_span = author_name_element.find('span', class_='author-name-text')
-                  author_name = author_name_span.text if author_name_span else "未知作者"
-              
-              # 获取简介
-              description_element = soup.find('div', class_='page-abstract-content')
-              description = None
-              if description_element:
-                  description_p = description_element.find('p')
-                  description = description_p.text if description_p else "无简介"
-              
-              return name, author_name, description
-          
-          def extract_chapters(soup):
-              """解析章节列表"""
-              chapters = []
-              for idx, item in enumerate(soup.select('div.chapter-item')):
-                  a_tag = item.find('a')
-                  if not a_tag:
-                      continue
-                  
-                  raw_title = a_tag.get_text(strip=True)
-                  
-                  # 特殊章节
-                  if re.match(r'^(番外|特别篇|if线)\s*', raw_title):
-                      final_title = raw_title
-                  else:
-                      clean_title = re.sub(
-                          r'^第[一二三四五六七八九十百千\d]+章\s*',
-                          '', 
-                          raw_title
-                      ).strip()
-                      final_title = f"第{idx+1}章 {clean_title}"
-                  
-                  chapters.append({
-                      "id": a_tag['href'].split('/')[-1],
-                      "title": final_title,
-                      "url": f"https://fanqienovel.com{a_tag['href']}",
-                      "index": idx
-                  })
-              
-              return chapters
-          
-          def download_novel(book_id, save_path):
-              """下载小说的主函数"""
-              try:
-                  headers = get_headers()
-                  print("正在获取书籍信息...")
-                  
-                  # 获取书籍信息
-                  name, author_name, description = get_book_info(book_id, headers)
-                  if not name:
-                      raise Exception("无法获取书籍信息，请检查小说ID或网络连接")
-                  
-                  print(f"书名：《{name}》")
-                  print(f"作者：{author_name}")
-                  print(f"简介：{description}")
-                  
-                  # 获取章节列表
-                  url = f'https://fanqienovel.com/page/{book_id}'
-                  response = requests.get(url, headers=headers)
-                  soup = bs4.BeautifulSoup(response.text, 'html.parser')
-                  
-                  chapters = extract_chapters(soup)
-                  if not chapters:
-                      raise Exception("未找到任何章节")
-                  
-                  print(f"\n开始下载，共 {len(chapters)} 章")
-                  os.makedirs(save_path, exist_ok=True)
-                  
-                  # 创建文件并写入信息
-                  output_file = os.path.join(save_path, f"{name}.txt")
-                  with open(output_file, 'w', encoding='utf-8') as f:
-                      f.write(f"书名：《{name}》\n作者：{author_name}\n\n简介：\n{description}\n\n")
-                  
-                  # 下载章节
-                  total_chapters = len(chapters)
-                  success_count = 0
-                  downloaded_chapters = set()
-                  content_cache = OrderedDict()
-                  
-                  # 先顺序下载前5章
-                  for chapter in chapters[:5]:
-                      content = down_text(chapter["id"])
-                      if content:
-                          content_cache[chapter["index"]] = (chapter, content)
-                          downloaded_chapters.add(chapter["id"])
-                          success_count += 1
-                          progress = (success_count / total_chapters) * 100
-                          print(f"进度: {progress:.2f}% - 正在下载: {success_count}/{total_chapters}")
-                          print(f"已下载：{chapter['title']}")
-                  
-                  # 多线程下载剩余章节
-                  remaining_chapters = chapters[5:]
-                  with ThreadPoolExecutor(max_workers=CONFIG["max_workers"]) as executor:
-                      future_to_chapter = {
-                          executor.submit(down_text, chapter["id"]): chapter
-                          for chapter in remaining_chapters
-                      }
-                      
-                      for future in as_completed(future_to_chapter):
-                          chapter = future_to_chapter[future]
-                          try:
-                              content = future.result()
-                              if content:
-                                  content_cache[chapter["index"]] = (chapter, content)
-                                  downloaded_chapters.add(chapter["id"])
-                                  success_count += 1
-                                  print(f"已下载：{chapter['title']}")
-                          except Exception as e:
-                              print(f"下载失败：{chapter['title']} - {str(e)}")
-                          finally:
-                              progress = (success_count / total_chapters) * 100
-                              print(f"进度: {progress:.2f}% - 正在下载: {success_count}/{total_chapters}")
-                  
-                  # 按顺序写入文件
-                  print("\n正在保存文件...")
-                  
-                  # 检查重复章节内容
-                  processed_contents = set()
-                  with open(output_file, 'a', encoding='utf-8') as f:
-                      for index in sorted(content_cache.keys()):
-                          chapter, content = content_cache[index]
-                          
-                          # 检查内容是否重复
-                          content_hash = hash(content)
-                          if content_hash in processed_contents:
-                              print(f"跳过重复章节：{chapter['title']}")
-                              continue
-                          
-                          processed_contents.add(content_hash)
-                          f.write(f"\n{chapter['title']}\n\n")
-                          f.write(content + "\n\n")
-                  
-                  print(f"\n下载完成！成功：{success_count}章，失败：{total_chapters - success_count}章")
-                  print(f"文件保存在：{output_file}")
-                  return True
-                  
-              except Exception as e:
-                  print(f"\n错误：{str(e)}")
-                  print(f"下载失败: {str(e)}")
-                  return False
-          
-          # 执行下载
-          print(f"开始下载小说 ID: {novel_id}")
-          print(f"保存路径: {save_path}")
-          print(f"使用线程数: {threads_count}")
-          print(f"输出格式: {output_format}")
-          
-          success = download_novel(novel_id, save_path)
-          
-          if success:
-              print("下载完成！")
-              # 列出下载的文件
-              print("\n下载的文件列表:")
-              for file in os.listdir(save_path):
-                  file_path = os.path.join(save_path, file)
-                  file_size = os.path.getsize(file_path) / 1024  # KB
-                  print(f"- {file} ({file_size:.2f} KB)")
-          else:
-              print("下载失败，请检查错误信息")
-              sys.exit(1)
-          EOF
-          
+          threads=${{ github.event.inputs.threads }}
+          if [ $threads -gt 10 ]; then
+            echo "线程数不能大于10，自动设置为10"
+            threads=10
+          fi
+          echo "THREADS=$threads" >> $GITHUB_ENV
+      
       - name: 下载小说
         run: |
           echo "开始下载小说..."
-          python download_novel.py "${{ github.event.inputs.novel_id }}" "${{ github.event.inputs.format }}" "${{ github.event.inputs.threads }}"
-          
+          python download_novel.py "${{ github.event.inputs.novel_id }}" "${{ github.event.inputs.format }}" "$THREADS"
+      
       - name: 压缩下载结果
         run: |
           cd novel_output && zip -r ../novel_files.zip *
-          
+      
       - name: 上传下载结果
         uses: actions/upload-artifact@v4
         with:
           name: novel-${{ github.event.inputs.novel_id }}-${{ github.event.inputs.format }}
           path: novel_files.zip
           retention-days: 7  # 文件保存7天
-          
+      
       - name: 提供下载信息
         run: |
           echo "✅ 小说下载完成！"
           echo "请点击上方 'Summary' 标签，然后在 'Artifacts' 部分下载小说文件。"
-          echo "文件保存期限为7天。" 
+          echo "文件保存期限为7天。"
