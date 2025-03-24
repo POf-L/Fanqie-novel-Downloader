@@ -3,7 +3,7 @@ name: 构建与发布
 on:
   release:
     types: [created]
-  workflow_dispatch:  # 允许手动触发工作流
+  workflow_dispatch:
     inputs:
       version:
         description: '版本号 (例如: v1.0.0)'
@@ -15,9 +15,8 @@ on:
         type: boolean
         default: false
 
-# 添加必要的权限
 permissions:
-  contents: write  # 允许写入仓库内容，需要这个来创建release
+  contents: write
   packages: read
 
 jobs:
@@ -46,7 +45,6 @@ jobs:
           
       - name: 准备构建脚本
         run: |
-          # 确保build_exe.py中包含ebooklib.epub
           (Get-Content build_exe.py) | ForEach-Object {
             if ($_ -match "--hidden-import=ebooklib',") {
               $_ -replace "--hidden-import=ebooklib',", "--hidden-import=ebooklib',`n    '--hidden-import=ebooklib.epub',  # 明确导入epub子模块"
@@ -76,7 +74,6 @@ jobs:
           files: Fanqie-Novel-Downloader-Windows.zip
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  # 为MacOS构建
   build-macos:
     runs-on: macos-latest
     steps:
@@ -102,10 +99,7 @@ jobs:
           
       - name: 准备构建脚本
         run: |
-          # 修改为macOS格式的路径分隔符，不再需要2.py
           sed -i '' 's/--add-data=cookie.json;./--add-data=cookie.json:./' build_exe.py
-          
-          # 确保包含ebooklib.epub
           if ! grep -q -- "--hidden-import=ebooklib.epub" build_exe.py; then
             sed -i '' 's/--hidden-import=ebooklib'"'"',/--hidden-import=ebooklib'"'"',\n    '"'"'--hidden-import=ebooklib.epub'"'"',  # 明确导入epub子模块/' build_exe.py
           fi
@@ -131,7 +125,6 @@ jobs:
           files: Fanqie-Novel-Downloader-MacOS.zip
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  # 为Linux构建
   build-linux:
     runs-on: ubuntu-latest
     steps:
@@ -157,10 +150,7 @@ jobs:
           
       - name: 准备构建脚本
         run: |
-          # 修改为Linux格式的路径分隔符，不再需要2.py
           sed -i 's/--add-data=cookie.json;./--add-data=cookie.json:./' build_exe.py
-          
-          # 确保包含ebooklib.epub
           if ! grep -q -- "--hidden-import=ebooklib.epub" build_exe.py; then
             sed -i 's/--hidden-import=ebooklib'"'"',/--hidden-import=ebooklib'"'"',\n    '"'"'--hidden-import=ebooklib.epub'"'"',  # 明确导入epub子模块/' build_exe.py
           fi
@@ -186,12 +176,16 @@ jobs:
           files: Fanqie-Novel-Downloader-Linux.zip
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  # 创建发布版本
   create-release:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     steps:
+      - name: 检出代码并获取完整提交历史
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 获取所有提交历史
+
       - name: 下载Windows构建产物
         uses: actions/download-artifact@v4
         with:
@@ -206,7 +200,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: linux-build
-          
+
+      - name: 获取最近的提交信息
+        id: get-commits
+        run: |
+          # 获取最近 5 次提交的消息（数量可调整）
+          COMMITS=$(git log -5 --pretty=format:"- %s (%h)" | sed 's/"/\\"/g')
+          echo "COMMIT_MESSAGES=$COMMITS" >> $GITHUB_ENV
+
       - name: 创建Release
         uses: softprops/action-gh-release@v1
         with:
@@ -215,6 +216,9 @@ jobs:
           name: Fanqie Novel Downloader ${{ github.event.inputs.version }}
           body: |
             Fanqie Novel Downloader ${{ github.event.inputs.version }} Release
+            
+            ### 更新内容
+            ${{ env.COMMIT_MESSAGES }}
             
             ### Features
             - Download novels from Fanqie and export as TXT or EPUB format
