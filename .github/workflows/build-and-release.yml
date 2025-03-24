@@ -1,233 +1,114 @@
-name: 构建与发布
+name: 构建应用程序
 
 on:
-  release:
-    types: [created]
-  workflow_dispatch:  # 允许手动触发工作流
-    inputs:
-      version:
-        description: '版本号 (例如: v1.0.0)'
-        required: true
-        default: 'v1.0.0'
-      prerelease:
-        description: '是否为预发布版本'
-        required: true
-        type: boolean
-        default: false
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # 允许手动触发
 
-# 添加必要的权限
 permissions:
-  contents: write  # 允许写入仓库内容，需要这个来创建release
-  packages: read
+  contents: read
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build-desktop:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
     steps:
       - name: 检出代码
         uses: actions/checkout@v3
-        
-      - name: 设置Python
+
+      - name: 设置 Python 环境
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
           cache: 'pip'
-          
+
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          
-      - name: 确保cookie.json存在
+          pip install pyinstaller
+
+      - name: 确保 cookie.json 存在
         run: |
-          if (-not (Test-Path -Path "./cookie.json")) {
-            '""' | Out-File -FilePath "./cookie.json" -Encoding utf8
-          }
-          
-      - name: 准备构建脚本
+          if [ ! -f "cookie.json" ]; then
+            echo '""' > "cookie.json"
+          fi
+
+      - name: 使用 PyInstaller 构建可执行文件
         run: |
-          # 确保build_exe.py中包含ebooklib.epub
-          (Get-Content build_exe.py) | ForEach-Object {
-            if ($_ -match "--hidden-import=ebooklib',") {
-              $_ -replace "--hidden-import=ebooklib',", "--hidden-import=ebooklib',`n    '--hidden-import=ebooklib.epub',  # 明确导入epub子模块"
-            } else {
-              $_
-            }
-          } | Set-Content build_exe.py
-          
-      - name: 构建Windows可执行文件
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            pyinstaller --onefile --windowed --add-data "cookie.json;." --name=FanqieNovelDownloader gui.py
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            pyinstaller --windowed --add-data "cookie.json:." --name=FanqieNovelDownloader gui.py
+          else
+            pyinstaller --onefile --add-data "cookie.json:." --name=FanqieNovelDownloader gui.py
+          fi
+
+      - name: 压缩构建产物
         run: |
-          python build_exe.py
-          
-      - name: 压缩Windows可执行文件
-        run: |
-          Compress-Archive -Path dist/番茄小说下载器.exe -DestinationPath Fanqie-Novel-Downloader-Windows.zip
-          
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            Compress-Archive -Path dist/FanqieNovelDownloader.exe -DestinationPath Fanqie-Novel-Downloader-Windows.zip
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            cd dist && zip -r ../Fanqie-Novel-Downloader-MacOS.zip FanqieNovelDownloader.app
+          else
+            cd dist && zip -r ../Fanqie-Novel-Downloader-Linux.zip FanqieNovelDownloader
+          fi
+
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build
-          path: Fanqie-Novel-Downloader-Windows.zip
-          
-      - name: 上传至已存在的Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: Fanqie-Novel-Downloader-Windows.zip
-          token: ${{ secrets.GITHUB_TOKEN }}
+          name: ${{ matrix.os }}-build
+          path: Fanqie-Novel-Downloader-*.zip
 
-  # 为MacOS构建
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v3
-        
-      - name: 设置Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-          
-      - name: 安装依赖
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          
-      - name: 确保cookie.json存在
-        run: |
-          if [ ! -f "./cookie.json" ]; then
-            echo '""' > "./cookie.json"
-          fi
-          
-      - name: 准备构建脚本
-        run: |
-          # 修改为macOS格式的路径分隔符，不再需要2.py
-          sed -i '' 's/--add-data=cookie.json;./--add-data=cookie.json:./' build_exe.py
-          
-          # 确保包含ebooklib.epub
-          if ! grep -q -- "--hidden-import=ebooklib.epub" build_exe.py; then
-            sed -i '' 's/--hidden-import=ebooklib'"'"',/--hidden-import=ebooklib'"'"',\n    '"'"'--hidden-import=ebooklib.epub'"'"',  # 明确导入epub子模块/' build_exe.py
-          fi
-          
-      - name: 构建MacOS可执行文件
-        run: |
-          python build_exe.py
-          
-      - name: 压缩MacOS可执行文件
-        run: |
-          cd dist && zip -r ../Fanqie-Novel-Downloader-MacOS.zip 番茄小说下载器
-          
-      - name: 上传构建产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: Fanqie-Novel-Downloader-MacOS.zip
-          
-      - name: 上传至已存在的Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: Fanqie-Novel-Downloader-MacOS.zip
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  # 为Linux构建
-  build-linux:
+  build-android:
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
         uses: actions/checkout@v3
-        
-      - name: 设置Python
+
+      - name: 设置 Java 环境
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 设置 Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          sdk-version: '33'
+          ndk-version: '25.1.8937393'
+
+      - name: 设置 Python 环境
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
           cache: 'pip'
-          
-      - name: 安装依赖
+
+      - name: 安装 Buildozer 和依赖
         run: |
           python -m pip install --upgrade pip
+          pip install cython
+          pip install buildozer
           pip install -r requirements.txt
-          
-      - name: 确保cookie.json存在
+
+      - name: 生成 buildozer.spec
         run: |
-          if [ ! -f "./cookie.json" ]; then
-            echo '""' > "./cookie.json"
-          fi
-          
-      - name: 准备构建脚本
+          buildozer init
+          sed -i 's/title = My Application/title = Fanqie Novel Downloader/' buildozer.spec
+          sed -i 's/package.name = myapp/package.name = fanqie_novel_downloader/' buildozer.spec
+          sed -i 's/source.include_exts = py,png,jpg,kv,atlas/source.include_exts = py,png,jpg,kv,atlas,json,txt/' buildozer.spec
+          echo "requirements = $(cat requirements.txt | tr '\n' ',')" >> buildozer.spec
+
+      - name: 构建 Android APK
         run: |
-          # 修改为Linux格式的路径分隔符，不再需要2.py
-          sed -i 's/--add-data=cookie.json;./--add-data=cookie.json:./' build_exe.py
-          
-          # 确保包含ebooklib.epub
-          if ! grep -q -- "--hidden-import=ebooklib.epub" build_exe.py; then
-            sed -i 's/--hidden-import=ebooklib'"'"',/--hidden-import=ebooklib'"'"',\n    '"'"'--hidden-import=ebooklib.epub'"'"',  # 明确导入epub子模块/' build_exe.py
-          fi
-          
-      - name: 构建Linux可执行文件
-        run: |
-          python build_exe.py
-          
-      - name: 压缩Linux可执行文件
-        run: |
-          cd dist && zip -r ../Fanqie-Novel-Downloader-Linux.zip 番茄小说下载器
-          
-      - name: 上传构建产物
+          buildozer android debug
+
+      - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
-          name: linux-build
-          path: Fanqie-Novel-Downloader-Linux.zip
-          
-      - name: 上传至已存在的Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: Fanqie-Novel-Downloader-Linux.zip
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  # 创建发布版本
-  create-release:
-    needs: [build-windows, build-macos, build-linux]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    steps:
-      - name: 下载Windows构建产物
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-build
-          
-      - name: 下载MacOS构建产物
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-build
-          
-      - name: 下载Linux构建产物
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-build
-          
-      - name: 创建Release
-        uses: softprops/action-gh-release@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ github.event.inputs.version }}
-          name: Fanqie Novel Downloader ${{ github.event.inputs.version }}
-          body: |
-            Fanqie Novel Downloader ${{ github.event.inputs.version }} Release
-            
-            ### Features
-            - Download novels from Fanqie and export as TXT or EPUB format
-            - Support multi-threaded downloading for acceleration
-            - Automatically fix ebooklib.epub module import issues
-            
-            ### Downloads
-            - Windows: Fanqie-Novel-Downloader-Windows.zip
-            - macOS: Fanqie-Novel-Downloader-MacOS.zip
-            - Linux: Fanqie-Novel-Downloader-Linux.zip
-          files: |
-            Fanqie-Novel-Downloader-Windows.zip
-            Fanqie-Novel-Downloader-MacOS.zip
-            Fanqie-Novel-Downloader-Linux.zip
-          draft: false
-          prerelease: ${{ github.event.inputs.prerelease }}
+          name: android-build
+          path: bin/*.apk
