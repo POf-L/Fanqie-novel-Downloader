@@ -14,7 +14,20 @@ REQUEST_CONFIG = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-    ]
+    ],
+    "request_rate_limit": 0.4,
+    "api_endpoints": [
+        "https://api.cenguigui.cn/api/tomato/content.php?item_id={chapter_id}",
+        "https://lsjk.zyii.xyz:3666/content?item_id={chapter_id}",
+        "http://nu1.jingluo.love/content?item_id={chapter_id}",
+        "http://nu2.jingluo.love/content?item_id={chapter_id}"
+    ],
+    "official_api": {
+        "install_id": "4427064614339001",
+        "server_device_id": "4427064614334905",
+        "aid": "1967",
+        "update_version_code": "62532"
+    }
 }
 
 # 阅读器默认配置

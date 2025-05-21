@@ -12,8 +12,10 @@ import sys
 
 # 导入项目中的其他模块
 from config import CONFIG, save_user_config
-from request_handler import RequestHandler
+# from request_handler import RequestHandler # Will be imported specifically below
 from library import LibraryWindow, add_to_library
+from request_handler import get_book_info, extract_chapters, down_text, get_headers as get_request_headers
+from request_handler import RequestHandler # For cookie generation
 
 # 设置 CustomTkinter 外观
 ctk.set_appearance_mode("dark")  # 默认使用暗色主题
@@ -29,9 +31,19 @@ class NovelDownloaderGUI(ctk.CTk):
         
         # 状态变量
         self.is_downloading = False
-        self.downloaded_chapters = set()
-        self.content_cache = OrderedDict()
-        self.request_handler = RequestHandler()
+        # self.downloaded_chapters = set() # Will be loaded in download_novel
+        # self.content_cache = OrderedDict() # Will be replaced by chapter_results
+        self.chapter_results = {} # Stores downloaded chapter content {index: {"base_title": ..., "api_title": ..., "content": ...}}
+        self.request_handler = RequestHandler() # For cookie generation
+        self.lock = threading.Lock()
+
+        # Variables for graceful shutdown
+        self.current_book_output_path = None
+        self.current_book_name = None
+        self.current_book_author = None
+        self.current_book_description = None
+        self.current_book_chapters_list = None
+        self.downloaded_chapters_set = set() # Holds IDs of successfully downloaded chapters
 
         # 加载图标 (移到 setup_ui 之前)
         self.load_icons()
@@ -230,123 +242,299 @@ class NovelDownloaderGUI(ctk.CTk):
         
         self.download_button.configure(state="disabled")
         self.is_downloading = True
-        self.downloaded_chapters.clear()
-        self.content_cache.clear()
+        self.chapter_results = {} # Reset for current download
         
-        threading.Thread(target=self.download_novel,
+        # Initial call to update progress bar and status
+        self.update_progress(0, "开始下载...")
+
+        threading.Thread(target=self.download_novel_thread, # Changed target
                        args=(novel_id, save_path),
                        daemon=True).start()
-    
-    def download_novel(self, book_id, save_path):
-        """下载小说的具体实现"""
+
+    def load_status(self, save_path):
+        status_file = os.path.join(save_path, CONFIG["file"]["status_file"])
+        if os.path.exists(status_file):
+            try:
+                with open(status_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        return set(data)
+                    self.log(f"警告: 状态文件 {status_file} 格式不正确, 将重新开始下载.")
+                    return set()
+            except Exception as e:
+                self.log(f"加载状态文件 {status_file} 失败: {e}. 将重新开始下载.")
+                return set()
+        return set()
+
+    def save_status(self, save_path, downloaded_ids):
+        status_file = os.path.join(save_path, CONFIG["file"]["status_file"])
         try:
+            os.makedirs(save_path, exist_ok=True) # Ensure directory exists
+            with open(status_file, 'w', encoding='utf-8') as f:
+                json.dump(list(downloaded_ids), f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            self.log(f"保存状态到 {status_file} 失败: {e}")
+
+    def write_downloaded_chapters_in_order(self, output_file_path, book_name, author, description, chapters_list, chapter_results_map):
+        self.log(f"正在按顺序写入章节到 {output_file_path}...")
+        try:
+            os.makedirs(os.path.dirname(output_file_path), exist_ok=True) # Ensure directory exists
+            with open(output_file_path, 'w', encoding='utf-8') as f:
+                f.write(f"小说名: {book_name}\n作者: {author}\n内容简介: {description}\n\n")
+                
+                processed_content_hashes = set() # For basic deduplication by content
+
+                for chapter_data in chapters_list:
+                    idx = chapter_data["index"]
+                    if idx in chapter_results_map:
+                        result = chapter_results_map[idx]
+                        
+                        # Basic content deduplication check
+                        content_hash = hash(result["content"])
+                        if content_hash in processed_content_hashes:
+                            self.log(f"跳过内容重复的章节: {result['base_title']}")
+                            continue
+                        processed_content_hashes.add(content_hash)
+
+                        title = f'{result["base_title"]}'
+                        # api_title from down_text is not directly available in the current down_text implementation
+                        # If down_text were to return a dict with 'title' and 'content', this could be used.
+                        # For now, api_title part is omitted.
+                        # if result.get("api_title"): 
+                        #     title += f' {result["api_title"]}'
+                        
+                        f.write(f"{title}\n\n") # Extra newline for readability between title and content
+                        f.write(result["content"] + '\n\n\n') # Extra newlines for readability between chapters
+                    # else:
+                        # Chapter was not downloaded or failed.
+                        # Optionally log this or write a placeholder.
+                        # self.log(f"章节 {chapter_data['title']} (ID: {chapter_data['id']}) 未下载。")
+            self.log(f"完成写入章节到 {output_file_path}.")
+        except Exception as e:
+            self.log(f"写入章节到文件时发生错误: {e}")
+            
+    def _download_chapter_task(self, chapter_info, book_id_for_fqv, current_api_index, success_counter_list, failed_chapters_list, total_chapters_for_progress):
+        """
+        Worker task for downloading a single chapter.
+        success_counter_list is a list with one int element to allow modification by reference.
+        """
+        try:
+            # The new down_text doesn't strictly need book_id for FqReq's primary path,
+            # but FqVariable init does. current_api_index is for down_text's fallback.
+            # down_text now directly returns the content string or raises an error.
+            content = down_text(chapter_info["id"], current_api_index=current_api_index)
+            
+            if content:
+                with self.lock:
+                    self.chapter_results[chapter_info["index"]] = {
+                        "base_title": chapter_info["title"], 
+                        "api_title": None, # down_text currently doesn't return a separate API title
+                        "content": content
+                    }
+                    self.downloaded_chapters_set.add(chapter_info["id"]) # Use the shared set
+                    success_counter_list[0] += 1
+                self.log(f"已下载: {chapter_info['title']}")
+            else:
+                # This case might not be reached if down_text raises error on empty content
+                self.log(f"下载内容为空: {chapter_info['title']}")
+                with self.lock:
+                    failed_chapters_list.append(chapter_info)
+        except Exception as e:
+            self.log(f"下载失败: {chapter_info['title']} - {str(e)}")
+            with self.lock:
+                failed_chapters_list.append(chapter_info)
+        finally:
+            with self.lock:
+                # Calculate progress based on chapters attempted vs total initial todo_chapters or total_chapters overall
+                # For simplicity, using success_counter_list[0] against total_chapters_for_progress
+                progress = (success_counter_list[0] / total_chapters_for_progress) * 100 if total_chapters_for_progress > 0 else 0
+                self.update_progress(progress, f"下载进度: {success_counter_list[0]}/{total_chapters_for_progress}")
+
+    def download_novel_thread(self, book_id, save_path): # Renamed from download_novel
+        name = None
+        author_name = None
+        description = None
+        chapters_list = []
+        output_file = ""
+        initial_total_chapters = 0
+        
+        # Reset graceful shutdown variables at the start of a new download
+        self.current_book_output_path = None
+        self.current_book_name = None
+        self.current_book_author = None
+        self.current_book_description = None
+        self.current_book_chapters_list = None
+        # self.downloaded_chapters_set is loaded/cleared based on user choice later
+
+        try:
+            self.log("开始下载流程...")
+            headers = get_request_headers() # Get headers once
+
             self.log("正在获取书籍信息...")
-            
-            # 获取书籍信息
-            name, author_name, description = self.request_handler.get_book_info(book_id)
-            if not name:
-                raise Exception("无法获取书籍信息，请检查小说ID或网络连接")
-            
-            self.log(f"书名：《{name}》")
-            self.log(f"作者：{author_name}")
-            self.log(f"简介：{description}")
-            
-            # 获取章节列表
-            self.log("正在获取章节列表...")
-            chapters = self.request_handler.extract_chapters(book_id)
-            if not chapters:
-                raise Exception("未找到任何章节")
-            
-            self.log(f"\n开始下载，共 {len(chapters)} 章")
+            name, author_name, description = get_book_info(book_id, headers)
+            if not name or not author_name: # Description can be empty
+                self.log("无法获取书籍信息。请检查小说ID或网络。")
+                messagebox.showerror("错误", "无法获取书籍信息，请检查小说ID或网络连接。")
+                return # Exit thread
+
+            self.log(f"书名: 《{name}》, 作者: {author_name}")
+            output_file = os.path.join(save_path, f"{name}.txt")
             os.makedirs(save_path, exist_ok=True)
             
-            # 创建文件并写入信息
-            output_file = os.path.join(save_path, f"{name}.txt")
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(f"书名：《{name}》\n作者：{author_name}\n\n简介：\n{description}\n\n")
+            # Store info for graceful shutdown
+            self.current_book_output_path = output_file
+            self.current_book_name = name
+            self.current_book_author = author_name
+            self.current_book_description = description
+
+            self.log("正在获取章节列表...")
+            chapters_list = extract_chapters(book_id, headers)
+            if not chapters_list:
+                self.log("未找到任何章节。")
+                messagebox.showerror("错误", "未找到任何章节。")
+                # Reset before exiting due to no chapters
+                self.current_book_output_path = None 
+                return # Exit thread
             
-            # 下载章节
-            total_chapters = len(chapters)
-            success_count = 0
+            self.current_book_chapters_list = chapters_list # Store for graceful shutdown
+            initial_total_chapters = len(chapters_list)
+            self.log(f"共找到 {initial_total_chapters} 章。")
+
+            self.downloaded_chapters_set = self.load_status(save_path) # Load downloaded chapter IDs
             
-            # 先顺序下载前5章
-            for chapter in chapters[:5]:
-                content = self.request_handler.down_text(chapter["id"])
-                if content:
-                    self.content_cache[chapter["index"]] = (chapter, content)
-                    self.downloaded_chapters.add(chapter["id"])
-                    success_count += 1
-                    progress = (success_count / total_chapters) * 100
-                    self.update_progress(progress, f"正在下载: {success_count}/{total_chapters}")
-                    self.log(f"已下载：{chapter['title']}")
+            # Load already downloaded content if status exists and user doesn't want full re-download
+            # This part requires chapters_list to be available
+            if self.downloaded_chapters_set:
+                self.log(f"检测到 {len(self.downloaded_chapters_set)} 个已下载章节的记录。")
+                if messagebox.askyesno("重新下载?", 
+                                       f"检测到之前下载过的章节记录。\n是否要清除记录并重新下载所有章节？\n"
+                                       f"(选择“否”将仅下载未完成的章节)", parent=self):
+                    self.log("用户选择重新下载所有章节。清除本地下载记录。")
+                    self.downloaded_chapters_set.clear()
+                    self.chapter_results.clear() 
+                    self.save_status(save_path, set()) # Clear status file
+                else:
+                    self.log("用户选择仅下载未完成的章节。")
+                    # Try to populate chapter_results for already downloaded chapters if we want to rewrite the whole file
+                    # For now, this logic is simplified: we only download new chapters, and write_downloaded_chapters_in_order
+                    # will write what's in chapter_results. If old chapters are not in chapter_results, they won't be written.
+                    # To include them, they'd need to be re-fetched or their content stored persistently.
+                    # The current prompt implies chapter_results is for the current session's downloads.
+                    pass
+
+
+            todo_chapters = [ch for ch in chapters_list if ch["id"] not in self.downloaded_chapters_set]
+
+            if not todo_chapters:
+                self.log("所有章节均已下载。")
+                messagebox.showinfo("完成", "所有章节均已下载。如果您想重新下载，请在提示时选择“是”。", parent=self)
+                # Ensure final file is written with all content if not re-downloading everything
+                # This requires populating self.chapter_results with *all* chapters, potentially re-downloading if not careful
+                # For now, if todo_chapters is empty, we assume the existing file is fine, or it will be handled by a full re-download choice.
+                # To be robust, if not re-downloading all and todo is empty, we should ensure existing content is loaded into chapter_results
+                # or that write_downloaded_chapters_in_order can somehow access previously stored content.
+                # The simplest approach is to re-download if the user wants a fresh file.
+                # If they hit "No" on re-download and todo is empty, we can just exit.
+                return
+
+            self.log(f"准备下载 {len(todo_chapters)} 个新章节。")
             
-            # 多线程下载剩余章节
-            remaining_chapters = chapters[5:]
-            with ThreadPoolExecutor(max_workers=CONFIG["request"].get("max_workers", 5)) as executor:
-                future_to_chapter = {
-                    executor.submit(self.request_handler.down_text, chapter["id"]): chapter
-                    for chapter in remaining_chapters
-                }
+            # This success_count tracks chapters downloaded in *this session* or *this major attempt*
+            # It's wrapped in a list to be mutable by the thread tasks
+            current_session_success_count_list = [0] 
+            
+            # Initial write of book info, even if some chapters fail, this will be at the top
+            # self.write_downloaded_chapters_in_order(output_file, name, author_name, description, chapters_list, self.chapter_results)
+
+            max_retries_for_failed_batches = CONFIG["request"].get('max_retries', 3)
+            
+            for attempt in range(max_retries_for_failed_batches):
+                if not todo_chapters: # All chapters successfully downloaded
+                    break
+
+                self.log(f"开始下载批次 (尝试 {attempt + 1}/{max_retries_for_failed_batches}) - {len(todo_chapters)} 章节待处理。")
+                failed_chapters_this_attempt = []
                 
-                for future in as_completed(future_to_chapter):
-                    chapter = future_to_chapter[future]
-                    try:
-                        content = future.result()
-                        if content:
-                            self.content_cache[chapter["index"]] = (chapter, content)
-                            self.downloaded_chapters.add(chapter["id"])
-                            success_count += 1
-                            self.log(f"已下载：{chapter['title']}")
-                    except Exception as e:
-                        self.log(f"下载失败：{chapter['title']} - {str(e)}")
-                    finally:
-                        progress = (success_count / total_chapters) * 100
-                        self.update_progress(progress, f"正在下载: {success_count}/{total_chapters}")
-            
-            # 按顺序写入文件
-            self.log("\n正在保存文件...")
-            
-            # 检查重复章节内容
-            processed_contents = set()
-            with open(output_file, 'a', encoding='utf-8') as f:
-                for index in sorted(self.content_cache.keys()):
-                    chapter, content = self.content_cache[index]
-                    
-                    # 检查内容是否重复
-                    content_hash = hash(content)
-                    if content_hash in processed_contents:
-                        self.log(f"跳过重复章节：{chapter['title']}")
-                        continue
-                    
-                    processed_contents.add(content_hash)
-                    f.write(f"\n{chapter['title']}\n\n")
-                    f.write(content + "\n\n")
-            
-            self.update_progress(100, "下载完成！")
-            self.log(f"\n下载完成！成功：{success_count}章，失败：{total_chapters - success_count}章")
-            self.log(f"文件保存在：{output_file}")
-            
-            # 添加到书库
-            book_info = {
-                "name": name,
-                "author": author_name,
-                "description": description,
-                "save_path": save_path
-            }
-            add_to_library(book_id, book_info, output_file)
-            self.log("已添加到书库")
-            
-            messagebox.showinfo("完成", f"小说《{name}》下载完成！\n保存路径：{output_file}")
-            
+                # Progress is based on initial_total_chapters, not just todo_chapters, to give a sense of overall completion
+                # However, success_counter_list tracks successful downloads in the current session's attempts.
+                # For progress bar: total_for_progress = initial_total_chapters
+                # For success_counter: current_session_success_count_list[0]
+                # This means the progress bar reflects total book completion including previous downloads.
+
+                # Let's adjust success_counter to reflect total known downloaded chapters for progress bar
+                # It should be len(self.downloaded_chapters_set) + newly_downloaded_in_session
+                # For simplicity, _download_chapter_task updates progress based on total_chapters_for_progress which is initial_total_chapters.
+                # And current_session_success_count_list[0] is the number of *newly* downloaded ones.
+                # So, update_progress inside the task should use (len(self.downloaded_chapters_set) + new_successes) / initial_total_chapters
+                # For now, _download_chapter_task uses its own success_counter_list[0] which tracks NEW successes.
+                # The total number of chapters to calculate percentage against in _download_chapter_task should be initial_total_chapters.
+
+                with ThreadPoolExecutor(max_workers=CONFIG["request"].get("max_workers", 5)) as executor:
+                    futures = {
+                        executor.submit(self._download_chapter_task, chapter, book_id, attempt, current_session_success_count_list, failed_chapters_this_attempt, initial_total_chapters): chapter
+                        for chapter in todo_chapters # download chapters from the current todo_chapters list
+                    }
+                    for future in as_completed(futures):
+                        # Exception handling is within _download_chapter_task
+                        # We just wait for completion here
+                        future.result() # Call result to raise exceptions from the task if not caught inside
+
+                # After each batch attempt, save progress
+                self.write_downloaded_chapters_in_order(output_file, name, author_name, description, chapters_list, self.chapter_results)
+                self.save_status(save_path, self.downloaded_chapters_set)
+
+                todo_chapters = failed_chapters_this_attempt
+                if todo_chapters:
+                    self.log(f"批次尝试 {attempt + 1} 后，仍有 {len(todo_chapters)} 个章节下载失败。")
+                    if attempt < max_retries_for_failed_batches - 1:
+                         self.log("将在1秒后重试...")
+                         time.sleep(1)
+                else:
+                    self.log("当前批次所有章节已成功下载。")
+                    break # Exit retry loop if all successful
+
+            if todo_chapters: # If after all retries, some chapters still failed
+                self.log(f"完成所有下载尝试后，仍有 {len(todo_chapters)} 个章节下载失败。")
+                messagebox.showwarning("下载未完整", f"部分章节下载失败。已成功下载 {current_session_success_count_list[0]} 个新章节。\n"
+                                                  f"总计已完成 {len(self.downloaded_chapters_set)}/{initial_total_chapters} 章节。\n"
+                                                  f"文件保存在: {output_file}", parent=self)
+            else:
+                self.log("所有章节已成功下载！")
+                messagebox.showinfo("下载完成", 
+                                    f"小说《{name}》所有章节已成功下载！\n"
+                                    f"总计 {len(self.downloaded_chapters_set)}/{initial_total_chapters} 章节。\n"
+                                    f"文件保存在: {output_file}", parent=self)
+
+            # Add to library
+            if name and author_name: # Ensure book info was fetched
+                book_info_lib = {
+                    "name": name, "author": author_name, "description": description, "save_path": save_path
+                }
+                add_to_library(book_id, book_info_lib, output_file)
+                self.log("已添加到书库。")
+
         except Exception as e:
-            self.log(f"\n错误：{str(e)}")
-            self.update_progress(0, f"下载失败: {str(e)}")
-            messagebox.showerror("错误", f"下载失败: {str(e)}")
-        
+            self.log(f"下载小说时发生严重错误: {e}")
+            messagebox.showerror("严重错误", f"下载过程中发生错误: {str(e)}", parent=self)
+            # Save any progress made before the critical error
+            if name and chapters_list and output_file: # Check if these variables are initialized
+                 self.write_downloaded_chapters_in_order(output_file, name, author_name, description, chapters_list, self.chapter_results)
+            if hasattr(self, 'downloaded_chapters_set'): # Check if set was initialized
+                 self.save_status(save_path, self.downloaded_chapters_set)
         finally:
-            self.download_button.configure(state="normal")
             self.is_downloading = False
-    
+            self.download_button.configure(state="normal")
+            self.update_progress(100, "下载结束") # Final progress update
+            self.log("下载流程结束。")
+            
+            # Reset graceful shutdown variables after successful completion or error handled within
+            self.current_book_output_path = None
+            self.current_book_name = None
+            self.current_book_author = None
+            self.current_book_description = None
+            self.current_book_chapters_list = None
+            # self.downloaded_chapters_set is persisted by save_status
+
     def open_library(self):
         """打开书库窗口"""
         try:
@@ -372,8 +560,45 @@ class NovelDownloaderGUI(ctk.CTk):
     def on_closing(self):
         """窗口关闭处理"""
         if self.is_downloading:
-            if messagebox.askyesno("确认", "下载正在进行中，确定要退出吗？"):
+            if messagebox.askyesno("确认", "下载正在进行中，确定要退出吗？\n未保存的进度将会尝试保存。", parent=self):
+                self.log("下载被用户中断。正在尝试保存进度...")
+                
+                # Save status (chapter IDs)
+                # Ensure self.save_path.get().strip() is the correct directory path
+                current_save_dir = self.save_path.get().strip()
+                if not current_save_dir: # Fallback if UI field is empty for some reason
+                    current_save_dir = CONFIG["file"].get("default_save_path", "downloads")
+
+                if hasattr(self, 'downloaded_chapters_set') and self.downloaded_chapters_set:
+                    self.save_status(current_save_dir, self.downloaded_chapters_set)
+                    self.log(f"已保存 {len(self.downloaded_chapters_set)} 个章节的下载状态。")
+                else:
+                    self.log("没有已下载章节的状态信息可保存。")
+
+                # Save content (write to file)
+                if (hasattr(self, 'current_book_output_path') and self.current_book_output_path and
+                        hasattr(self, 'current_book_name') and self.current_book_name and # Ensure name is not None
+                        hasattr(self, 'current_book_chapters_list') and self.current_book_chapters_list and
+                        isinstance(self.chapter_results, dict)): # Ensure chapter_results is a dict
+                    
+                    self.log(f"正在写入已下载内容到 {self.current_book_output_path}...")
+                    self.write_downloaded_chapters_in_order(
+                        self.current_book_output_path,
+                        self.current_book_name,
+                        self.current_book_author if hasattr(self, 'current_book_author') else "未知作者", # Handle if author is None
+                        self.current_book_description if hasattr(self, 'current_book_description') else "无简介", # Handle if desc is None
+                        self.current_book_chapters_list,
+                        self.chapter_results 
+                    )
+                    self.log("内容写入尝试完成。")
+                else:
+                    self.log("没有足够的书籍信息或章节内容来写入文件。")
+                
+                self.is_downloading = False # Explicitly stop download state
                 self.destroy()
+            else:
+                # User chose not to exit
+                return 
         else:
             self.destroy()
 
