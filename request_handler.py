@@ -6,6 +6,7 @@ import time
 import re
 from bs4 import BeautifulSoup
 from config import CONFIG
+from local_crawler import FanQieChapter
 
 
 class CookieGenerationError(Exception):
@@ -17,6 +18,7 @@ class RequestHandler:
         self.config = CONFIG["request"]
 
         self.session = requests.Session()
+        self.use_local_crawler = self.config.get("use_local_crawler", False)
 
     def get_headers(self, cookie=None):
         """生成随机请求头"""
@@ -142,20 +144,26 @@ class RequestHandler:
 
     def down_text(self, chapter_id):
         """下载章节内容"""
+        if self.use_local_crawler:
+            try:
+                chapter = FanQieChapter(chapter_id, cookie=self.get_cookie())
+                return chapter.get_paras().join_paras("    ")
+            except Exception as e:
+                raise ConnectionError(f"本地爬虫解析失败: {e}")
+
         max_retries = self.config.get('max_retries', 3)
         retry_count = 0
         content = ""
-        
+
         while retry_count < max_retries:
             try:
                 api_url = f"https://api.cengui.cn/api/tomato/content.php?item_id={chapter_id}"
                 response = self.session.get(api_url, timeout=self.config["request_timeout"])
                 data = response.json()
-                
+
                 if data.get("code") == 200:
                     content = data.get("data", {}).get("content", "")
-                    
-                    # 移除HTML标签
+
                     content = re.sub(r'<header>.*?</header>', '', content, flags=re.DOTALL)
                     content = re.sub(r'<footer>.*?</footer>', '', content, flags=re.DOTALL)
                     content = re.sub(r'</?article>', '', content)
@@ -163,12 +171,11 @@ class RequestHandler:
                     content = re.sub(r'</p>', '\n', content)
                     content = re.sub(r'<[^>]+>', '', content)
                     content = re.sub(r'\\u003c|\\u003e', '', content)
-                    
-                    # 处理可能的重复章节标题行
+
                     title = data.get("data", {}).get("title", "")
                     if title and content.startswith(title):
                         content = content[len(title):].lstrip()
-                    
+
                     content = re.sub(r'\n{2,}', '\n', content).strip()
                     content = '\n'.join(['    ' + line if line.strip() else line for line in content.split('\n')])
                     break
@@ -176,8 +183,8 @@ class RequestHandler:
                 print(f"请求失败: {str(e)}, 重试第{retry_count + 1}次...")
                 retry_count += 1
                 time.sleep(1 * retry_count)
-        
-        if not content: # 如果所有重试后 content 仍然为空
+
+        if not content:
             raise ConnectionError(f"无法下载章节 {chapter_id}，API 可能已失效或网络错误。")
-            
+
         return content
