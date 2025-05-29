@@ -10,6 +10,7 @@ REQUEST_CONFIG = {
     "max_workers": 5,
     "max_retries": 3,
     "request_timeout": 15,
+    "use_local_crawler": False,
     "user_agents": [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",

@@ -105,7 +105,7 @@ python gui.py
 ```mermaid
 graph LR
     %% UI Components
-    SplashScreen[SplashScreen splash.py] -- Starts --> MainGUI
+    SplashScreen[SplashScreen] -- Starts --> MainGUI
     MainGUI[NovelDownloaderGUI gui.py]
     LibWindow[LibraryWindow library.py]
     ReaderWindow[Reader reader.py]
@@ -212,6 +212,7 @@ graph LR
 -   **线程调整**：尝试在设置中调整下载线程数。
 -   **Cookie**：检查或清除 `cookie.json` 文件，重新获取 Cookie。
 -   **API 限制**：部分小说可能存在下载限制，请更换其他源或稍后重试。
+-   **本地模式**：在设置中启用 "use_local_crawler" 可直接解析网页内容，避免依赖第三方接口。
 
 </details>
 

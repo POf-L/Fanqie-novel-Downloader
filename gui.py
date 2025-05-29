@@ -590,8 +590,70 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 # 导入并显示启动画面
+class SplashScreen(ctk.CTkToplevel):
+    def __init__(self, parent, logo_path=None, duration=2.0):
+        super().__init__(parent)
+        self.parent = parent
+        self.duration = duration
+        self.title("")
+        self.overrideredirect(True)
+        self.attributes("-topmost", True)
+        width, height = 400, 300
+        pos_x = (self.winfo_screenwidth() // 2) - (width // 2)
+        pos_y = (self.winfo_screenheight() // 2) - (height // 2)
+        self.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
+        self.configure(fg_color="#2d2d2d")
+        self.create_widgets(logo_path)
+        self.progress = ctk.CTkProgressBar(self, orientation="horizontal", mode="indeterminate")
+        self.progress.grid(row=3, column=0, padx=40, pady=(0, 30), sticky="ew")
+        self.progress.start()
+        self.center_window()
+        self.start_close_timer()
+        self.bind("<Destroy>", self.on_splash_destroy)
+
+    def on_splash_destroy(self, event=None):
+        if event is None or event.widget == self:
+            try:
+                if self.parent and isinstance(self.parent, (tk.Tk, tk.Toplevel, ctk.CTk)):
+                    self.parent.deiconify()
+                    self.parent.lift()
+                    self.parent.focus_force()
+            except Exception:
+                pass
+
+    def create_widgets(self, logo_path):
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=0)
+        self.grid_rowconfigure(2, weight=0)
+        self.grid_rowconfigure(3, weight=0)
+        if logo_path:
+            try:
+                logo_img = Image.open(logo_path).resize((120, 120), Image.LANCZOS)
+                logo_ctk = ctk.CTkImage(light_image=logo_img, dark_image=logo_img, size=(120, 120))
+                ctk.CTkLabel(self, image=logo_ctk, text="").grid(row=0, column=0, padx=20, pady=(20, 10))
+            except Exception:
+                ctk.CTkLabel(self, text="番茄小说下载器", font=("黑体", 24)).grid(row=0, column=0, padx=20, pady=(50, 10))
+        else:
+            ctk.CTkLabel(self, text="番茄小说下载器", font=("黑体", 24)).grid(row=0, column=0, padx=20, pady=(50, 10))
+        ctk.CTkLabel(self, text="番茄小说下载器", font=("黑体", 20)).grid(row=1, column=0, padx=20, pady=(10, 5))
+        ctk.CTkLabel(self, text="专业版 v1.2.0", font=("黑体", 12)).grid(row=2, column=0, padx=20, pady=(0, 20))
+
+    def center_window(self):
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        x = (self.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.winfo_screenheight() // 2) - (height // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+
+    def start_close_timer(self):
+        self.after(int(self.duration * 1000), self.destroy)
+
+    def close_splash_screen(self):
+        pass
+
 try:
-    from splash import SplashScreen # 导入 SplashScreen 类
 
     # 1. 创建主应用实例
     app = NovelDownloaderGUI()
@@ -606,12 +668,6 @@ try:
     # splash.mainloop() # 不需要单独的 mainloop for splash
 
     # 4. 启动主应用的 mainloop
-    app.mainloop()
-
-except ImportError:
-    print("无法导入 splash 模块，跳过启动画面。")
-    # 如果无法导入启动画面，直接启动主应用
-    app = NovelDownloaderGUI()
     app.mainloop()
 except Exception as e:
     print(f"显示启动画面时出错: {e}")
