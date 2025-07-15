@@ -621,6 +621,44 @@ def tutuxka_get_audiobook_content(chapter_id):
     result = tutuxka_api_request("content", ts="听书", item_ids=chapter_id)
     return result
 
+def tutuxka_get_book_chapters(book_id):
+    """使用Tutuxka API获取书籍章节列表"""
+    if not CONFIG["tutuxka_api"]["enabled"]:
+        return None
+    
+    try:
+        result = tutuxka_api_request("book", bookId=book_id)
+        if result and isinstance(result, dict):
+            data = result.get("data", {})
+            if data:
+                # 从API返回的数据中提取章节ID列表
+                all_item_ids = data.get("allItemIds", [])
+                chapter_list_with_volume = data.get("chapterListWithVolume", [])
+                
+                # 构建章节信息列表
+                chapters = []
+                for volume_chapters in chapter_list_with_volume:
+                    for chapter in volume_chapters:
+                        if isinstance(chapter, dict):
+                            chapters.append({
+                                "id": chapter.get("itemId", ""),
+                                "title": chapter.get("title", ""),
+                                "volume_name": chapter.get("volume_name", ""),
+                                "needPay": chapter.get("needPay", 0),
+                                "isChapterLock": chapter.get("isChapterLock", False)
+                            })
+                
+                print(f"Tutuxka API获取到 {len(chapters)} 个章节")
+                return chapters
+            else:
+                print(f"Tutuxka API book接口返回空数据")
+        else:
+            print(f"Tutuxka API book接口返回格式错误: {result}")
+    except Exception as e:
+        print(f"Tutuxka API获取章节列表异常: {str(e)}")
+    
+    return None
+
 def tutuxka_get_book_detail(book_id):
     """使用Tutuxka API获取书籍详情"""
     if not CONFIG["tutuxka_api"]["supports_book_detail"]:
@@ -712,14 +750,48 @@ def extract_chapters(soup):
         })
     return chapters
 
-def batch_download_chapters(item_ids, headers):
+def batch_download_chapters(item_ids, headers, book_id=None):
     """批量下载章节内容"""
     
     # 优先尝试Tutuxka API批量下载
     if CONFIG["tutuxka_api"]["enabled"] and CONFIG["tutuxka_api"]["supports_batch"]:
         try:
             print(f"正在使用Tutuxka API批量下载 {len(item_ids)} 个章节...")
-            batch_result = tutuxka_get_batch_chapters(item_ids)
+            
+            # 如果提供了book_id，先获取Tutuxka API的章节列表
+            tutuxka_chapter_ids = None
+            if book_id:
+                tutuxka_chapters = tutuxka_get_book_chapters(book_id)
+                if tutuxka_chapters:
+                    # 创建番茄小说章节ID到Tutuxka章节ID的映射
+                    tutuxka_chapter_ids = []
+                    for fanqie_id in item_ids:
+                        # 对于番茄小说，先尝试使用原始ID（可能已经是正确的格式）
+                        found = False
+                        for tutuxka_chapter in tutuxka_chapters:
+                            if isinstance(tutuxka_chapter, dict) and tutuxka_chapter.get("id"):
+                                # 检查是否是对应的章节ID
+                                if tutuxka_chapter["id"] == fanqie_id:
+                                    tutuxka_chapter_ids.append(tutuxka_chapter["id"])
+                                    found = True
+                                    break
+                        
+                        if not found:
+                            # 如果找不到对应的章节，使用原始ID
+                            tutuxka_chapter_ids.append(fanqie_id)
+                    
+                    if tutuxka_chapter_ids:
+                        print(f"使用Tutuxka章节ID进行批量下载: {len(tutuxka_chapter_ids)} 个章节")
+                        batch_result = tutuxka_get_batch_chapters(tutuxka_chapter_ids)
+                    else:
+                        print(f"章节ID映射失败，使用原始ID进行批量下载")
+                        batch_result = tutuxka_get_batch_chapters(item_ids)
+                else:
+                    print(f"无法获取Tutuxka章节列表，使用原始ID进行批量下载")
+                    batch_result = tutuxka_get_batch_chapters(item_ids)
+            else:
+                # 没有book_id，直接使用原始ID
+                batch_result = tutuxka_get_batch_chapters(item_ids)
             
             if batch_result:
                 print(f"Tutuxka API批量下载成功")
@@ -1120,7 +1192,7 @@ def Run(book_id, save_path):
                     batch = todo_chapters[i:i + batch_size]
                     item_ids = [chap["id"] for chap in batch]
 
-                    batch_results = batch_download_chapters(item_ids, headers)
+                    batch_results = batch_download_chapters(item_ids, headers, book_id)
                     if not batch_results:
                         print(f"第 {i//batch_size + 1} 批下载失败")
                         failed_chapters.extend(batch)
@@ -1388,7 +1460,7 @@ class GUIdownloader:
                         self.status_callback(f"批量下载第 {current_batch}/{total_batches} 批 ({len(batch)} 章节)")
 
                     item_ids = [chap["id"] for chap in batch]
-                    batch_results = batch_download_chapters(item_ids, headers)
+                    batch_results = batch_download_chapters(item_ids, headers, book_id)
 
                     if not batch_results:
                         if self.status_callback:
