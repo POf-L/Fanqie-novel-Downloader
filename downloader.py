@@ -153,6 +153,18 @@ CONFIG = {
         "max_batch_size": 290,
         "timeout": 10,
         "enabled": True
+    },
+    # 新增的tutuxka API配置
+    "tutuxka_api": {
+        "enabled": True,
+        "base_url": "https://qwq.tutuxka.top/api/index.php",
+        "priority": 1,  # 优先级，数字越小优先级越高
+        "name": "tutuxka",
+        "supports_batch": True,
+        "supports_manga": True,
+        "supports_audiobook": True,
+        "supports_book_detail": True,
+        "supports_comment": True
     }
 }
 
@@ -200,6 +212,7 @@ def search_novels(query: str, page: int = 0, limit: int = 20) -> Optional[Dict]:
     Returns:
         搜索结果字典，包含书籍列表等信息
     """
+    # 首先尝试原有的搜索API
     try:
         url = "https://fq.66ds.de/api/search"
         
@@ -223,10 +236,33 @@ def search_novels(query: str, page: int = 0, limit: int = 20) -> Optional[Dict]:
         response = requests.get(url, params=params, headers=headers, timeout=10)
         response.raise_for_status()
         
-        return response.json()
+        result = response.json()
+        if result and result.get('code') == 0:
+            return result
+        else:
+            print("主搜索API返回异常，尝试备用搜索方式...")
+            
+    except Exception as e:
+        print(f"主搜索API失败: {str(e)}, 尝试备用搜索方式...")
+    
+    # 如果主搜索API失败，尝试使用Tutuxka API的书籍详情功能
+    # 注意：这个API主要用于获取章节内容，搜索功能有限
+    try:
+        # 使用智能搜索功能（如果项目中有相关代码）
+        print("使用智能搜索功能作为备用搜索...")
+        
+        # 这里可以添加基于Tutuxka API的搜索逻辑
+        # 由于Tutuxka API文档中没有直接搜索接口，我们返回一个提示
+        return {
+            'code': 0,
+            'data': {
+                'book_data': [],
+                'message': f'当前搜索API暂时不可用，建议直接使用书籍ID进行下载。\n搜索关键词: {query}'
+            }
+        }
         
     except Exception as e:
-        print(f"搜索小说时出错: {str(e)}")
+        print(f"备用搜索也失败: {str(e)}")
         return None
 
 def format_search_results(search_data: Dict) -> str:
@@ -242,7 +278,13 @@ def format_search_results(search_data: Dict) -> str:
     if not search_data or search_data.get('code') != 0:
         return "搜索失败，请检查网络连接或稍后再试"
     
-    book_data = search_data.get('data', {}).get('book_data', [])
+    data = search_data.get('data', {})
+    
+    # 检查是否有特殊消息（比如备用搜索的提示）
+    if 'message' in data and not data.get('book_data'):
+        return data['message']
+    
+    book_data = data.get('book_data', [])
     if not book_data:
         return "未找到相关小说"
     
@@ -298,17 +340,47 @@ def get_enhanced_book_info(book_id: str) -> Optional[Dict]:
             'book_type': None
         }
         
-        # 1. 先通过现有的get_book_info获取基本信息
+        # 1. 优先尝试Tutuxka API获取书籍详情
+        if CONFIG["tutuxka_api"]["enabled"] and CONFIG["tutuxka_api"]["supports_book_detail"]:
+            try:
+                print(f"正在使用Tutuxka API获取书籍详情: {book_id}")
+                tutuxka_detail = tutuxka_get_book_detail(book_id)
+                
+                if tutuxka_detail:
+                    # 根据API返回的数据结构提取信息
+                    if isinstance(tutuxka_detail, dict):
+                        # 处理API返回的数据结构
+                        data = tutuxka_detail.get('data', tutuxka_detail)
+                        
+                        enhanced_info['book_name'] = data.get('title', data.get('book_name', enhanced_info['book_name']))
+                        enhanced_info['author'] = data.get('author', enhanced_info['author'])
+                        enhanced_info['description'] = data.get('description', data.get('intro', enhanced_info['description']))
+                        enhanced_info['thumb_url'] = data.get('cover_url', data.get('thumb_url', enhanced_info['thumb_url']))
+                        enhanced_info['read_count'] = data.get('read_count', enhanced_info['read_count'])
+                        enhanced_info['creation_status'] = data.get('status', data.get('creation_status', enhanced_info['creation_status']))
+                        enhanced_info['category_tags'] = data.get('tags', data.get('category_tags', enhanced_info['category_tags']))
+                        enhanced_info['genre'] = data.get('genre', data.get('category', enhanced_info['genre']))
+                        enhanced_info['book_type'] = data.get('type', enhanced_info['book_type'])
+                        
+                        print(f"Tutuxka API成功获取书籍详情")
+                    elif isinstance(tutuxka_detail, str):
+                        # 如果返回的是字符串内容，可能需要解析
+                        print(f"Tutuxka API返回字符串内容，长度: {len(tutuxka_detail)}")
+                    
+            except Exception as e:
+                print(f"Tutuxka API获取书籍详情失败: {str(e)}")
+        
+        # 2. 通过现有的get_book_info获取基本信息
         try:
             headers = get_headers()
             basic_name, basic_author, basic_description = get_book_info(book_id, headers)
             
-            # 使用基本信息作为基础
-            if basic_name:
+            # 使用基本信息补充空缺的信息
+            if basic_name and not enhanced_info['book_name']:
                 enhanced_info['book_name'] = basic_name
-            if basic_author:
+            if basic_author and not enhanced_info['author']:
                 enhanced_info['author'] = basic_author
-            if basic_description:
+            if basic_description and not enhanced_info['description']:
                 enhanced_info['description'] = basic_description
                 
         except Exception as e:
@@ -416,6 +488,155 @@ def get_enhanced_book_info(book_id: str) -> Optional[Dict]:
             'category_tags': []
         }
 
+def tutuxka_api_request(api_type, **kwargs):
+    """Tutuxka API统一请求函数"""
+    if not CONFIG["tutuxka_api"]["enabled"]:
+        return None
+    
+    base_url = CONFIG["tutuxka_api"]["base_url"]
+    params = {"api": api_type}
+    
+    # 处理可能的参数冲突
+    for key, value in kwargs.items():
+        if key not in params:  # 避免重复参数
+            params[key] = value
+    
+    try:
+        headers = get_headers()
+        response = make_request(
+            base_url,
+            headers=headers,
+            params=params,
+            timeout=CONFIG["request_timeout"],
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            # 如果返回的是JSON，解析它
+            try:
+                return response.json()
+            except:
+                # 如果不是JSON，返回文本内容
+                return {"content": response.text}
+        else:
+            print(f"Tutuxka API请求失败，状态码: {response.status_code}")
+            return None
+            
+    except Exception as e:
+        print(f"Tutuxka API请求异常: {str(e)}")
+        return None
+
+def tutuxka_get_chapter_content(chapter_id):
+    """使用Tutuxka API获取章节内容"""
+    # 单章节内容请求
+    result = tutuxka_api_request("content", item_ids=chapter_id)
+    
+    if result and isinstance(result, dict):
+        # 检查API响应状态
+        if result.get("success"):
+            data = result.get("data", {})
+            
+            # 提取章节内容
+            content = data.get("content", "")
+            title = data.get("title", "")
+            
+            # 如果内容是数组格式，需要拼接
+            if isinstance(content, list):
+                content = "\n".join(content)
+            
+            # 如果有内容，返回结果
+            if content:
+                # 如果没有title，使用默认标题
+                if not title:
+                    title = f"章节 {chapter_id}"
+                return title, content
+            else:
+                print(f"Tutuxka API返回空内容，章节ID: {chapter_id}")
+                return None, None
+        else:
+            print(f"Tutuxka API请求失败，响应: {result}")
+            return None, None
+    
+    return None, None
+
+def tutuxka_get_batch_chapters(chapter_ids):
+    """使用Tutuxka API批量获取章节内容"""
+    if not CONFIG["tutuxka_api"]["supports_batch"]:
+        return {}
+    
+    # 批量请求 - 直接构造参数字典
+    ids_str = ",".join(map(str, chapter_ids))
+    
+    # 直接调用API，避免参数冲突
+    if not CONFIG["tutuxka_api"]["enabled"]:
+        return {}
+    
+    base_url = CONFIG["tutuxka_api"]["base_url"]
+    params = {
+        "api": "content",
+        "item_ids": ids_str,
+        "api_type": "batch"
+    }
+    
+    try:
+        headers = get_headers()
+        response = make_request(
+            base_url,
+            headers=headers,
+            params=params,
+            timeout=CONFIG["request_timeout"],
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            try:
+                result = response.json()
+                if result and isinstance(result, dict):
+                    return result
+            except:
+                pass
+                
+    except Exception as e:
+        print(f"Tutuxka API批量请求异常: {str(e)}")
+    
+    return {}
+
+def tutuxka_get_manga_content(chapter_id, show_html=False):
+    """使用Tutuxka API获取漫画内容"""
+    if not CONFIG["tutuxka_api"]["supports_manga"]:
+        return None
+    
+    params = {"item_ids": chapter_id}
+    if show_html:
+        params["show_html"] = "1"
+    
+    result = tutuxka_api_request("manga", **params)
+    return result
+
+def tutuxka_get_audiobook_content(chapter_id):
+    """使用Tutuxka API获取听书内容"""
+    if not CONFIG["tutuxka_api"]["supports_audiobook"]:
+        return None
+    
+    result = tutuxka_api_request("content", ts="听书", item_ids=chapter_id)
+    return result
+
+def tutuxka_get_book_detail(book_id):
+    """使用Tutuxka API获取书籍详情"""
+    if not CONFIG["tutuxka_api"]["supports_book_detail"]:
+        return None
+    
+    result = tutuxka_api_request("content", book_id=book_id)
+    return result
+
+def tutuxka_get_book_comments(book_id, count=10, offset=0):
+    """使用Tutuxka API获取书籍评论"""
+    if not CONFIG["tutuxka_api"]["supports_comment"]:
+        return None
+    
+    result = tutuxka_api_request("content", book_id=book_id, comment="评论", count=count, offset=offset)
+    return result
+
 def fetch_api_endpoints_from_server():
     """从服务器获取API列表"""
     try:
@@ -493,6 +714,23 @@ def extract_chapters(soup):
 
 def batch_download_chapters(item_ids, headers):
     """批量下载章节内容"""
+    
+    # 优先尝试Tutuxka API批量下载
+    if CONFIG["tutuxka_api"]["enabled"] and CONFIG["tutuxka_api"]["supports_batch"]:
+        try:
+            print(f"正在使用Tutuxka API批量下载 {len(item_ids)} 个章节...")
+            batch_result = tutuxka_get_batch_chapters(item_ids)
+            
+            if batch_result:
+                print(f"Tutuxka API批量下载成功")
+                return batch_result
+            else:
+                print(f"Tutuxka API批量下载失败，尝试原有批量下载...")
+                
+        except Exception as e:
+            print(f"Tutuxka API批量下载异常: {str(e)}")
+    
+    # 原有的批量下载逻辑
     if not CONFIG["batch_config"]["enabled"]:
         print("批量下载功能未启用")
         return None
@@ -559,6 +797,22 @@ def down_text(chapter_id, headers, book_id=None):
     content = ""
     chapter_title = ""
 
+    # 优先尝试Tutuxka API
+    if CONFIG["tutuxka_api"]["enabled"]:
+        try:
+            print(f"正在使用Tutuxka API获取章节: {chapter_id}")
+            title, content = tutuxka_get_chapter_content(chapter_id)
+            
+            if title and content:
+                print(f"Tutuxka API成功获取章节内容")
+                processed_content = process_chapter_content(content)
+                return title, processed_content
+            else:
+                print(f"Tutuxka API返回空内容，尝试其他API...")
+                
+        except Exception as e:
+            print(f"Tutuxka API请求失败: {str(e)}")
+
     # 初始化API端点状态
     if not hasattr(down_text, "api_status"):
         down_text.api_status = {endpoint["url"]: {
@@ -567,7 +821,7 @@ def down_text(chapter_id, headers, book_id=None):
             "last_try_time": 0
         } for endpoint in CONFIG["api_endpoints"]}
 
-    # 顺序尝试API
+    # 顺序尝试其他API
     for endpoint in CONFIG["api_endpoints"]:
         current_endpoint = endpoint["url"].format(chapter_id=chapter_id)
         api_name = endpoint["name"]
