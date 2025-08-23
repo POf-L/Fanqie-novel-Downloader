@@ -248,33 +248,19 @@ jobs:
             git push origin "v$V"
           fi
 
-      - name: Check if release already exists
-        id: check_release
-        env:
-          V: ${{ needs.version.outputs.version }}
-          REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$REPO/releases/tags/v$V")
-          if [ "$code" = "200" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Release for v$V already exists. Skipping creation."
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Create release
-        if: steps.check_release.outputs.exists != 'true'
+      - name: Create or update release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
           name: TomatoNovelDownloader v${{ needs.version.outputs.version }}
+          append_body: true
+          overwrite_files: true
+          make_latest: true
           body: |
             ## 自动发布
 
