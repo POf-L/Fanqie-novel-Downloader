@@ -52,13 +52,16 @@ class ModernNovelDownloaderGUI:
         self.search_results_data = []  # 存储搜索结果数据
         self.cover_images = {}  # 存储封面图片，防止被垃圾回收
         
+        # 配置文件路径 - 先设置路径
+        self.config_file = "config.json"
+        
         # 初始化版本信息和自动更新
         self.current_version = __version__
-        self.updater = AutoUpdater(__github_repo__, self.current_version)
+        # 加载配置以获取首选渠道
+        temp_config = self.load_config()
+        preferred_channel = temp_config.get('update_channel', 'stable')
+        self.updater = AutoUpdater(__github_repo__, self.current_version, preferred_channel)
         self.updater.register_callback(self.on_update_event)
-        
-        # 配置文件路径
-        self.config_file = "config.json"
         
         # 加载配置
         self.config = self.load_config()
@@ -89,6 +92,7 @@ class ModernNovelDownloaderGUI:
         """设置字体"""
         self.fonts = {
             'title': font.Font(family="微软雅黑", size=20, weight="bold"),
+            'heading': font.Font(family="微软雅黑", size=16, weight="bold"),
             'subtitle': font.Font(family="微软雅黑", size=14, weight="bold"),
             'body': font.Font(family="微软雅黑", size=10),
             'button': font.Font(family="微软雅黑", size=10, weight="bold"),
@@ -544,30 +548,71 @@ class ModernNovelDownloaderGUI:
                 bg=self.colors['surface'], 
                 fg=version_color).pack(side=tk.LEFT)
         
+        # 版本分支选择框架
+        channel_frame = tk.Frame(version_card, bg=self.colors['surface'])
+        channel_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        tk.Label(channel_frame, text="更新通道:", 
+                font=self.fonts['body'], 
+                bg=self.colors['surface'], 
+                fg=self.colors['text_primary']).pack(side=tk.LEFT)
+        
+        # 更新通道选择
+        self.update_channel_var = tk.StringVar(value=self.config.get('update_channel', 'stable'))
+        channel_options = [
+            ('稳定版 (推荐)', 'stable'),
+            ('测试版 (Beta)', 'beta'), 
+            ('开发版 (Dev)', 'dev')
+        ]
+        
+        for text, value in channel_options:
+            rb = tk.Radiobutton(channel_frame, text=text, value=value,
+                               variable=self.update_channel_var,
+                               command=self.on_channel_change,
+                               font=self.fonts['small'],
+                               bg=self.colors['surface'],
+                               fg=self.colors['text_secondary'],
+                               selectcolor=self.colors['surface'])
+            rb.pack(side=tk.LEFT, padx=(10, 0))
+        
         # 自动检查更新开关
+        auto_check_frame = tk.Frame(version_card, bg=self.colors['surface'])
+        auto_check_frame.pack(fill=tk.X, pady=(0, 10))
+        
         self.auto_update_var = tk.BooleanVar(value=self.config.get('auto_check_update', True))
-        auto_check_btn = tk.Checkbutton(version_frame,
+        auto_check_btn = tk.Checkbutton(auto_check_frame,
                                         text="启动时自动检查更新",
                                         variable=self.auto_update_var,
                                         command=self.save_config,
                                         font=self.fonts['body'],
                                         bg=self.colors['surface'])
-        auto_check_btn.pack(side=tk.LEFT, padx=(20, 10))
+        auto_check_btn.pack(side=tk.LEFT)
+        
+        # 按钮框架
+        button_frame = tk.Frame(version_card, bg=self.colors['surface'])
+        button_frame.pack(fill=tk.X)
         
         # 前往发布页按钮
         releases_url = f"https://github.com/{__github_repo__}/releases/latest"
-        open_release_btn = self.create_button(version_frame,
+        open_release_btn = self.create_button(button_frame,
                                              "🌐 发布页",
                                              lambda: webbrowser.open(releases_url),
                                              self.colors['secondary'])
         open_release_btn.pack(side=tk.RIGHT)
         
-        # 检查更新按钮
-        check_update_btn = self.create_button(version_frame,
-                                             "🔄 检查更新",
+        # 版本选择更新按钮（原来的检查更新）
+        check_update_btn = self.create_button(button_frame,
+                                             "🎯 选择版本更新",
                                              self.check_update_now,
                                              self.colors['primary'])
         check_update_btn.pack(side=tk.RIGHT, padx=(0, 10))
+        
+        # 快速检查更新按钮（新增）
+        quick_update_btn = self.create_button(button_frame,
+                                             "🚀 快速更新",
+                                             self.quick_update_check,
+                                             self.colors['success'])
+        quick_update_btn.pack(side=tk.RIGHT, padx=(0, 10))
         
         # 关于信息卡片
         about_card = self.create_card(main_container, "ℹ️ 关于")
@@ -619,7 +664,8 @@ class ModernNovelDownloaderGUI:
                     'theme_color': self.colors['primary'],
                     'file_format': 'txt',
                     'download_mode': 'full',
-                    'auto_check_update': True
+                    'auto_check_update': True,
+                    'update_channel': 'stable'
                 }
         except Exception as e:
             print(f"加载配置失败: {e}")
@@ -628,7 +674,8 @@ class ModernNovelDownloaderGUI:
                 'theme_color': self.colors['primary'],
                 'file_format': 'txt',
                 'download_mode': 'full',
-                'auto_check_update': True
+                'auto_check_update': True,
+                'update_channel': 'stable'
             }
     
     def save_config(self):
@@ -639,7 +686,8 @@ class ModernNovelDownloaderGUI:
                 'theme_color': self.colors['primary'],
                 'file_format': self.format_var.get() if hasattr(self, 'format_var') else 'txt',
                 'download_mode': self.mode_var.get() if hasattr(self, 'mode_var') else 'full',
-                'auto_check_update': self.auto_update_var.get() if hasattr(self, 'auto_update_var') else True
+                'auto_check_update': self.auto_update_var.get() if hasattr(self, 'auto_update_var') else True,
+                'update_channel': self.update_channel_var.get() if hasattr(self, 'update_channel_var') else 'stable'
             }
             
             with open(self.config_file, 'w', encoding='utf-8') as f:
@@ -2523,7 +2571,246 @@ class ModernNovelDownloaderGUI:
                 color = self.colors['text_secondary']
             self.verification_status_label.config(text=f"状态: {status_text}", fg=color)
     
+    def on_channel_change(self):
+        """更新通道变更时的处理"""
+        new_channel = self.update_channel_var.get()
+        # 更新AutoUpdater的首选渠道
+        self.updater.set_preferred_channel(new_channel)
+        # 保存配置
+        self.save_config()
+        print(f"更新通道已切换为: {new_channel}")
+    
+    def show_version_selection_dialog(self):
+        """显示版本选择对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("选择版本更新")
+        dialog.geometry("700x600")
+        dialog.resizable(True, True)
+        dialog.configure(bg=self.colors['background'])
+        dialog.grab_set()  # 模态对话框
+        
+        # 居中显示
+        dialog.transient(self.root)
+        dialog.geometry("+%d+%d" % (self.root.winfo_rootx() + 50, self.root.winfo_rooty() + 50))
+        
+        # 标题和说明
+        header_frame = tk.Frame(dialog, bg=self.colors['background'])
+        header_frame.pack(fill=tk.X, padx=20, pady=(20, 10))
+        
+        title_label = tk.Label(header_frame, text="🎯 选择版本更新", 
+                              font=self.fonts['heading'], 
+                              bg=self.colors['background'], 
+                              fg=self.colors['text_primary'])
+        title_label.pack()
+        
+        # 版本说明
+        explanation_text = """📝 版本说明：
+• 🟢 稳定版：经过充分测试，推荐普通用户使用
+• 🟡 测试版：新功能测试，可能存在小问题
+• 🔴 开发版：最新开发中的功能，仅适合开发者"""
+        
+        explanation_label = tk.Label(header_frame, text=explanation_text, 
+                                   font=self.fonts['small'], 
+                                   bg=self.colors['background'], 
+                                   fg=self.colors['text_secondary'],
+                                   justify=tk.LEFT)
+        explanation_label.pack(pady=(10, 0))
+        
+        # 加载提示
+        loading_label = tk.Label(dialog, text="🔄 正在获取版本信息...", 
+                                font=self.fonts['body'], 
+                                bg=self.colors['background'], 
+                                fg=self.colors['text_secondary'])
+        loading_label.pack(pady=10)
+        
+        # 版本列表框架
+        version_frame = tk.Frame(dialog, bg=self.colors['background'])
+        version_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        # 在新线程中获取版本信息
+        def load_versions():
+            try:
+                channels_info = self.updater.get_available_channels()
+                dialog.after(0, lambda: self._populate_version_dialog(dialog, loading_label, version_frame, channels_info))
+            except Exception as e:
+                error_msg = f"获取版本信息失败: {str(e)}"
+                dialog.after(0, lambda: loading_label.config(text=error_msg, fg=self.colors['error']))
+        
+        threading.Thread(target=load_versions, daemon=True).start()
+    
+    def _populate_version_dialog(self, dialog, loading_label, version_frame, channels_info):
+        """填充版本选择对话框内容"""
+        # 隐藏加载提示
+        loading_label.pack_forget()
+        
+        # 创建滚动区域
+        canvas = tk.Canvas(version_frame, bg=self.colors['background'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(version_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['background'])
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # 鼠标滚轮绑定
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        # 显示各渠道的版本信息
+        for channel, info in channels_info.items():
+            self._create_channel_card(scrollable_frame, channel, info, dialog)
+        
+        # 关闭按钮
+        close_btn = self.create_button(dialog, "关闭", lambda: dialog.destroy(), self.colors['secondary'])
+        close_btn.pack(pady=10)
+    
+    def _create_channel_card(self, parent, channel, info, dialog):
+        """创建渠道信息卡片"""
+        # 渠道名称和描述映射
+        channel_info = {
+            'stable': {
+                'name': '🟢 稳定版 (Stable)',
+                'description': '推荐：经过充分测试，适合日常使用',
+                'color': self.colors['success']
+            },
+            'beta': {
+                'name': '🟡 测试版 (Beta)',
+                'description': '进阶：新功能预览，可能存在小问题',
+                'color': self.colors['warning']
+            },
+            'dev': {
+                'name': '🔴 开发版 (Dev)',
+                'description': '专业：最新功能，仅适合开发者使用',
+                'color': self.colors['error']
+            }
+        }
+        
+        channel_data = channel_info.get(channel, {
+            'name': channel,
+            'description': '未知渠道',
+            'color': self.colors['text_secondary']
+        })
+        
+        # 卡片框架
+        card_frame = tk.Frame(parent, bg=self.colors['surface'], relief=tk.RAISED, bd=2)
+        card_frame.pack(fill=tk.X, pady=8, padx=10)
+        
+        # 标题行
+        title_frame = tk.Frame(card_frame, bg=self.colors['surface'])
+        title_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
+        
+        # 渠道名称
+        channel_label = tk.Label(title_frame, text=channel_data['name'], 
+                                font=self.fonts['subtitle'], 
+                                bg=self.colors['surface'], 
+                                fg=channel_data['color'])
+        channel_label.pack(side=tk.LEFT)
+        
+        # 更新状态
+        if info.get('has_update'):
+            status_text = "✨ 有新版本"
+            status_color = self.colors['success']
+        elif info.get('latest_version'):
+            status_text = "✅ 已是最新"
+            status_color = self.colors['text_secondary']
+        else:
+            status_text = "❌ 无可用版本"
+            status_color = self.colors['error']
+        
+        status_label = tk.Label(title_frame, text=status_text, 
+                               font=self.fonts['small'], 
+                               bg=self.colors['surface'], 
+                               fg=status_color)
+        status_label.pack(side=tk.RIGHT)
+        
+        # 描述行
+        desc_label = tk.Label(card_frame, text=channel_data['description'], 
+                             font=self.fonts['small'], 
+                             bg=self.colors['surface'], 
+                             fg=self.colors['text_secondary'])
+        desc_label.pack(padx=15, pady=(0, 5), anchor='w')
+        
+        # 版本信息
+        if info.get('latest_version'):
+            info_frame = tk.Frame(card_frame, bg=self.colors['surface'])
+            info_frame.pack(fill=tk.X, padx=15, pady=5)
+            
+            version_text = f"📎 版本号: {info['latest_version']}"
+            if info.get('published_at'):
+                import datetime
+                try:
+                    pub_date = datetime.datetime.fromisoformat(info['published_at'].replace('Z', '+00:00'))
+                    version_text += f"\n📅 发布时间: {pub_date.strftime('%Y-%m-%d %H:%M')}"
+                except:
+                    pass
+            
+            if info.get('name'):
+                version_text += f"\n🏷️ 版本名称: {info['name']}"
+            
+            version_label = tk.Label(info_frame, text=version_text, 
+                                   font=self.fonts['small'], 
+                                   bg=self.colors['surface'], 
+                                   fg=self.colors['text_secondary'],
+                                   justify=tk.LEFT)
+            version_label.pack(side=tk.LEFT, anchor='w')
+        
+        # 按钮行
+        if info.get('has_update'):
+            button_frame = tk.Frame(card_frame, bg=self.colors['surface'])
+            button_frame.pack(fill=tk.X, padx=15, pady=(10, 15))
+            
+            # 更新按钮
+            update_text = f"🚀 更新到 {info['latest_version']}"
+            update_btn = self.create_button(button_frame, 
+                                           update_text,
+                                           lambda c=channel: self._start_channel_update(c, dialog),
+                                           channel_data['color'])
+            update_btn.pack(side=tk.RIGHT)
+    
+    def _start_channel_update(self, channel, dialog):
+        """开始指定渠道的更新"""
+        # 先询问用户是否确认更新
+        channel_names = {
+            'stable': '稳定版',
+            'beta': '测试版', 
+            'dev': '开发版'
+        }
+        channel_name = channel_names.get(channel, channel)
+        
+        confirm_msg = f"确认要更新到{channel_name}吗？\n\n更新完成后程序将自动重启。"
+        if not messagebox.askyesno("确认更新", confirm_msg):
+            return
+            
+        dialog.destroy()
+        
+        # 检查指定渠道的更新
+        def worker():
+            try:
+                update_info = self.updater.check_for_updates_by_channel(channel, force=True)
+                if update_info:
+                    self.root.after(0, lambda: self._start_update(update_info))
+                else:
+                    self.root.after(0, lambda: messagebox.showinfo("更新检查", f"{channel_name}渠道当前已是最新版本"))
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("更新失败", f"检查{channel_name}渠道更新失败: {str(e)}"))
+        
+        threading.Thread(target=worker, daemon=True).start()
+    
     def check_existing_verification(self):
+        """检查已有的验证状态"""
+        verification_token = os.environ.get("TOMATO_VERIFICATION_TOKEN")
+        if verification_token:
+            self.update_verification_status("已保存验证令牌 ✓", self.colors['success'])
+        else:
+            self.update_verification_status("未验证 (如遇到403/401错误时需要验证)", self.colors['text_secondary'])
         """检查已有的验证状态"""
         verification_token = os.environ.get("TOMATO_VERIFICATION_TOKEN")
         if verification_token:
@@ -2542,8 +2829,8 @@ class ModernNovelDownloaderGUI:
         except Exception as e:
             print(f"静默检查更新失败: {e}")
 
-    def check_update_now(self):
-        """手动检查更新（带提示）"""
+    def quick_update_check(self):
+        """快速检查更新（使用默认渠道）"""
         def worker():
             try:
                 update_info = self.updater.check_for_updates(force=True)
@@ -2554,6 +2841,11 @@ class ModernNovelDownloaderGUI:
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("检查更新失败", str(e)))
         threading.Thread(target=worker, daemon=True).start()
+
+    def check_update_now(self):
+        """手动检查更新（显示版本选择）"""
+        # 直接显示版本选择对话框
+        self.show_version_selection_dialog()
 
     def _prompt_update(self, update_info):
         """弹窗提示用户更新"""
@@ -2577,15 +2869,90 @@ class ModernNovelDownloaderGUI:
             self._update_download_progress(percent, current, total)
         
         def worker():
-            file_path = self.updater.download_update(update_info, progress_callback=progress_callback)
-            if not file_path:
-                self.root.after(0, lambda: self._set_update_status("下载失败", error=True))
-                return
-            self.root.after(0, lambda: self._set_update_status("下载完成，正在安装..."))
-            ok = self.updater.install_update(file_path, restart=True)
-            if not ok:
-                self.root.after(0, lambda: self._set_update_status("安装失败", error=True))
+            try:
+                self._set_update_status("正在下载更新...") 
+                file_path = self.updater.download_update(update_info, progress_callback=progress_callback)
+                if not file_path:
+                    self.root.after(0, lambda: self._set_update_status("下载失败", error=True))
+                    return
+                    
+                self.root.after(0, lambda: self._set_update_status("下载完成，正在安装..."))
+                
+                # 显示安装确认对话框
+                self.root.after(0, lambda: self._show_install_confirmation(file_path, update_info))
+                
+            except Exception as e:
+                self.root.after(0, lambda: self._set_update_status(f"更新失败: {str(e)}", error=True))
         threading.Thread(target=worker, daemon=True).start()
+
+    def _show_install_confirmation(self, file_path, update_info):
+        """显示安装确认对话框"""
+        if hasattr(self, 'update_window') and self.update_window:
+            self.update_window.destroy()
+            
+        # 获取文件信息
+        file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        file_size_mb = file_size / (1024 * 1024)
+        
+        confirm_msg = f"""🎉 更新已下载完成！
+
+📎 版本信息：
+• 版本号：{update_info.get('version', '未知')}
+• 文件名：{file_name}
+• 文件大小：{file_size_mb:.1f} MB
+
+📁 下载位置：
+{file_path}
+
+点击“安装”将：
+1. 关闭当前程序
+2. 安装新版本
+3. 自动重新启动程序
+
+点击“取消”将保留下载文件但不安装。"""
+        
+        result = messagebox.askyesno("安装更新", confirm_msg, icon='question')
+        
+        if result:
+            # 用户确认安装
+            try:
+                # 显示安装进度
+                install_dialog = tk.Toplevel(self.root)
+                install_dialog.title("安装中")
+                install_dialog.geometry("350x150")
+                install_dialog.resizable(False, False)
+                install_dialog.configure(bg=self.colors['background'])
+                install_dialog.grab_set()
+                
+                # 居中显示
+                x = (install_dialog.winfo_screenwidth() // 2) - 175
+                y = (install_dialog.winfo_screenheight() // 2) - 75
+                install_dialog.geometry(f"+{x}+{y}")
+                
+                install_label = tk.Label(install_dialog, 
+                                        text="🚀 正在安装更新...\n\n程序将在片刻后重启\n请稍候不要关闭窗口", 
+                                        font=self.fonts['body'],
+                                        bg=self.colors['background'],
+                                        fg=self.colors['text_primary'],
+                                        justify=tk.CENTER)
+                install_label.pack(expand=True)
+                
+                install_dialog.update()
+                
+                # 安装更新（自动重启）
+                ok = self.updater.install_update(file_path, restart=True)
+                
+                if not ok:
+                    install_dialog.destroy()
+                    messagebox.showerror("安装失败", "安装更新失败，请手动安装")
+                    
+            except Exception as e:
+                messagebox.showerror("安装错误", f"安装过程中出现错误: {str(e)}")
+        else:
+            # 用户取消安装
+            messagebox.showinfo("取消安装", 
+                               f"已取消安装。\n\n下载的文件保存在：\n{file_path}\n\n您可以稍后手动安装。")
 
     def _create_update_window(self):
         if hasattr(self, 'update_window') and self.update_window and tk.Toplevel.winfo_exists(self.update_window):
