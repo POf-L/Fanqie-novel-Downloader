@@ -27,7 +27,7 @@ jobs:
         id: read
         run: |
           python - << 'PY'
-          import re, sys
+          import os, re, sys
           from pathlib import Path
           p = Path('version.py')
           s = p.read_text(encoding='utf-8')
