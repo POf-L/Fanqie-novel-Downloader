@@ -279,7 +279,7 @@ jobs:
             - Debug版：包含详细调试信息
 
           files: |
-            artifacts/**/*
+            artifacts/**/dist/*
           draft: false
           prerelease: false
         env:

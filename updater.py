@@ -113,6 +113,29 @@ class UpdateChecker:
 
                 releases_list.append(release_info)
 
+            # 按语义化版本优先、发布时间次之进行降序排序，避免 published_at 旧值导致误判
+            try:
+                def _parse_dt(s: str):
+                    if not s:
+                        return datetime.min
+                    try:
+                        return datetime.fromisoformat(s.replace('Z', '+00:00'))
+                    except Exception:
+                        return datetime.min
+
+                def _sort_key(r):
+                    v_str = r.get('version') or '0.0.0'
+                    try:
+                        v = version.parse(v_str)
+                    except Exception:
+                        v = version.parse('0')
+                    dt = _parse_dt(r.get('published_at') or '')
+                    return (v, dt)
+
+                releases_list.sort(key=_sort_key, reverse=True)
+            except Exception:
+                pass
+
             # 更新缓存
             self.cached_releases_list = releases_list
             self.last_check_time = time.time()
