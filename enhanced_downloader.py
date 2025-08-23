@@ -499,7 +499,7 @@ class EnhancedNovelDownloader:
         self.is_cancelled = True
         self.log("用户取消下载")
 
-    def run_download(self, book_id, save_path, file_format='txt', start_chapter=None, end_chapter=None):
+    def run_download(self, book_id, save_path, file_format='txt', start_chapter=None, end_chapter=None, gui_callback=None):
         """
         运行下载
         
@@ -509,13 +509,14 @@ class EnhancedNovelDownloader:
             file_format: 文件格式 ('txt' 或 'epub')
             start_chapter: 起始章节（可选，从0开始）
             end_chapter: 结束章节（可选，包含）
+            gui_callback: 可选的GUI验证回调（占位以兼容调用方）
         """
         
         def signal_handler(sig, frame):
             self.log("检测到程序中断，正在保存已下载内容...")
             if hasattr(self, 'chapter_results') and self.chapter_results:
                 try:
-                    if 'output_file_path' in locals():
+                    if 'output_file_path' in locals() and output_file_path:
                         self.write_downloaded_chapters_in_order(output_file_path, name, author_name, description, file_format)
                     if 'save_path' in locals() and hasattr(self, 'downloaded'):
                         self.save_status(save_path, self.downloaded)
@@ -527,8 +528,20 @@ class EnhancedNovelDownloader:
         signal.signal(signal.SIGINT, signal_handler)
         
         self.is_cancelled = False
+        # 兼容GUI传入的验证回调（当前不在此类中直接使用，仅存储以备将来扩展）
+        try:
+            self.gui_verification_callback = gui_callback
+        except Exception:
+            # 保守处理，避免因属性设置导致异常
+            pass
         self.downloaded = set()
         self.chapter_results = {}
+        # 预定义变量，避免异常分支未定义引用
+        name = None
+        author_name = None
+        description = None
+        enhanced_info = None
+        output_file_path = None
         
         try:
             self.update_progress(0, "开始下载...")
@@ -573,7 +586,18 @@ class EnhancedNovelDownloader:
             self.update_progress(20, f"开始下载：《{name}》, 总章节数: {len(chapters)}, 待下载: {len(todo_chapters)}")
             os.makedirs(save_path, exist_ok=True)
             
-            output_file_path = os.path.join(save_path, f"{name}.{file_format}")
+            # 本地合法化文件名，避免Windows非法字符
+            def _sanitize_filename(s: str) -> str:
+                try:
+                    import re
+                    s = re.sub(r'[\\/:*?"<>|]', '_', s)
+                    s = s.strip().rstrip('.')
+                    return s or f"未知小说_{book_id}"
+                except Exception:
+                    return s
+
+            safe_name = _sanitize_filename(name)
+            output_file_path = os.path.join(save_path, f"{safe_name}.{file_format}")
             if file_format == 'txt' and not os.path.exists(output_file_path):
                 with open(output_file_path, 'w', encoding='utf-8') as f:
                     f.write(f"小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n")
@@ -630,24 +654,6 @@ class EnhancedNovelDownloader:
                     self.save_status(save_path, self.downloaded)
                     todo_chapters = failed_chapters.copy()
                     failed_chapters = []
-                    
-                    if todo_chapters and not self.is_cancelled:
-                        time.sleep(1)
-
-            if not self.is_cancelled:
-                self.update_progress(100, f"下载完成！成功下载 {success_count} 个章节")
-            
-        except Exception as e:
-            error_msg = str(e)
-            self.log(f"下载失败: {error_msg}")
-            if hasattr(self, 'downloaded'):
-                self.write_downloaded_chapters_in_order(output_file_path, name, author_name, description, file_format, enhanced_info)
-                self.save_status(save_path, self.downloaded)
-            raise
-
-    def write_downloaded_chapters_in_order(self, output_file_path, name, author_name, description, file_format, enhanced_info=None):
-        """按章节顺序写入"""
-        if not self.chapter_results:
             return
             
         if file_format == 'txt':

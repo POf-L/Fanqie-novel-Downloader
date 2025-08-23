@@ -2,6 +2,9 @@ name: Release
 
 on:
   push:
+    paths:
+      - 'version.py'
+      - '.github/workflows/release.yml'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -10,6 +13,10 @@ on:
         description: 'Release tag (e.g. v1.2.3). If provided, a release will be created/updated.'
         required: false
         default: ''
+      create_tag:
+        description: 'Create tag from version.py and publish'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write
@@ -37,28 +44,26 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Compute version from tag and sync version.py
+      - name: Read version from version.py or tag
         id: version
         env:
           TAG_INPUT: ${{ github.event.inputs.tag }}
         run: |
           python - << 'PY'
-          import os, re
+          import os, re, sys
           tag_input = os.environ.get('TAG_INPUT', '')
           ref = os.environ.get('GITHUB_REF', '')
           ref_name = os.environ.get('GITHUB_REF_NAME', '')
           tag = ref_name if ref.startswith('refs/tags/') else (tag_input or '')
           if tag:
               ver = tag.lstrip('vV')
-              with open('version.py','r',encoding='utf-8') as f:
-                  s = f.read()
-              s2 = re.sub(r'__version__\s*=\s*".*?"', f'__version__ = "{ver}"', s)
-              if s2 != s:
-                  with open('version.py','w',encoding='utf-8') as f:
-                      f.write(s2)
           else:
               import version as _v
               ver = _v.__version__
+          # 语义化版本校验
+          if not re.match(r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$', ver):
+              print(f'Invalid semantic version: {ver}', file=sys.stderr)
+              sys.exit(1)
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
               out.write(f'version={ver}\n')
           PY
@@ -109,6 +114,23 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TomatoNovelDownloader-${{ matrix.os }}
+
+      - name: Create tag from version.py (optional)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.create_tag == 'true' }}
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git fetch --tags --depth=1
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            echo "Tag v$V already exists"
+          else
+            git tag -a "v$V" -m "Release v$V"
+            git push origin "v$V"
+          fi
+
           path: |
             dist/*
 
@@ -135,6 +157,21 @@ jobs:
               out.write(f'version={ver}\n')
           PY
 
+      - name: Ensure tag exists
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --depth=1
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            echo "Tag v$V already exists"
+          else
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git tag -a "v$V" -m "Release v$V"
+            git push origin "v$V"
+          fi
+
       - name: Build release metadata
         id: meta
         run: |
@@ -155,7 +192,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || (github.event.inputs.tag != '')
         with:
-          tag_name: ${{ github.ref_name || github.event.inputs.tag }}
+          tag_name: v${{ steps.version.outputs.version }}
           name: Tomato Novel Downloader v${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
@@ -166,4 +203,4 @@ jobs:
           files: |
             release_assets/**
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

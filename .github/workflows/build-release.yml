@@ -3,28 +3,52 @@ name: Build Release and Debug
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'version.py'
+      - '.github/workflows/build-release.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  # 生成版本号的job
+  # 读取并验证版本号的 job（以 version.py 为唯一来源）
   version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.VERSION }}
-      build_time: ${{ steps.version.outputs.BUILD_TIME }}
+      version: ${{ steps.read.outputs.version }}
+      build_time: ${{ steps.meta.outputs.build_time }}
     steps:
-      - name: Generate version
-        id: version
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read version from version.py and validate
+        id: read
         run: |
-          VERSION=$(date -u +'%Y.%m.%d.%H%M')+$(echo ${{ github.sha }} | cut -c1-7)
-          BUILD_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_OUTPUT
-          echo "Generated version: $VERSION"
-          echo "Build time: $BUILD_TIME"
+          python - << 'PY'
+          import re, sys
+          from pathlib import Path
+          p = Path('version.py')
+          s = p.read_text(encoding='utf-8')
+          m = re.search(r'__version__\s*=\s*"([^"]+)"', s)
+          if not m:
+              print('ERROR: __version__ not found in version.py', file=sys.stderr)
+              sys.exit(1)
+          ver = m.group(1).strip()
+          # 语义化版本校验: 允许预发布后缀，如 -beta.1
+          semver = re.compile(r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$')
+          if not semver.match(ver):
+              print(f'ERROR: invalid semantic version: {ver}', file=sys.stderr)
+              sys.exit(1)
+          print(f'version={ver}', file=sys.stdout)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f'version={ver}\n')
+          PY
+      - name: Build metadata
+        id: meta
+        run: |
+          echo "build_time=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
 
   build:
     needs: version
@@ -83,27 +107,11 @@ jobs:
         run: |
           brew install tcl-tk || true
 
-      - name: Update version.py
+      # 不再改写 version.py，完全以仓库中的 version.py 为准
+      - name: Show version
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          BUILD_TIME="${{ needs.version.outputs.build_time }}"
-          echo "Using version: $VERSION"
-          echo "Using build time: $BUILD_TIME"
-          
-          # 创建version.py文件
-          echo "# -*- coding: utf-8 -*-" > version.py
-          echo '"""' >> version.py
-          echo "版本信息文件 - GitHub Actions自动生成" >> version.py
-          echo '"""' >> version.py
-          echo "" >> version.py
-          echo "__version__ = \"$VERSION\"" >> version.py
-          echo "__author__ = \"Tomato Novel Downloader\"" >> version.py
-          echo "__description__ = \"A modern novel downloader with GitHub auto-update support\"" >> version.py
-          echo "__github_repo__ = \"POf-L/Fanqie-novel-Downloader\"" >> version.py
-          echo "__build_time__ = \"$BUILD_TIME\"" >> version.py
-          
-          echo "更新后的version.py:"
-          cat version.py
+          echo "Using version: ${{ needs.version.outputs.version }}"
+          echo "Build time: ${{ needs.version.outputs.build_time }}"
         shell: bash
 
       - name: Install dependencies
@@ -155,6 +163,29 @@ jobs:
               --collect-data=fake_useragent \
               gui.py
           fi
+
+      - name: Rename artifacts to include version
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p renamed
+          src="dist/${{ matrix.executable }}"
+          if [ ! -f "$src" ]; then echo "Not found: $src" >&2; exit 1; fi
+          base="${{ matrix.executable }}"
+          # 插入版本号到文件名（保持原有名字模式）
+          name="${base%.*}_v${APP_VERSION}.${base##*.}"
+          cp "$src" "renamed/$name"
+          echo "Renamed to: renamed/$name"
+
+      - name: Upload artifact (versioned)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-v${{ needs.version.outputs.version }}
+          path: renamed/*
+          if-no-files-found: error
+
         shell: bash
 
       - name: Verify build
@@ -181,10 +212,45 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: [version, build]
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+
+      - name: Fetch tags
+        run: |
+          git fetch --tags --depth=1
+
+      - name: Ensure tag exists for version
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            echo "Tag v$V already exists"
+          else
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git tag -a "v$V" -m "Release v$V"
+            git push origin "v$V"
+          fi
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          V: ${{ needs.version.outputs.version }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/releases/tags/v$V")
+          if [ "$code" = "200" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release for v$V already exists. Skipping creation."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -192,27 +258,27 @@ jobs:
           path: artifacts
 
       - name: Create release
+        if: steps.check_release.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
           name: TomatoNovelDownloader v${{ needs.version.outputs.version }}
           body: |
-            ## ${{ github.event.head_commit.message }}
-            
+            ## 自动发布
+
             **构建信息:**
             - 构建时间: ${{ needs.version.outputs.build_time }}
             - 提交哈希: ${{ github.sha }}
             - 分支: ${{ github.ref_name }}
-            - 提交者: ${{ github.event.head_commit.author.name }}
 
             **支持平台:**
-            - 💻 Windows (x64): `TomatoNovelDownloader-windows` + debug版
-            - 🐧 Linux (x64): `TomatoNovelDownloader-linux` + debug版  
-            - 🍎 macOS: `TomatoNovelDownloader-macos` + debug版
+            - 💻 Windows (x64): `TomatoNovelDownloader.exe` 与 `TomatoNovelDownloader-debug.exe`
+            - 🐧 Linux (x64): 标准版与 Debug 版
+            - 🍎 macOS: 标准版与 Debug 版
 
-            **使用说明:**
-            - 分发版：正常使用的版本，无控制台输出
-            - Debug版：包含详细调试信息，遇到问题时使用
+            **说明:**
+            - 标准版：正常使用的版本
+            - Debug版：包含详细调试信息
 
           files: |
             artifacts/**/*
