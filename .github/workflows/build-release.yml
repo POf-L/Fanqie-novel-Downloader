@@ -186,7 +186,7 @@ jobs:
           path: renamed/*
           if-no-files-found: error
 
-        shell: bash
+
 
       - name: Verify build
         run: |

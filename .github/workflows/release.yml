@@ -131,8 +131,7 @@ jobs:
             git push origin "v$V"
           fi
 
-          path: |
-            dist/*
+
 
   publish:
     name: Publish Release
