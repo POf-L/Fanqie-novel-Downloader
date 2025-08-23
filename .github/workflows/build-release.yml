@@ -59,11 +59,11 @@ jobs:
           # Windows 构建
           - os: windows-latest
             variant: release
-            executable: TomatoNovelDownloader.exe
+            executable: TomatoNovelDownloader
             artifact_name: TomatoNovelDownloader-windows
           - os: windows-latest
             variant: debug
-            executable: TomatoNovelDownloader-debug.exe
+            executable: TomatoNovelDownloader-debug
             artifact_name: TomatoNovelDownloader-debug-windows
           # Linux 构建
           - os: ubuntu-latest
@@ -121,6 +121,7 @@ jobs:
           pip install pyinstaller
 
       - name: Build application (${{ matrix.variant }})
+        shell: bash
         run: |
           if [ "${{ matrix.variant }}" == "debug" ]; then
             # Debug版本 - 带控制台
@@ -171,11 +172,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p renamed
-          src="dist/${{ matrix.executable }}"
+          ext=""
+          if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
+          src="dist/${{ matrix.executable }}$ext"
           if [ ! -f "$src" ]; then echo "Not found: $src" >&2; exit 1; fi
           base="${{ matrix.executable }}"
           # 插入版本号到文件名（保持原有名字模式）
-          name="${base%.*}_v${APP_VERSION}.${base##*.}"
+          if [ -n "$ext" ]; then
+            name="${base}_v${APP_VERSION}$ext"
+          else
+            name="${base}_v${APP_VERSION}"
+          fi
           cp "$src" "renamed/$name"
           echo "Renamed to: renamed/$name"
 
@@ -191,11 +198,14 @@ jobs:
       - name: Verify build
         run: |
           ls -la dist/
-          if [ -f "dist/${{ matrix.executable }}" ]; then
-            echo "✅ Build successful: ${{ matrix.executable }}"
-            echo "File size: $(ls -lh dist/${{ matrix.executable }} | awk '{print $5}')"
+          ext=""
+          if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
+          target="dist/${{ matrix.executable }}$ext"
+          if [ -f "$target" ]; then
+            echo "✅ Build successful: $(basename "$target")"
+            echo "File size: $(ls -lh "$target" | awk '{print $5}')"
           else
-            echo "❌ Build failed: ${{ matrix.executable }} not found"
+            echo "❌ Build failed: $target not found"
             exit 1
           fi
         shell: bash
@@ -204,7 +214,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.executable }}
+          path: |
+            dist/${{ matrix.executable }}.exe
+            dist/${{ matrix.executable }}
           if-no-files-found: error
 
   release:
