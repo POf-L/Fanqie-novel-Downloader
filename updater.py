@@ -380,28 +380,94 @@ class AutoUpdater:
     
     def _install_windows_exe(self, exe_path: str, restart: bool):
         """安装Windows可执行文件"""
-        # 创建批处理脚本来替换文件
+        # 获取当前进程ID和可执行文件路径
+        current_pid = os.getpid()
+        current_exe = sys.executable
+        exe_name = os.path.basename(current_exe)
+        
+        # 创建增强的批处理脚本来替换文件
         batch_script = f"""
 @echo off
-timeout /t 2 /nobreak > nul
-move /y "{exe_path}" "{sys.executable}"
-if %errorlevel% == 0 (
-    if "{restart}" == "True" (
-        start "" "{sys.executable}"
+setlocal enabledelayedexpansion
+echo [%date% %time%] 开始更新进程... > "%TEMP%\\update.log"
+
+REM 等待当前进程完全退出
+echo [%date% %time%] 等待进程 {current_pid} 退出... >> "%TEMP%\\update.log"
+:wait_process
+tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
+if !errorlevel! == 0 (
+    timeout /t 1 /nobreak > nul
+    goto wait_process
+)
+
+REM 额外等待确保文件句柄完全释放
+echo [%date% %time%] 进程已退出，等待文件句柄释放... >> "%TEMP%\\update.log"
+timeout /t 3 /nobreak > nul
+
+REM 检查目标文件是否被占用
+:check_file
+copy /y nul "{current_exe}.test" >nul 2>&1
+if !errorlevel! == 0 (
+    del "{current_exe}.test" >nul 2>&1
+    goto file_ready
+) else (
+    echo [%date% %time%] 文件仍被占用，继续等待... >> "%TEMP%\\update.log"
+    timeout /t 2 /nobreak > nul
+    goto check_file
+)
+
+:file_ready
+REM 备份原文件
+echo [%date% %time%] 备份原文件... >> "%TEMP%\\update.log"
+if exist "{current_exe}" (
+    move "{current_exe}" "{current_exe}.bak" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [%date% %time%] 备份失败，尝试强制删除... >> "%TEMP%\\update.log"
+        del /f /q "{current_exe}" >nul 2>&1
     )
 )
+
+REM 移动新文件
+echo [%date% %time%] 安装新版本... >> "%TEMP%\\update.log"
+move /y "{exe_path}" "{current_exe}"
+if !errorlevel! == 0 (
+    echo [%date% %time%] 更新成功！ >> "%TEMP%\\update.log"
+    REM 删除备份文件
+    if exist "{current_exe}.bak" (
+        del /f /q "{current_exe}.bak" >nul 2>&1
+    )
+    
+    REM 重启应用程序
+    if "{restart}" == "True" (
+        echo [%date% %time%] 重启应用程序... >> "%TEMP%\\update.log"
+        cd /d "{os.path.dirname(current_exe)}"
+        start "" "{exe_name}"
+    )
+) else (
+    echo [%date% %time%] 更新失败！恢复备份... >> "%TEMP%\\update.log"
+    REM 恢复备份
+    if exist "{current_exe}.bak" (
+        move "{current_exe}.bak" "{current_exe}" >nul 2>&1
+    )
+    REM 显示错误消息
+    echo 更新失败，请手动更新或联系开发者
+    pause
+)
+
+REM 清理临时文件
+echo [%date% %time%] 清理完成 >> "%TEMP%\\update.log"
 del "%~f0"
 """
         
         batch_file = os.path.join(tempfile.gettempdir(), 'update.bat')
-        with open(batch_file, 'w') as f:
+        with open(batch_file, 'w', encoding='gbk') as f:  # 使用GBK编码确保中文正常显示
             f.write(batch_script)
         
         # 执行批处理脚本
-        subprocess.Popen(batch_file, shell=True)
+        subprocess.Popen(batch_file, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
         
-        # 退出当前程序
-        sys.exit(0)
+        # 优雅退出当前程序
+        self._graceful_exit()
     
     def _install_from_zip(self, zip_path: str, restart: bool):
         """从ZIP文件安装更新"""
@@ -491,26 +557,95 @@ del "%~f0"
     
     def _create_windows_update_script(self, source_dir: str, target_dir: str, restart: bool):
         """创建Windows更新脚本"""
+        # 获取当前进程ID和可执行文件信息
+        current_pid = os.getpid()
+        exe_name = os.path.basename(sys.executable)
+        
         script = f"""
 @echo off
-timeout /t 2 /nobreak > nul
-xcopy /s /e /y "{source_dir}\\*" "{target_dir}\\"
-if %errorlevel% == 0 (
-    rmdir /s /q "{source_dir}"
-    if "{restart}" == "True" (
-        cd "{target_dir}"
-        start "" "{os.path.basename(sys.executable)}"
+setlocal enabledelayedexpansion
+echo [%date% %time%] 开始ZIP更新进程... > "%TEMP%\\update.log"
+
+REM 等待当前进程完全退出
+echo [%date% %time%] 等待进程 {current_pid} 退出... >> "%TEMP%\\update.log"
+:wait_process
+tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
+if !errorlevel! == 0 (
+    timeout /t 1 /nobreak > nul
+    goto wait_process
+)
+
+REM 额外等待确保所有文件句柄释放
+echo [%date% %time%] 进程已退出，等待文件句柄释放... >> "%TEMP%\\update.log"
+timeout /t 3 /nobreak > nul
+
+REM 检查目标目录中的主程序文件是否可写
+:check_target
+copy /y nul "{target_dir}\\{exe_name}.test" >nul 2>&1
+if !errorlevel! == 0 (
+    del "{target_dir}\\{exe_name}.test" >nul 2>&1
+    goto target_ready
+) else (
+    echo [%date% %time%] 目标文件仍被占用，继续等待... >> "%TEMP%\\update.log"
+    timeout /t 2 /nobreak > nul
+    goto check_target
+)
+
+:target_ready
+REM 备份现有文件（如果存在）
+echo [%date% %time%] 备份现有文件... >> "%TEMP%\\update.log"
+if exist "{target_dir}\\{exe_name}" (
+    move "{target_dir}\\{exe_name}" "{target_dir}\\{exe_name}.bak" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [%date% %time%] 主程序备份失败，尝试强制删除... >> "%TEMP%\\update.log"
+        del /f /q "{target_dir}\\{exe_name}" >nul 2>&1
     )
 )
+
+REM 复制新文件
+echo [%date% %time%] 复制新文件到目标目录... >> "%TEMP%\\update.log"
+xcopy /s /e /y "{source_dir}\\*" "{target_dir}\\" >nul 2>&1
+if !errorlevel! == 0 (
+    echo [%date% %time%] 文件复制成功！ >> "%TEMP%\\update.log"
+    
+    REM 删除备份文件
+    if exist "{target_dir}\\{exe_name}.bak" (
+        del /f /q "{target_dir}\\{exe_name}.bak" >nul 2>&1
+    )
+    
+    REM 清理源目录
+    echo [%date% %time%] 清理临时文件... >> "%TEMP%\\update.log"
+    rmdir /s /q "{source_dir}" >nul 2>&1
+    
+    REM 重启应用程序
+    if "{restart}" == "True" (
+        echo [%date% %time%] 重启应用程序... >> "%TEMP%\\update.log"
+        cd /d "{target_dir}"
+        start "" "{exe_name}"
+    )
+    echo [%date% %time%] 更新完成！ >> "%TEMP%\\update.log"
+) else (
+    echo [%date% %time%] 文件复制失败！恢复备份... >> "%TEMP%\\update.log"
+    REM 恢复备份
+    if exist "{target_dir}\\{exe_name}.bak" (
+        move "{target_dir}\\{exe_name}.bak" "{target_dir}\\{exe_name}" >nul 2>&1
+    )
+    REM 显示错误消息
+    echo 更新失败，请手动更新或联系开发者
+    echo 错误日志已保存到 %TEMP%\\update.log
+    pause
+)
+
+REM 清理脚本文件
 del "%~f0"
 """
         
         script_file = os.path.join(tempfile.gettempdir(), 'update.bat')
-        with open(script_file, 'w') as f:
+        with open(script_file, 'w', encoding='gbk') as f:  # 使用GBK编码
             f.write(script)
         
-        subprocess.Popen(script_file, shell=True)
-        sys.exit(0)
+        subprocess.Popen(script_file, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        self._graceful_exit()
     
     def _create_unix_update_script(self, source_dir: str, target_dir: str, restart: bool):
         """创建Unix更新脚本"""
@@ -533,7 +668,105 @@ rm -f "$0"
         
         os.chmod(script_file, 0o755)
         subprocess.Popen(['/bin/bash', script_file])
-        sys.exit(0)
+        self._graceful_exit()
+    
+    def _graceful_exit(self):
+        """优雅退出应用程序"""
+        try:
+            # 通知回调函数准备退出
+            self._notify_callbacks('app_exit', None)
+            
+            # 给GUI一些时间来清理资源
+            import time
+            time.sleep(0.5)
+            
+            # 如果是在GUI环境中，尝试关闭主窗口
+            try:
+                import tkinter as tk
+                # 查找并关闭所有tkinter窗口
+                root = tk._default_root
+                if root:
+                    root.quit()
+                    root.destroy()
+            except:
+                pass
+            
+            # 强制刷新所有缓冲区
+            try:
+                sys.stdout.flush()
+                sys.stderr.flush()
+            except:
+                pass
+            
+        except Exception as e:
+            print(f"优雅退出时发生错误: {e}")
+        finally:
+            # 最终强制退出
+            try:
+                os._exit(0)  # 使用os._exit()确保立即退出
+            except:
+                sys.exit(0)
+    
+    def _wait_for_process_exit(self, pid: int, timeout: int = 30) -> bool:
+        """
+        等待指定进程退出
+        
+        Args:
+            pid: 进程ID
+            timeout: 超时时间（秒）
+            
+        Returns:
+            进程是否已退出
+        """
+        try:
+            import psutil
+            try:
+                process = psutil.Process(pid)
+                process.wait(timeout=timeout)
+                return True
+            except psutil.NoSuchProcess:
+                # 进程已不存在
+                return True
+            except psutil.TimeoutExpired:
+                # 超时
+                return False
+        except ImportError:
+            # psutil未安装，使用基础方法检测
+            print("psutil未安装，使用基础进程检测")
+            import time
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    os.kill(pid, 0)  # 检测进程是否存在
+                    time.sleep(0.5)
+                except (OSError, ProcessLookupError):
+                    # 进程不存在
+                    return True
+            return False
+        except Exception as e:
+            print(f"等待进程退出时发生错误: {e}")
+            return False
+    
+    def _is_file_locked(self, file_path: str) -> bool:
+        """
+        检查文件是否被锁定（Windows）
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            文件是否被锁定
+        """
+        if not os.path.exists(file_path):
+            return False
+        
+        try:
+            # 尝试以独占模式打开文件
+            with open(file_path, 'r+b') as f:
+                pass
+            return False
+        except (IOError, OSError):
+            return True
 
 
 def get_current_version() -> str:

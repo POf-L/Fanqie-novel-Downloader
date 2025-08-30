@@ -2579,6 +2579,43 @@ class ModernNovelDownloaderGUI:
                 messagebox.showinfo("更新完成", "更新已安装，程序将重启")
             except Exception:
                 pass
+        elif event == 'app_exit':
+            # 处理应用退出事件，优雅关闭GUI
+            self._prepare_for_exit()
+    
+    def _prepare_for_exit(self):
+        """准备退出应用程序，清理资源"""
+        try:
+            # 关闭更新窗口（如果存在）
+            if hasattr(self, 'update_window') and self.update_window:
+                try:
+                    self.update_window.destroy()
+                except:
+                    pass
+            
+            # 停止所有后台线程和任务
+            if hasattr(self, 'api') and self.api:
+                try:
+                    # 取消正在进行的下载任务
+                    self.api.cancel_all_tasks()
+                except:
+                    pass
+            
+            # 保存配置
+            try:
+                self.save_config()
+            except:
+                pass
+            
+            # 关闭主窗口
+            try:
+                self.root.quit()
+                self.root.destroy()
+            except:
+                pass
+                
+        except Exception as e:
+            print(f"准备退出时发生错误: {e}")
 
 # 主程序入口
 if __name__ == "__main__":
