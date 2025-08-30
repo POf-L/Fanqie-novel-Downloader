@@ -65,6 +65,11 @@ jobs:
 
       - name: Build executable
         run: |
+          # 注入构建元信息，标记为官方GitHub Actions构建
+          if [ -f version.py ]; then
+            grep -q '__build_channel__' version.py || echo '__build_channel__ = "github-actions"' >> version.py
+            grep -q '__build_time__' version.py || echo "__build_time__ = '$(date -u +'%Y-%m-%d %H:%M:%S UTC')'" >> version.py
+          fi
           python build_app.py
 
       - name: Rename and zip artifact (Windows)

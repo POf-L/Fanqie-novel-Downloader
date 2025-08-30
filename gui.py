@@ -11,6 +11,7 @@ from io import BytesIO
 from tomato_novel_api import TomatoNovelAPI
 from ebooklib import epub
 from updater import AutoUpdater, get_current_version, check_and_notify_update
+from updater import is_official_release_build
 from version import __version__, __github_repo__
 
 # 添加HEIC支持
@@ -56,6 +57,7 @@ class ModernNovelDownloaderGUI:
         self.current_version = __version__
         self.updater = AutoUpdater(__github_repo__, self.current_version)
         self.updater.register_callback(self.on_update_event)
+        self.official_build = is_official_release_build()
         
         # 配置文件路径
         self.config_file = "config.json"
@@ -81,8 +83,8 @@ class ModernNovelDownloaderGUI:
         # 检查已有的验证状态
         self.check_existing_verification()
         
-        # 启动时自动检查更新
-        if self.config.get('auto_check_update', True):
+        # 启动时自动检查更新（仅官方构建）
+        if self.official_build and self.config.get('auto_check_update', True):
             self.root.after(1500, self.check_update_silent)
     
     def setup_fonts(self):
@@ -439,7 +441,7 @@ class ModernNovelDownloaderGUI:
                 bg=self.colors['surface'], 
                 fg=version_color).pack(side=tk.LEFT)
         
-        # 自动检查更新开关
+        # 自动检查更新开关（源码/非官方构建禁用）
         self.auto_update_var = tk.BooleanVar(value=self.config.get('auto_check_update', True))
         auto_check_btn = tk.Checkbutton(version_frame,
                                         text="启动时自动检查更新",
@@ -447,6 +449,8 @@ class ModernNovelDownloaderGUI:
                                         command=self.save_config,
                                         font=self.fonts['body'],
                                         bg=self.colors['surface'])
+        if not getattr(self, 'official_build', False):
+            auto_check_btn.configure(state=tk.DISABLED)
         auto_check_btn.pack(side=tk.LEFT, padx=(20, 10))
         
         # 前往发布页按钮
@@ -457,10 +461,10 @@ class ModernNovelDownloaderGUI:
                                              self.colors['secondary'])
         open_release_btn.pack(side=tk.RIGHT)
         
-        # 检查更新按钮
+        # 检查更新按钮（源码/非官方构建跳转到Releases页面）
         check_update_btn = self.create_button(version_frame,
                                              "🔄 检查更新",
-                                             self.check_update_now,
+                                             (self.check_update_now if getattr(self, 'official_build', False) else (lambda: webbrowser.open(releases_url))),
                                              self.colors['primary'])
         check_update_btn.pack(side=tk.RIGHT, padx=(0, 10))
         
@@ -2443,6 +2447,8 @@ class ModernNovelDownloaderGUI:
 
     def check_update_silent(self):
         """在后台静默检查更新"""
+        if not getattr(self, 'official_build', False):
+            return
         def notify(update_info):
             if not update_info:
                 return
@@ -2454,6 +2460,13 @@ class ModernNovelDownloaderGUI:
 
     def check_update_now(self):
         """手动检查更新（带提示）"""
+        if not getattr(self, 'official_build', False):
+            releases_url = f"https://github.com/{__github_repo__}/releases/latest"
+            try:
+                webbrowser.open(releases_url)
+            except Exception:
+                pass
+            return
         def worker():
             try:
                 update_info = self.updater.check_for_updates(force=True)

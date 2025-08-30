@@ -101,6 +101,7 @@ jobs:
           echo "__description__ = \"A modern novel downloader with GitHub auto-update support\"" >> version.py
           echo "__github_repo__ = \"POf-L/Fanqie-novel-Downloader\"" >> version.py
           echo "__build_time__ = \"$BUILD_TIME\"" >> version.py
+          echo "__build_channel__ = \"github-actions\"" >> version.py
           
           echo "更新后的version.py:"
           cat version.py

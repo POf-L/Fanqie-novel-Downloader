@@ -19,6 +19,26 @@ from datetime import datetime, timedelta
 import requests
 from packaging import version
 
+try:
+	# 引入构建元信息，避免与packaging.version冲突
+	import version as app_meta
+except Exception:
+	app_meta = None
+
+
+def is_official_release_build() -> bool:
+	"""检测是否为GitHub Actions发布版构建（且为打包运行）。"""
+	try:
+		channel = getattr(app_meta, "__build_channel__", "source") if app_meta else "source"
+		if channel != "github-actions":
+			return False
+		# 仅在PyInstaller打包环境启用
+		if not getattr(sys, "frozen", False):
+			return False
+		return True
+	except Exception:
+		return False
+
 
 class UpdateChecker:
     """版本检测器"""
@@ -196,6 +216,7 @@ class AutoUpdater:
         self.download_total = 0
         self.is_downloading = False
         self.update_callbacks = []
+        self.official_build_only = True
         
     def register_callback(self, callback: Callable):
         """注册更新回调函数"""
@@ -268,6 +289,10 @@ class AutoUpdater:
         Returns:
             下载的文件路径
         """
+        # 仅允许官方发布版自动更新
+        if self.official_build_only and not is_official_release_build():
+            self._notify_callbacks('download_error', '当前为源码或非官方构建，已禁用自动更新')
+            return None
         if self.is_downloading:
             return None
         
@@ -328,6 +353,10 @@ class AutoUpdater:
         Returns:
             是否安装成功
         """
+        # 仅允许官方发布版自动更新
+        if self.official_build_only and not is_official_release_build():
+            self._notify_callbacks('install_error', '当前为源码或非官方构建，已禁用自动更新')
+            return False
         try:
             self._notify_callbacks('install_start', update_file)
             
@@ -383,6 +412,13 @@ del "%~f0"
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(temp_extract_dir)
         
+        # 规范化解压出的可执行文件名称，确保覆盖当前正在运行的可执行文件名
+        try:
+            current_basename = os.path.basename(sys.executable)
+            self._normalize_extracted_binary_name(temp_extract_dir, current_basename)
+        except Exception as e:
+            print(f"规范化解压文件名失败: {e}")
+        
         # 获取当前程序目录
         app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
         
@@ -391,6 +427,67 @@ del "%~f0"
             self._create_windows_update_script(temp_extract_dir, app_dir, restart)
         else:
             self._create_unix_update_script(temp_extract_dir, app_dir, restart)
+
+    def _normalize_extracted_binary_name(self, source_dir: str, target_basename: str) -> None:
+        """在解压目录中查找主要可执行文件并重命名为当前可执行文件名。
+        解决Release产物文件名包含版本号而导致无法覆盖原可执行文件的问题。
+        """
+        # macOS .app 包场景不处理此重命名
+        for item in os.listdir(source_dir):
+            if item.lower().endswith('.app') and os.path.isdir(os.path.join(source_dir, item)):
+                return
+        
+        candidates = []
+        for root, dirs, files in os.walk(source_dir):
+            for name in files:
+                try:
+                    path = os.path.join(root, name)
+                    lower_name = name.lower()
+                    # 以可执行权限、后缀或关键字作为候选
+                    if (
+                        lower_name.endswith('.exe') or
+                        'tomatonoveldownloader' in lower_name or
+                        os.access(path, os.X_OK)
+                    ):
+                        candidates.append(path)
+                except Exception:
+                    continue
+        if not candidates:
+            return
+        
+        # 选择最大的候选文件，通常为实际可执行文件
+        candidates.sort(key=lambda p: os.path.getsize(p) if os.path.exists(p) else 0, reverse=True)
+        src_path = candidates[0]
+        src_dir = os.path.dirname(src_path)
+        # 目标名直接使用当前正在运行的可执行文件名
+        target_path = os.path.join(src_dir, target_basename)
+        
+        # 已经同名则无需处理
+        if os.path.basename(src_path) == target_basename:
+            # 确保可执行权限
+            try:
+                if sys.platform != 'win32':
+                    os.chmod(src_path, 0o755)
+            except Exception:
+                pass
+            return
+        
+        # 重命名为目标名，覆盖已存在的文件
+        try:
+            if os.path.exists(target_path):
+                try:
+                    os.remove(target_path)
+                except Exception:
+                    pass
+            os.replace(src_path, target_path)
+            if sys.platform != 'win32':
+                try:
+                    os.chmod(target_path, 0o755)
+                except Exception:
+                    pass
+        except Exception as e:
+            # 失败则忽略，让后续脚本复制两个并保留旧名（虽然不会生效，但不影响当前运行）
+            print(f"重命名解压文件失败: {e}")
     
     def _create_windows_update_script(self, source_dir: str, target_dir: str, restart: bool):
         """创建Windows更新脚本"""
