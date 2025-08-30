@@ -380,16 +380,46 @@ class AutoUpdater:
     
     def _install_windows_exe(self, exe_path: str, restart: bool):
         """安装Windows可执行文件"""
-        # 创建批处理脚本来替换文件
+        # 创建批处理脚本：等待当前进程退出后，重试替换可执行文件并按需重启
+        current_pid = os.getpid()
         batch_script = f"""
 @echo off
-timeout /t 2 /nobreak > nul
-move /y "{exe_path}" "{sys.executable}"
-if %errorlevel% == 0 (
-    if "{restart}" == "True" (
-        start "" "{sys.executable}"
-    )
+setlocal enabledelayedexpansion
+set "TARGET={sys.executable}"
+set "SRC={exe_path}"
+set "PID={current_pid}"
+
+REM 等待当前进程退出，避免文件占用
+echo Waiting for process !PID! to exit...
+:waitloop
+tasklist /fi "PID eq !PID!" | findstr /R /C:"  !PID!  " >nul 2>&1
+if %errorlevel%==0 (
+    timeout /t 1 /nobreak >nul
+    goto waitloop
 )
+
+REM 重试移动以替换可执行文件
+set /a RETRIES=60
+set /a COUNT=0
+:moveloop
+move /y "!SRC!" "!TARGET!" >nul 2>&1
+if %errorlevel%==0 goto success
+set /a COUNT+=1
+if !COUNT! GEQ !RETRIES! goto fail
+timeout /t 1 /nobreak >nul
+goto moveloop
+
+:success
+if "{restart}"=="True" (
+    start "" "!TARGET!"
+)
+goto end
+
+:fail
+echo Update failed: could not move file after retries. >nul
+
+:end
+endlocal
 del "%~f0"
 """
         
@@ -491,17 +521,56 @@ del "%~f0"
     
     def _create_windows_update_script(self, source_dir: str, target_dir: str, restart: bool):
         """创建Windows更新脚本"""
+        current_pid = os.getpid()
+        # 使用robocopy进行稳健复制，先等待进程退出，失败时重试
         script = f"""
 @echo off
-timeout /t 2 /nobreak > nul
-xcopy /s /e /y "{source_dir}\\*" "{target_dir}\\"
-if %errorlevel% == 0 (
-    rmdir /s /q "{source_dir}"
-    if "{restart}" == "True" (
-        cd "{target_dir}"
-        start "" "{os.path.basename(sys.executable)}"
-    )
+setlocal enabledelayedexpansion
+set "SRC={source_dir}"
+set "DST={target_dir}"
+set "EXE_NAME={os.path.basename(sys.executable)}"
+set "PID={current_pid}"
+
+REM 等待当前进程退出，避免文件占用
+echo Waiting for process !PID! to exit...
+:waitloop
+tasklist /fi "PID eq !PID!" | findstr /R /C:"  !PID!  " >nul 2>&1
+if %errorlevel%==0 (
+    timeout /t 1 /nobreak >nul
+    goto waitloop
 )
+
+REM 复制文件（优先使用robocopy，兼容返回码0-7为成功）
+set /a RETRIES=30
+set /a COUNT=0
+:copyloop
+robocopy "!SRC!" "!DST!" /E /R:2 /W:1 >nul
+set RC=%ERRORLEVEL%
+if !RC! LEQ 7 goto copysuccess
+
+REM robocopy失败则尝试xcopy作为回退
+xcopy /s /e /y "!SRC!\\*" "!DST!\\" >nul
+if %errorlevel%==0 goto copysuccess
+
+set /a COUNT+=1
+if !COUNT! GEQ !RETRIES! goto copyfail
+timeout /t 1 /nobreak >nul
+goto copyloop
+
+:copysuccess
+rmdir /s /q "!SRC!" >nul 2>&1
+if "{restart}"=="True" (
+    pushd "!DST!"
+    start "" "!EXE_NAME!"
+    popd
+)
+goto end
+
+:copyfail
+echo Update failed: copy operation could not complete after retries. >nul
+
+:end
+endlocal
 del "%~f0"
 """
         
