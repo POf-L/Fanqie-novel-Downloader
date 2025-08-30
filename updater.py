@@ -383,14 +383,30 @@ class AutoUpdater:
         # 创建批处理脚本来替换文件
         batch_script = f"""
 @echo off
-timeout /t 2 /nobreak > nul
-move /y "{exe_path}" "{sys.executable}"
-if %errorlevel% == 0 (
-    if "{restart}" == "True" (
-        start "" "{sys.executable}"
+setlocal
+REM 当前运行的可执行文件名及目录
+set EXE_NAME="{os.path.basename(sys.executable)}"
+set TARGET_DIR="{os.path.dirname(sys.executable)}"
+
+REM 等待进程结束，释放文件锁
+:waitloop
+tasklist /fi "imagename eq %EXE_NAME%" | find /i "%EXE_NAME%" >nul
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >nul
+    goto waitloop
+)
+
+REM 复制新的可执行文件覆盖旧文件
+copy /y "{exe_path}" "%TARGET_DIR%\\%EXE_NAME%"
+
+if %errorlevel%==0 (
+    if "{restart}"=="True" (
+        start "" "%TARGET_DIR%\\%EXE_NAME%"
     )
 )
+
 del "%~f0"
+endlocal
 """
         
         batch_file = os.path.join(tempfile.gettempdir(), 'update.bat')
