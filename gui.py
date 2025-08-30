@@ -2159,17 +2159,21 @@ class ModernNovelDownloaderGUI:
                 'Content-Type': 'application/json'
             })
             
-            challenge_res = network_manager.make_request(captcha_url, headers=headers, timeout=10)
+            verification_url = None
+            # 与网络层保持一致，关闭SSL验证，避免部分环境证书校验失败
+            challenge_res = network_manager.make_request(captcha_url, headers=headers, timeout=10, verify=False)
             if challenge_res and challenge_res.status_code == 200:
                 challenge_data = challenge_res.json()
                 verification_url = challenge_data.get("challenge_url")
-                
-                if verification_url:
-                    self._create_captcha_dialog(verification_url)
-                else:
-                    messagebox.showwarning("验证失败", "无法获取验证码URL")
-            else:
-                messagebox.showerror("网络错误", "无法连接到验证服务器")
+            
+            # 回退到固定URL，确保总能显示输入框
+            fixed_verification_url = "https://dlbkltos.s7123.xyz:5080/captcha"
+            final_verification_url = verification_url or fixed_verification_url
+            # 端口补全
+            if "dlbkltos.s7123.xyz" in final_verification_url and ":5080" not in final_verification_url:
+                final_verification_url = final_verification_url.replace("dlbkltos.s7123.xyz", "dlbkltos.s7123.xyz:5080")
+            
+            self._create_captcha_dialog(final_verification_url)
                 
         except Exception as e:
             messagebox.showerror("验证码获取失败", f"获取验证码时出错: {str(e)}")
@@ -2237,9 +2241,15 @@ class ModernNovelDownloaderGUI:
                                      self.colors['primary'])
         open_btn.pack(side=tk.LEFT, padx=(0, 10))
         
+        # 使用更健壮的复制链接（优先服务端返回，其次固定URL，并补全端口）
+        def _resolved_verification_url():
+            url = verification_url or fixed_verification_url
+            if "dlbkltos.s7123.xyz" in url and ":5080" not in url:
+                url = url.replace("dlbkltos.s7123.xyz", "dlbkltos.s7123.xyz:5080")
+            return url
         copy_btn = self.create_button(url_frame,
                                      "📋 复制验证链接",
-                                     lambda: self._copy_to_clipboard(verification_url),
+                                     lambda: self._copy_to_clipboard(_resolved_verification_url()),
                                      self.colors['secondary'])
         copy_btn.pack(side=tk.LEFT)
         
@@ -2257,7 +2267,7 @@ class ModernNovelDownloaderGUI:
                              font=self.fonts['body'],
                              bg='white',
                              fg=self.colors['text_primary'],
-                             relief=tk.FLAT,
+                             relief=tk.SOLID,
                              bd=1,
                              highlightthickness=1,
                              highlightcolor=self.colors['primary'])
@@ -2378,9 +2388,14 @@ class ModernNovelDownloaderGUI:
         open_url_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # 复制URL按钮
+        def _resolved_verification_url_manual():
+            url = verification_url or fixed_verification_url
+            if "dlbkltos.s7123.xyz" in url and ":5080" not in url:
+                url = url.replace("dlbkltos.s7123.xyz", "dlbkltos.s7123.xyz:5080")
+            return url
         copy_url_btn = self.create_button(url_frame, 
                                          "📋 复制验证链接", 
-                                         lambda: self._copy_to_clipboard(verification_url),
+                                         lambda: self._copy_to_clipboard(_resolved_verification_url_manual()),
                                          self.colors['secondary'])
         copy_url_btn.pack(side=tk.LEFT)
         
@@ -2399,7 +2414,7 @@ class ModernNovelDownloaderGUI:
                               font=self.fonts['body'],
                               bg='white',
                               fg=self.colors['text_primary'],
-                              relief=tk.FLAT,
+                              relief=tk.SOLID,
                               bd=1,
                               highlightthickness=2,
                               highlightcolor=self.colors['primary'])
@@ -2473,7 +2488,7 @@ class ModernNovelDownloaderGUI:
                 
                 # 测试API访问
                 response = network_manager.make_request(network_manager.config.SERVER_URL, 
-                                                      headers=headers, timeout=10)
+                                                      headers=headers, timeout=10, verify=False)
                 
                 if response and response.status_code == 200:
                     # 验证成功
