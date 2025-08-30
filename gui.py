@@ -159,10 +159,7 @@ class ModernNovelDownloaderGUI:
         self.notebook = ttk.Notebook(parent, style='Modern.TNotebook')
         self.notebook.pack(fill=tk.BOTH, expand=True)
         
-        # 搜索标签页
-        self.search_frame = ttk.Frame(self.notebook, style='Card.TFrame')
-        self.notebook.add(self.search_frame, text="🔍 搜索小说")
-        self.create_search_tab()
+        # 搜索标签页暂时隐藏（搜索接口失效）
         
         # 下载标签页
         self.download_frame = ttk.Frame(self.notebook, style='Card.TFrame')
@@ -173,108 +170,6 @@ class ModernNovelDownloaderGUI:
         self.settings_frame = ttk.Frame(self.notebook, style='Card.TFrame')
         self.notebook.add(self.settings_frame, text="⚙️ 设置")
         self.create_settings_tab()
-    
-    def create_search_tab(self):
-        """创建搜索标签页"""
-        # 主容器
-        main_container = tk.Frame(self.search_frame, bg=self.colors['surface'])
-        main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        # 搜索区域
-        search_card = self.create_card(main_container, "🔍 搜索小说")
-        
-        # 搜索输入框
-        search_input_frame = tk.Frame(search_card, bg=self.colors['surface'])
-        search_input_frame.pack(fill=tk.X, pady=(0, 15))
-        
-        tk.Label(search_input_frame, text="关键词:", 
-                font=self.fonts['body'], 
-                bg=self.colors['surface'], 
-                fg=self.colors['text_primary']).pack(side=tk.LEFT)
-        
-        self.search_entry = tk.Entry(search_input_frame, 
-                                    font=self.fonts['body'],
-                                    bg='white',
-                                    fg=self.colors['text_primary'],
-                                    relief=tk.FLAT,
-                                    bd=1,
-                                    highlightthickness=1,
-                                    highlightcolor=self.colors['primary'])
-        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 10))
-        self.search_entry.bind('<Return>', lambda e: self.search_novels())
-        
-        self.search_btn = self.create_button(search_input_frame, 
-                                           "🔍 搜索", 
-                                           self.search_novels,
-                                           self.colors['primary'])
-        self.search_btn.pack(side=tk.RIGHT)
-        
-        # 搜索结果区域
-        results_card = self.create_card(main_container, "📚 搜索结果")
-        
-        # 创建滚动框架来容纳搜索结果
-        self.results_canvas = tk.Canvas(results_card, bg=self.colors['surface'])
-        self.results_scrollbar = ttk.Scrollbar(results_card, orient=tk.VERTICAL, command=self.results_canvas.yview)
-        self.results_scrollable_frame = tk.Frame(self.results_canvas, bg=self.colors['surface'])
-        
-        self.results_scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.results_canvas.configure(scrollregion=self.results_canvas.bbox("all"))
-        )
-        
-        self.results_canvas.create_window((0, 0), window=self.results_scrollable_frame, anchor="nw")
-        self.results_canvas.configure(yscrollcommand=self.results_scrollbar.set)
-        
-        self.results_canvas.pack(side="left", fill="both", expand=True)
-        self.results_scrollbar.pack(side="right", fill="y")
-        
-        # 绑定鼠标滚轮事件
-        def _on_mousewheel(event):
-            self.results_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        self.results_canvas.bind_all("<MouseWheel>", _on_mousewheel)
-    
-    def create_card(self, parent, title):
-        """创建卡片式容器"""
-        card_frame = tk.LabelFrame(parent, 
-                                  text=title, 
-                                  font=self.fonts['subtitle'],
-                                  bg=self.colors['surface'],
-                                  fg=self.colors['text_primary'],
-                                  padx=20, 
-                                  pady=15,
-                                  relief=tk.RAISED,
-                                  bd=1,
-                                  highlightbackground=self.colors['border'])
-        card_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
-        return card_frame
-    
-    def create_button(self, parent, text, command, bg_color, fg_color='white'):
-        """创建现代化按钮"""
-        button = tk.Button(parent,
-                          text=text,
-                          font=self.fonts['button'],
-                          bg=bg_color,
-                          fg=fg_color,
-                          relief=tk.FLAT,
-                          bd=0,
-                          padx=20,
-                          pady=8,
-                          cursor='hand2',
-                          command=command,
-                          activebackground=self.colors['primary_dark'],
-                          activeforeground='white')
-        
-        # 添加悬停效果
-        def on_enter(e):
-            button.config(bg=self.colors['primary_dark'] if bg_color == self.colors['primary'] else bg_color)
-        
-        def on_leave(e):
-            button.config(bg=bg_color)
-        
-        button.bind('<Enter>', on_enter)
-        button.bind('<Leave>', on_leave)
-        
-        return button
     
     def create_download_tab(self):
         """创建下载标签页"""
@@ -1065,7 +960,7 @@ class ModernNovelDownloaderGUI:
         book_id = novel.get('book_id', '')
         if book_id:
             # 切换到下载标签页并填入ID
-            self.notebook.select(1)  # 选择下载标签页
+            self.notebook.select(self.download_frame)  # 选择下载标签页
             self.book_id_entry.delete(0, tk.END)
             self.book_id_entry.insert(0, book_id)
             messagebox.showinfo("成功", f"已选择《{novel.get('book_name', '未知')}》用于下载")
@@ -1391,7 +1286,7 @@ class ModernNovelDownloaderGUI:
         book_id = novel.get('book_id', '')
         if book_id:
             # 切换到下载标签页并填入ID
-            self.notebook.select(1)  # 选择下载标签页
+            self.notebook.select(self.download_frame)  # 选择下载标签页
             self.book_id_entry.delete(0, tk.END)
             self.book_id_entry.insert(0, book_id)
             window.destroy()
