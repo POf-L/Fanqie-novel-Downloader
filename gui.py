@@ -1732,38 +1732,89 @@ class ModernNovelDownloaderGUI:
         """为EPUB添加封面"""
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'Referer': 'https://www.tomatonovel.com/',
-                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
             }
             
-            response = requests.get(cover_url, headers=headers, timeout=10)
+            # 使用更长的超时时间
+            response = requests.get(cover_url, headers=headers, timeout=15, verify=False)
             response.raise_for_status()
+            
+            # 检查响应内容
+            if not response.content or len(response.content) < 500:
+                print(f"封面图片内容无效或过小: {len(response.content)} 字节")
+                return False
             
             # 检查是否是图片
             content_type = response.headers.get('content-type', '')
             if not content_type.startswith('image/'):
+                print(f"封面内容类型不是图片: {content_type}")
                 return False
             
-            # 确定文件扩展名
+            # 检查图片格式（通过文件头验证）
+            content = response.content
+            if not (content.startswith(b'\xff\xd8') or  # JPEG
+                    content.startswith(b'\x89PNG') or   # PNG
+                    content.startswith(b'GIF8') or      # GIF
+                    content.startswith(b'RIFF') or      # WEBP
+                    content.startswith(b'BM') or        # BMP
+                    content.startswith(b'\x00\x00\x01\x00')):  # ICO
+                print(f"封面图片格式无效，内容头: {content[:8].hex()}")
+                return False
+            
+            # 确定文件扩展名和MIME类型
             if 'jpeg' in content_type or 'jpg' in content_type:
                 ext = 'jpg'
+                mime_type = 'image/jpeg'
             elif 'png' in content_type:
                 ext = 'png'
+                mime_type = 'image/png'
             elif 'webp' in content_type:
                 ext = 'webp'
-            elif 'heic' in content_type:
-                # EPUB不支持heic格式，转换为jpg
-                ext = 'jpg'
-                print("检测到HEIC格式封面，转换为JPG格式")
+                mime_type = 'image/webp'
+            elif 'gif' in content_type:
+                ext = 'gif'
+                mime_type = 'image/gif'
             else:
-                ext = 'jpg'  # 默认
+                # 从URL推断格式
+                if '.jpg' in cover_url or '.jpeg' in cover_url:
+                    ext = 'jpg'
+                    mime_type = 'image/jpeg'
+                elif '.png' in cover_url:
+                    ext = 'png'
+                    mime_type = 'image/png'
+                else:
+                    ext = 'jpg'
+                    mime_type = 'image/jpeg'
             
-            # 添加封面
-            book.set_cover(f"cover.{ext}", response.content)
-            print(f"成功添加封面 (格式: {ext})")
+            # 创建封面图片项
+            cover_filename = f'cover.{ext}'
+            cover_item = epub.EpubItem(
+                uid='cover-image',
+                file_name=cover_filename,
+                media_type=mime_type,
+                content=content
+            )
+            book.add_item(cover_item)
+            
+            # 设置封面
+            book.set_cover(cover_filename, content)
+            
+            # 添加封面元数据
+            book.add_metadata('DC', 'relation', 'cover-image')
+            book.add_metadata('OPF', 'cover', 'cover-image')
+            
+            print(f"成功添加封面 (格式: {ext}, 大小: {len(content)} 字节)")
             return True
             
+        except requests.exceptions.RequestException as e:
+            print(f"下载封面失败: {e}")
+            return False
         except Exception as e:
             print(f"添加封面失败: {e}")
             return False

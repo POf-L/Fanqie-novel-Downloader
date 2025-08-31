@@ -231,6 +231,11 @@ def restart_application():
 def main():
     """主函数"""
     log_message("=== 外部更新脚本启动 ===")
+    
+    # 记录系统信息
+    log_message(f"操作系统: {platform.system()} {platform.release()}")
+    log_message(f"Python版本: {sys.version}")
+    log_message(f"工作目录: {os.getcwd()}")
 
     # 检查命令行参数
     if len(sys.argv) < 2:
@@ -240,17 +245,20 @@ def main():
     try:
         # 解析更新信息
         update_info_json = sys.argv[1]
+        log_message(f"接收到的更新信息: {update_info_json[:100]}...")
+        
         update_info = json.loads(update_info_json)
-
         log_message(f"准备更新到版本: {update_info.get('version', 'unknown')}")
 
         # 步骤1: 下载更新文件
+        log_message("开始下载更新文件...")
         update_file = download_update_file(update_info)
         if not update_file:
             log_message("下载失败，退出更新", "ERROR")
             sys.exit(1)
 
         # 步骤2: 安装更新
+        log_message("开始安装更新...")
         if platform.system() == 'Windows':
             success = install_update_windows(update_file)
         else:
@@ -261,26 +269,42 @@ def main():
             sys.exit(1)
 
         # 步骤3: 清理临时文件
+        log_message("清理临时文件...")
         try:
-            os.remove(update_file)
-            log_message("清理临时文件完成")
+            if os.path.exists(update_file):
+                os.remove(update_file)
+                log_message("清理临时文件完成")
+            else:
+                log_message("临时文件不存在，无需清理")
         except Exception as e:
             log_message(f"清理临时文件失败: {e}", "WARNING")
 
         # 步骤4: 重启应用程序
         log_message("更新完成，准备重启应用程序...")
-        time.sleep(1)  # 短暂延迟
+        time.sleep(2)  # 增加延迟确保文件写入完成
 
         if not restart_application():
             log_message("重启失败，请手动重启应用程序", "WARNING")
+            # 在Windows上尝试使用start命令
+            if platform.system() == 'Windows':
+                try:
+                    current_exe = get_current_exe_path()
+                    subprocess.run(['start', '', current_exe], shell=True, check=True)
+                    log_message("使用start命令重启应用程序")
+                except Exception as e:
+                    log_message(f"start命令重启失败: {e}", "ERROR")
 
         log_message("=== 更新脚本执行完成 ===")
 
     except json.JSONDecodeError as e:
         log_message(f"解析更新信息失败: {e}", "ERROR")
+        log_message(f"原始数据: {sys.argv[1][:200]}...", "ERROR")
         sys.exit(1)
     except Exception as e:
         log_message(f"更新过程中发生错误: {e}", "ERROR")
+        import traceback
+        error_details = traceback.format_exc()
+        log_message(f"错误详情:\n{error_details}", "ERROR")
         sys.exit(1)
 
 

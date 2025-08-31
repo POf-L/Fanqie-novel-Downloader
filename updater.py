@@ -232,19 +232,40 @@ class AutoUpdater:
 
     def _create_update_log(self, message: str, level: str = "INFO"):
         """创建更新日志"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_message = f"[{timestamp}] [{level}] {message}"
-
-        # 写入日志文件
-        log_file = os.path.join(tempfile.gettempdir(), 'update.log')
         try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_entry = f"[{timestamp}] [{level}] {message}\n"
+            
+            # 确保日志目录存在
+            log_dir = os.path.join(tempfile.gettempdir(), "update_logs")
+            os.makedirs(log_dir, exist_ok=True)
+            
+            log_file = os.path.join(log_dir, f"update_{datetime.now().strftime('%Y%m%d')}.log")
+            
             with open(log_file, 'a', encoding='utf-8') as f:
-                f.write(log_message + '\n')
-        except Exception:
-            pass  # 忽略日志写入失败
+                f.write(log_entry)
+                
+            # 同时输出到控制台
+            print(f"[Updater] {log_entry.strip()}")
+            
+        except Exception as e:
+            print(f"[Updater] 创建日志失败: {e}")
+            print(f"[Updater] {message}")
 
-        # 同时输出到控制台
-        print(log_message)
+    def _handle_update_error(self, error: Exception, context: str = ""):
+        """统一处理更新错误"""
+        error_msg = f"更新{context}失败: {str(error)}"
+        self._create_update_log(error_msg, "ERROR")
+        
+        # 记录详细的错误信息
+        import traceback
+        error_details = traceback.format_exc()
+        self._create_update_log(f"错误详情:\n{error_details}", "ERROR")
+        
+        # 通知回调
+        self._notify_callbacks('install_error', str(error))
+        
+        return False
     
     def check_for_updates(self, force: bool = False) -> Optional[Dict[str, Any]]:
         """
@@ -416,11 +437,7 @@ class AutoUpdater:
             return True
 
         except Exception as e:
-            error_msg = f"安装更新失败: {e}"
-            self._create_update_log(error_msg, "ERROR")
-            self._notify_callbacks('install_error', str(e))
-            print(error_msg)
-            return False
+            return self._handle_update_error(e, "安装")
     
     def _install_windows_exe(self, exe_path: str, restart: bool):
         """安装Windows可执行文件（调用外部批处理脚本接管更新）"""
@@ -430,8 +447,7 @@ class AutoUpdater:
         helper_name = 'update_helper.bat'
         helper_path = os.path.join(tempfile.gettempdir(), helper_name)
 
-        helper_script = f"""
-@echo off
+        helper_script = f"""@echo off
 setlocal enabledelayedexpansion
 
 REM 参数：当前PID、当前EXE路径、下载的更新文件路径、是否重启(True/False)
@@ -441,12 +457,25 @@ set update_file="{exe_path}"
 set do_restart={str(restart)}
 
 echo [Updater] 准备关闭进程 !target_pid! 并执行文件替换
-taskkill /PID !target_pid! /F >nul 2>&1
-timeout /t 2 /nobreak > nul
 
-REM 等待退出，最多15次
+REM 检查目标进程是否存在
+tasklist /FI "PID eq !target_pid!" 2>nul | find "!target_pid!" >nul
+if errorlevel 1 (
+    echo [Updater] 目标进程不存在，直接进行更新
+    goto do_update
+)
+
+REM 尝试关闭进程
+taskkill /PID !target_pid! /F >nul 2>&1
+if errorlevel 1 (
+    echo [Updater] 无法关闭进程，尝试强制终止
+    taskkill /PID !target_pid! /F /T >nul 2>&1
+)
+
+REM 等待进程退出，最多等待30秒
 set /a count=0
 :wait_exit
+timeout /t 2 /nobreak > nul
 tasklist /FI "PID eq !target_pid!" 2>nul | find "!target_pid!" >nul
 if errorlevel 1 goto do_update
 set /a count+=1
@@ -454,46 +483,79 @@ if !count! geq 15 (
     echo [Updater] 进程未退出，继续强制更新
     goto do_update
 )
-timeout /t 1 /nobreak > nul
 goto wait_exit
 
 :do_update
 echo [Updater] 开始更新文件
+
+REM 检查更新文件是否存在
+if not exist "!update_file!" (
+    echo [Updater] 错误：更新文件不存在
+    goto end
+)
+
 REM 备份旧文件
 if exist !current_exe! (
-    copy /y !current_exe! !current_exe!.backup >nul 2>&1
+    echo [Updater] 创建备份文件
+    copy /y "!current_exe!" "!current_exe!.backup" >nul 2>&1
+    if errorlevel 1 (
+        echo [Updater] 警告：备份创建失败
+    )
 )
 
 REM 替换新文件（带重试）
 set /a retry=0
 :replace_retry
-move /y !update_file! !current_exe! >nul 2>&1
+echo [Updater] 尝试替换文件 (尝试 !retry!/5)
+move /y "!update_file!" "!current_exe!" >nul 2>&1
 if errorlevel 1 (
     set /a retry+=1
     if !retry! lss 5 (
-        echo [Updater] 替换失败，重试 !retry!/5
-        timeout /t 1 /nobreak > nul
+        echo [Updater] 替换失败，等待后重试...
+        timeout /t 2 /nobreak > nul
         goto replace_retry
     ) else (
         echo [Updater] 替换失败，尝试恢复备份
-        if exist !current_exe!.backup (
-            move /y !current_exe!.backup !current_exe! >nul 2>&1
+        if exist "!current_exe!.backup" (
+            move /y "!current_exe!.backup" "!current_exe!" >nul 2>&1
+            if errorlevel 1 (
+                echo [Updater] 恢复备份失败
+            ) else (
+                echo [Updater] 已恢复备份文件
+            )
         )
         goto end
     )
 )
 
+echo [Updater] 文件替换成功
+
 REM 清理备份
-if exist !current_exe!.backup (
-    del /f /q !current_exe!.backup >nul 2>&1
+if exist "!current_exe!.backup" (
+    del /f /q "!current_exe!.backup" >nul 2>&1
+    echo [Updater] 已清理备份文件
 )
 
-if "!do_restart!"=="True" (
-    echo [Updater] 重启程序
-    start "" !current_exe!
+REM 验证新文件
+if exist "!current_exe!" (
+    echo [Updater] 更新完成，新文件验证成功
+    if "!do_restart!"=="True" (
+        echo [Updater] 准备重启程序
+        timeout /t 3 /nobreak > nul
+        start "" "!current_exe!"
+        echo [Updater] 程序重启命令已发送
+    )
+) else (
+    echo [Updater] 错误：新文件不存在，尝试恢复备份
+    if exist "!current_exe!.backup" (
+        move /y "!current_exe!.backup" "!current_exe!" >nul 2>&1
+        echo [Updater] 已恢复备份文件
+    )
 )
 
 :end
+echo [Updater] 更新流程结束
+timeout /t 5 /nobreak > nul
 exit /b 0
 """
 
@@ -504,11 +566,24 @@ exit /b 0
         CREATE_NO_WINDOW = 0x08000000
         creationflags = DETACHED_PROCESS | CREATE_NO_WINDOW
 
-        subprocess.Popen(['cmd', '/c', helper_path], creationflags=creationflags)
-
-        self._notify_callbacks('install_progress', '外部更新程序已启动，应用将退出以完成更新...')
-        time.sleep(0.5)
-        sys.exit(0)
+        try:
+            self._create_update_log("启动Windows更新批处理脚本")
+            subprocess.Popen(['cmd', '/c', helper_path], creationflags=creationflags)
+            
+            self._notify_callbacks('install_progress', '外部更新程序已启动，应用将退出以完成更新...')
+            self._create_update_log("外部更新程序启动成功，准备退出应用")
+            time.sleep(0.5)
+            return True
+        except Exception as e:
+            self._create_update_log(f"启动更新程序失败: {e}", "ERROR")
+            raise Exception(f"启动更新程序失败: {e}")
+        finally:
+            # 清理临时文件
+            try:
+                os.remove(helper_path)
+                self._create_update_log("已清理临时批处理文件")
+            except Exception as cleanup_e:
+                self._create_update_log(f"清理临时文件失败: {cleanup_e}", "WARNING")
     
     def _install_from_zip(self, zip_path: str, restart: bool):
         """从ZIP文件安装更新"""

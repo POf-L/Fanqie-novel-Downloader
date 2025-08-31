@@ -851,41 +851,81 @@ def create_default_cover(title, author):
         image = Image.new('RGB', (width, height), 'white')
         draw = ImageDraw.Draw(image)
 
-        try:
-            # 尝试使用系统字体
-            font_title = ImageFont.truetype("arial.ttf", 30)
-            font_author = ImageFont.truetype("arial.ttf", 20)
-        except:
-            # 如果系统字体不可用，使用默认字体
+        # 尝试多种字体，确保至少有一个可用
+        font_title = None
+        font_author = None
+        
+        # 字体优先级列表
+        font_candidates = [
+            ("arial.ttf", 30, 20),
+            ("simhei.ttf", 30, 20),  # 黑体
+            ("simsun.ttc", 30, 20),  # 宋体
+            ("msyh.ttc", 30, 20),    # 微软雅黑
+            ("dejavusans.ttf", 30, 20),  # Linux常用字体
+        ]
+        
+        for font_name, title_size, author_size in font_candidates:
+            try:
+                font_title = ImageFont.truetype(font_name, title_size)
+                font_author = ImageFont.truetype(font_name, author_size)
+                break
+            except:
+                continue
+        
+        # 如果所有字体都不可用，使用默认字体
+        if font_title is None:
             font_title = ImageFont.load_default()
             font_author = ImageFont.load_default()
 
-        # 绘制标题
-        title_bbox = draw.textbbox((0, 0), title, font=font_title)
+        # 绘制标题（限制长度避免溢出）
+        display_title = title[:20] + "..." if len(title) > 20 else title
+        title_bbox = draw.textbbox((0, 0), display_title, font=font_title)
         title_width = title_bbox[2] - title_bbox[0]
-        title_x = (width - title_width) // 2
+        title_x = max(20, (width - title_width) // 2)
         title_y = height // 3
 
-        draw.text((title_x, title_y), title, fill='black', font=font_title)
+        draw.text((title_x, title_y), display_title, fill='black', font=font_title)
 
-        # 绘制作者
-        author_bbox = draw.textbbox((0, 0), f"作者: {author}", font=font_author)
+        # 绘制作者（限制长度避免溢出）
+        display_author = f"作者: {author[:15]}{'...' if len(author) > 15 else ''}"
+        author_bbox = draw.textbbox((0, 0), display_author, font=font_author)
         author_width = author_bbox[2] - author_bbox[0]
-        author_x = (width - author_width) // 2
+        author_x = max(20, (width - author_width) // 2)
         author_y = title_y + 100
 
-        draw.text((author_x, author_y), f"作者: {author}", fill='gray', font=font_author)
+        draw.text((author_x, author_y), display_author, fill='gray', font=font_author)
 
-        # 绘制边框
+        # 绘制装饰性边框
         draw.rectangle([20, 20, width-20, height-20], outline='black', width=2)
+        
+        # 添加一些装饰性元素
+        draw.rectangle([30, 30, width-30, height-30], outline='lightgray', width=1)
+        
+        # 在底部添加生成时间
+        try:
+            time_font = ImageFont.load_default()
+            time_text = f"生成时间: {time.strftime('%Y-%m-%d')}"
+            time_bbox = draw.textbbox((0, 0), time_text, font=time_font)
+            time_width = time_bbox[2] - time_bbox[0]
+            time_x = max(20, (width - time_width) // 2)
+            time_y = height - 50
+            draw.text((time_x, time_y), time_text, fill='lightgray', font=time_font)
+        except:
+            pass
 
         # 保存到内存缓冲区
         buffer = io.BytesIO()
-        image.save(buffer, format='PNG')
+        image.save(buffer, format='PNG', optimize=True)
+        buffer.seek(0)
+        
+        with print_lock:
+            print(f"成功创建默认封面: {len(buffer.getvalue())} 字节")
+        
         return buffer.getvalue()
 
     except ImportError:
-        # 如果没有PIL库，返回None
+        with print_lock:
+            print("PIL库不可用，无法创建默认封面")
         return None
     except Exception as e:
         with print_lock:
@@ -900,24 +940,32 @@ def download_and_process_cover(cover_url, headers):
     
     try:
         # 下载封面图片
-        cover_response = requests.get(cover_url, headers=headers, timeout=15)
+        cover_response = requests.get(cover_url, headers=headers, timeout=15, verify=False)
         if cover_response.status_code != 200:
+            with print_lock:
+                print(f"封面图片下载失败，状态码: {cover_response.status_code}")
             return None, None, None
         
         # 检测图片格式和大小
         content_type = cover_response.headers.get('content-type', '')
         content_length = len(cover_response.content)
         
-        # 检查图片大小和内容（太小的可能是占位图）
-        if content_length < 1000:  # 小于1KB可能是占位图
+        # 检查图片大小（太小的可能是占位图）
+        if content_length < 500:  # 降低阈值到500字节
             with print_lock:
                 print(f"封面图片过小 ({content_length} 字节)，跳过")
             return None, None, None
 
         # 检查是否是有效的图片内容（检查文件头）
-        if not cover_response.content.startswith((b'\xff\xd8', b'\x89PNG', b'GIF8', b'RIFF', b'WEBP')):
+        content = cover_response.content
+        if not (content.startswith(b'\xff\xd8') or  # JPEG
+                content.startswith(b'\x89PNG') or   # PNG
+                content.startswith(b'GIF8') or      # GIF
+                content.startswith(b'RIFF') or      # WEBP
+                content.startswith(b'BM') or        # BMP
+                content.startswith(b'\x00\x00\x01\x00')):  # ICO
             with print_lock:
-                print(f"封面图片格式无效，跳过")
+                print(f"封面图片格式无效，内容头: {content[:8].hex()}")
             return None, None, None
         
         # 确定文件扩展名和MIME类型
@@ -933,6 +981,9 @@ def download_and_process_cover(cover_url, headers):
         elif 'gif' in content_type:
             file_ext = '.gif'
             mime_type = 'image/gif'
+        elif 'bmp' in content_type:
+            file_ext = '.bmp'
+            mime_type = 'image/bmp'
         else:
             # 尝试从URL推断格式
             if '.jpg' in cover_url or '.jpeg' in cover_url:
@@ -944,11 +995,18 @@ def download_and_process_cover(cover_url, headers):
             elif '.webp' in cover_url:
                 file_ext = '.webp'
                 mime_type = 'image/webp'
+            elif '.gif' in cover_url:
+                file_ext = '.gif'
+                mime_type = 'image/gif'
             else:
+                # 默认使用JPEG格式
                 file_ext = '.jpg'
                 mime_type = 'image/jpeg'
         
-        return cover_response.content, file_ext, mime_type
+        with print_lock:
+            print(f"封面图片下载成功: {file_ext}, {mime_type}, {content_length} 字节")
+        
+        return content, file_ext, mime_type
         
     except Exception as e:
         with print_lock:
@@ -1020,11 +1078,14 @@ def create_epub_book(name, author_name, description, chapter_results, chapters, 
                 )
                 book.add_item(cover_item)
 
-                # 设置封面
+                # 设置封面 - 使用正确的方法
                 book.set_cover(cover_filename, cover_content)
-
+                
                 # 添加封面元数据
                 book.add_metadata('DC', 'relation', 'cover-image')
+                
+                # 添加OPF封面引用
+                book.add_metadata('OPF', 'cover', 'cover-image')
 
                 with print_lock:
                     print(f"成功添加封面图片: {cover_filename}")
@@ -1051,6 +1112,7 @@ def create_epub_book(name, author_name, description, chapter_results, chapters, 
                 book.add_item(cover_item)
                 book.set_cover('default_cover.png', default_cover)
                 book.add_metadata('DC', 'relation', 'default-cover')
+                book.add_metadata('OPF', 'cover', 'default-cover')
 
                 with print_lock:
                     print("使用默认封面")
