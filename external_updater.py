@@ -98,7 +98,14 @@ def download_update_file(update_info):
         file_path = os.path.join(temp_dir, asset['name'])
 
         # 下载文件
-        response = requests.get(asset['download_url'], stream=True, timeout=30)
+        headers = {
+            'User-Agent': 'Tomato-Novel-Downloader',
+            'Accept': 'application/octet-stream'
+        }
+        token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
+        response = requests.get(asset['download_url'], headers=headers, stream=True, timeout=60)
         response.raise_for_status()
 
         total_size = int(response.headers.get('content-length', 0))
@@ -158,7 +165,7 @@ def install_update_unix(update_file):
         current_dir = os.path.dirname(current_exe)
         log_message("开始安装更新 (Unix)...")
 
-        # 如果是 ZIP 文件，解压到临时目录
+        # 如果是压缩包，解压到临时目录
         if update_file.endswith('.zip'):
             import zipfile
             temp_extract_dir = os.path.join(tempfile.gettempdir(), 'update_extract')
@@ -167,23 +174,32 @@ def install_update_unix(update_file):
             log_message("解压更新文件...")
             with zipfile.ZipFile(update_file, 'r') as zip_ref:
                 zip_ref.extractall(temp_extract_dir)
+        elif update_file.endswith('.tar.gz') or update_file.endswith('.tgz'):
+            import tarfile
+            temp_extract_dir = os.path.join(tempfile.gettempdir(), 'update_extract')
+            os.makedirs(temp_extract_dir, exist_ok=True)
+            log_message("解压tarball更新文件...")
+            with tarfile.open(update_file, 'r:gz') as tar:
+                tar.extractall(temp_extract_dir)
+        elif update_file.lower().endswith('.appimage'):
+            # AppImage 单文件直接覆盖
+            temp_extract_dir = None
+        else:
+            temp_extract_dir = None
 
-            # 查找主要可执行文件
+        update_exe = update_file
+        if temp_extract_dir:
+            # 查找主要可执行文件（使用当前可执行文件名匹配）
             exe_name = os.path.basename(current_exe)
             candidates = []
             for root, dirs, files in os.walk(temp_extract_dir):
                 for file in files:
                     if file == exe_name or exe_name in file:
                         candidates.append(os.path.join(root, file))
-
             if not candidates:
                 log_message("未找到匹配的可执行文件", "ERROR")
                 return False
-
-            # 使用第一个候选文件
             update_exe = candidates[0]
-        else:
-            update_exe = update_file
 
         # 备份当前文件
         backup_path = backup_current_exe()

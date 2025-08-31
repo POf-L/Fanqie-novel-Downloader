@@ -270,34 +270,39 @@ class AutoUpdater:
         """
         platform = sys.platform.lower()
 
-        # 在非 Windows 平台优先选择 .zip，以便使用外部 shell 脚本更新
-        if platform != 'win32':
-            for asset in assets:
-                name_lower = asset['name'].lower()
-                if name_lower.endswith('.zip'):
-                    return asset
+        # 根据平台定义优先级检查函数
+        if platform == 'win32':
+            predicates = [
+                lambda n: n.endswith('.exe') and ('win' in n or 'windows' in n),
+                lambda n: ('win' in n or 'windows' in n) and n.endswith('.zip'),
+                lambda n: n.endswith('.zip')
+            ]
+        elif platform.startswith('linux'):
+            predicates = [
+                lambda n: n.endswith(('.appimage', '.appimage')),  # AppImage优先
+                lambda n: ('linux' in n) and (n.endswith('.tar.gz') or n.endswith('.tgz')),
+                lambda n: ('linux' in n) and n.endswith('.zip'),
+                lambda n: (n.endswith('.tar.gz') or n.endswith('.tgz')),
+                lambda n: n.endswith('.zip')
+            ]
+        elif platform == 'darwin':
+            predicates = [
+                lambda n: n.endswith('.dmg'),
+                lambda n: ('mac' in n or 'darwin' in n) and n.endswith('.zip'),
+                lambda n: n.endswith('.zip')
+            ]
+        else:
+            predicates = [lambda n: n.endswith('.zip')]
 
-        # 定义平台关键字（Windows 可以优先选择 .exe）
-        platform_keywords = {
-            'win32': ['windows', 'win', '.exe'],
-            'darwin': ['macos', 'mac', 'darwin', '.dmg', '.app'],
-            'linux': ['linux', '.appimage', '.deb', '.rpm']
-        }
+        assets_by_name = [(asset, asset['name'].lower()) for asset in assets]
+        for pred in predicates:
+            for asset, lower_name in assets_by_name:
+                try:
+                    if pred(lower_name):
+                        return asset
+                except Exception:
+                    continue
 
-        keywords = platform_keywords.get(platform, [])
-
-        # 查找匹配的资源
-        for asset in assets:
-            asset_name_lower = asset['name'].lower()
-            for keyword in keywords:
-                if keyword in asset_name_lower:
-                    return asset
-
-        # 兜底：任何平台都尝试zip
-        for asset in assets:
-            if asset['name'].lower().endswith('.zip'):
-                return asset
-        
         return None
     
     def download_update(self, update_info: Dict[str, Any], 
@@ -333,7 +338,14 @@ class AutoUpdater:
             file_path = os.path.join(temp_dir, asset['name'])
             
             # 下载文件
-            response = requests.get(asset['download_url'], stream=True, timeout=30)
+            headers = {
+                'User-Agent': 'Tomato-Novel-Downloader',
+                'Accept': 'application/octet-stream'
+            }
+            token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+            if token:
+                headers['Authorization'] = f'Bearer {token}'
+            response = requests.get(asset['download_url'], headers=headers, stream=True, timeout=60)
             response.raise_for_status()
             
             self.download_total = int(response.headers.get('content-length', 0))
@@ -355,6 +367,10 @@ class AutoUpdater:
                                       if self.download_total > 0 else 0
                         })
             
+            # 简单完整性校验（如有Content-Length）
+            if self.download_total > 0 and os.path.getsize(file_path) != self.download_total:
+                raise Exception("下载文件大小与预期不一致")
+
             self._notify_callbacks('download_complete', file_path)
             return file_path
             
@@ -409,6 +425,14 @@ class AutoUpdater:
                 # ZIP压缩包
                 self._create_update_log("使用ZIP压缩包更新模式")
                 self._install_from_zip(update_file, restart)
+            elif update_file.endswith('.tar.gz') or update_file.endswith('.tgz'):
+                # tarball 压缩包（常见于Linux）
+                self._create_update_log("使用TAR.GZ压缩包更新模式")
+                self._install_from_tarball(update_file, restart)
+            elif update_file.lower().endswith(('.appimage',)):
+                # AppImage 单文件
+                self._create_update_log("使用AppImage更新模式")
+                self._install_unix_single_file(update_file, restart)
             else:
                 raise Exception(f"不支持的更新文件类型: {update_file}")
 
@@ -791,6 +815,43 @@ rm -f "$0"
 
         subprocess.Popen(['/bin/bash', script_file])
         sys.exit(0)
+
+    def _install_from_tarball(self, tar_path: str, restart: bool):
+        """从tar.gz或tgz安装更新（Unix平台）"""
+        import tarfile
+        # 解压到临时目录
+        temp_extract_dir = os.path.join(tempfile.gettempdir(), 'update_extract')
+        os.makedirs(temp_extract_dir, exist_ok=True)
+        with tarfile.open(tar_path, 'r:gz') as tar:
+            tar.extractall(temp_extract_dir)
+        # 规范化可执行文件名称
+        try:
+            current_basename = os.path.basename(sys.executable)
+            self._normalize_extracted_binary_name(temp_extract_dir, current_basename)
+        except Exception as e:
+            print(f"规范化解压文件名失败: {e}")
+        # 生成脚本
+        app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        self._create_unix_update_script(temp_extract_dir, app_dir, restart)
+
+    def _install_unix_single_file(self, file_path: str, restart: bool):
+        """安装单文件（如AppImage），通过统一脚本复制覆盖"""
+        temp_extract_dir = os.path.join(tempfile.gettempdir(), 'update_extract')
+        os.makedirs(temp_extract_dir, exist_ok=True)
+        # 重命名为当前可执行文件名
+        target_basename = os.path.basename(sys.executable)
+        target_path = os.path.join(temp_extract_dir, target_basename)
+        try:
+            if os.path.exists(target_path):
+                os.remove(target_path)
+            shutil.copy2(file_path, target_path)
+            if sys.platform != 'win32':
+                os.chmod(target_path, 0o755)
+        except Exception as e:
+            raise Exception(f"准备单文件更新失败: {e}")
+        # 生成脚本
+        app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        self._create_unix_update_script(temp_extract_dir, app_dir, restart)
 
     @staticmethod
     def check_update_status() -> Dict[str, Any]:

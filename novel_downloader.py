@@ -894,7 +894,9 @@ def create_default_cover(title, author):
 
 
 def download_and_process_cover(cover_url, headers):
-    """下载并处理封面图片"""
+    """下载并处理封面图片
+    返回(二进制内容, 扩展名, MIME类型)。尽量转换为通用的JPEG/PNG以保证兼容性。
+    """
     if not cover_url:
         return None, None, None
     
@@ -906,7 +908,8 @@ def download_and_process_cover(cover_url, headers):
         
         # 检测图片格式和大小
         content_type = cover_response.headers.get('content-type', '')
-        content_length = len(cover_response.content)
+        content_bytes = cover_response.content
+        content_length = len(content_bytes)
         
         # 检查图片大小和内容（太小的可能是占位图）
         if content_length < 1000:  # 小于1KB可能是占位图
@@ -914,41 +917,82 @@ def download_and_process_cover(cover_url, headers):
                 print(f"封面图片过小 ({content_length} 字节)，跳过")
             return None, None, None
 
-        # 检查是否是有效的图片内容（检查文件头）
-        if not cover_response.content.startswith((b'\xff\xd8', b'\x89PNG', b'GIF8', b'RIFF', b'WEBP')):
+        # 基础魔数检查
+        valid_magic = (
+            content_bytes.startswith(b'\xff\xd8') or  # JPEG
+            content_bytes.startswith(b'\x89PNG') or    # PNG
+            content_bytes.startswith(b'GIF8') or        # GIF
+            content_bytes.startswith(b'RIFF')           # WEBP/AVI容器
+        )
+        if not valid_magic:
             with print_lock:
-                print(f"封面图片格式无效，跳过")
+                print("封面图片格式无效，跳过")
             return None, None, None
-        
-        # 确定文件扩展名和MIME类型
+
+        # 映射到已知类型
+        def infer_type_from_url(url: str):
+            lower = url.lower()
+            if lower.endswith(('.jpg', '.jpeg')):
+                return '.jpg', 'image/jpeg'
+            if lower.endswith('.png'):
+                return '.png', 'image/png'
+            if lower.endswith('.webp'):
+                return '.webp', 'image/webp'
+            if lower.endswith('.gif'):
+                return '.gif', 'image/gif'
+            return '.jpg', 'image/jpeg'
+
         if 'jpeg' in content_type or 'jpg' in content_type:
-            file_ext = '.jpg'
-            mime_type = 'image/jpeg'
+            file_ext, mime_type = '.jpg', 'image/jpeg'
         elif 'png' in content_type:
-            file_ext = '.png'
-            mime_type = 'image/png'
-        elif 'webp' in content_type:
-            file_ext = '.webp'
-            mime_type = 'image/webp'
+            file_ext, mime_type = '.png', 'image/png'
         elif 'gif' in content_type:
-            file_ext = '.gif'
-            mime_type = 'image/gif'
+            file_ext, mime_type = '.gif', 'image/gif'
+        elif 'webp' in content_type or 'heic' in content_type or 'avif' in content_type:
+            # 这些格式对很多阅读器不友好，尝试转JPEG
+            file_ext, mime_type = '.webp', 'image/webp'
         else:
-            # 尝试从URL推断格式
-            if '.jpg' in cover_url or '.jpeg' in cover_url:
-                file_ext = '.jpg'
-                mime_type = 'image/jpeg'
-            elif '.png' in cover_url:
-                file_ext = '.png'
-                mime_type = 'image/png'
-            elif '.webp' in cover_url:
-                file_ext = '.webp'
-                mime_type = 'image/webp'
-            else:
-                file_ext = '.jpg'
-                mime_type = 'image/jpeg'
-        
-        return cover_response.content, file_ext, mime_type
+            file_ext, mime_type = infer_type_from_url(cover_url)
+
+        # 如为WEBP/HEIC/GIF等，尽量转换到JPEG
+        needs_convert = mime_type in ('image/webp', 'image/heic', 'image/heif', 'image/avif', 'image/gif')
+        if needs_convert:
+            try:
+                from PIL import Image
+                import io
+                # 如果是动图，取第一帧
+                img = Image.open(io.BytesIO(content_bytes))
+                if getattr(img, 'is_animated', False):
+                    try:
+                        img.seek(0)
+                    except Exception:
+                        pass
+                # 转RGB后保存为JPEG
+                img = img.convert('RGB')
+                out = io.BytesIO()
+                img.save(out, format='JPEG', quality=90)
+                content_bytes = out.getvalue()
+                file_ext, mime_type = '.jpg', 'image/jpeg'
+                with print_lock:
+                    print("封面已转换为JPEG以提高兼容性")
+            except Exception as convert_err:
+                # 转换失败则尽量回退到PNG（若源是PNG/GIF可以再试一次）
+                try:
+                    from PIL import Image
+                    import io
+                    img = Image.open(io.BytesIO(content_bytes))
+                    img = img.convert('RGB')
+                    out = io.BytesIO()
+                    img.save(out, format='PNG')
+                    content_bytes = out.getvalue()
+                    file_ext, mime_type = '.png', 'image/png'
+                    with print_lock:
+                        print("封面已转换为PNG以提高兼容性")
+                except Exception:
+                    # 无法转换则仍返回原始内容/类型，可能导致部分阅读器不显示
+                    pass
+
+        return content_bytes, file_ext, mime_type
         
     except Exception as e:
         with print_lock:
@@ -1010,22 +1054,9 @@ def create_epub_book(name, author_name, description, chapter_results, chapters, 
             # 使用新的封面处理函数
             cover_content, file_ext, mime_type = download_and_process_cover(cover_url, get_headers())
             if cover_content and file_ext and mime_type:
-                # 创建封面图片项
                 cover_filename = f'cover{file_ext}'
-                cover_item = epub.EpubItem(
-                    uid='cover-image',
-                    file_name=cover_filename,
-                    media_type=mime_type,
-                    content=cover_content
-                )
-                book.add_item(cover_item)
-
-                # 设置封面
+                # 仅调用set_cover，避免重复清单项
                 book.set_cover(cover_filename, cover_content)
-
-                # 添加封面元数据
-                book.add_metadata('DC', 'relation', 'cover-image')
-
                 with print_lock:
                     print(f"成功添加封面图片: {cover_filename}")
                 cover_added = True
@@ -1042,16 +1073,7 @@ def create_epub_book(name, author_name, description, chapter_results, chapters, 
         try:
             default_cover = create_default_cover(name, author_name)
             if default_cover:
-                cover_item = epub.EpubItem(
-                    uid='default-cover',
-                    file_name='default_cover.png',
-                    media_type='image/png',
-                    content=default_cover
-                )
-                book.add_item(cover_item)
                 book.set_cover('default_cover.png', default_cover)
-                book.add_metadata('DC', 'relation', 'default-cover')
-
                 with print_lock:
                     print("使用默认封面")
         except Exception as e:
