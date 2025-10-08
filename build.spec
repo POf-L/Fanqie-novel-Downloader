@@ -7,7 +7,9 @@ from build_config import get_hidden_imports
 sys.setrecursionlimit(sys.getrecursionlimit() * 5)
 
 # Ensure PyInstaller searches the project root for local modules
-project_root = os.path.dirname(os.path.abspath(sys.argv[0]))
+# Use __file__ to get the directory where build.spec is located
+spec_root = os.path.dirname(os.path.abspath(SPECPATH))
+project_root = spec_root
 
 block_cipher = None
 
@@ -22,10 +24,7 @@ a = Analysis(
         # 确保Pillow的二进制文件被包含
     ],
     datas=[
-        ('version.py', '.'),
-        ('updater.py', '.'),
-        ('external_updater.py', '.'),
-        ('config.py', '.'),
+        # Python 模块应该通过 hiddenimports 打包，不要放在 datas 中
     ] + fake_useragent_datas,
     hiddenimports=(get_hidden_imports() + ['updater', 'external_updater', 'version']),  # 自动从 requirements.txt 读取依赖，并强制包含本地更新模块
     hookspath=[],
