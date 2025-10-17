@@ -13,6 +13,7 @@ import json
 import platform
 import subprocess
 import shutil
+import stat
 from pathlib import Path
 
 # 延迟导入 requests，避免模块导入失败
@@ -74,6 +75,9 @@ def wait_for_process_exit(pid, timeout=30):
                 process = kernel32.OpenProcess(SYNCHRONIZE, 0, pid)
                 if process == 0:
                     log_message("主程序已退出")
+                    # Windows需要额外延迟以确保文件锁完全释放
+                    log_message("等待文件锁释放...")
+                    time.sleep(2)
                     return True
                 kernel32.CloseHandle(process)
             else:
@@ -81,11 +85,16 @@ def wait_for_process_exit(pid, timeout=30):
                 os.kill(pid, 0)
         except (OSError, ProcessLookupError):
             log_message("主程序已退出")
+            # 额外延迟以确保所有资源被释放
+            log_message("等待文件锁释放...")
+            time.sleep(1)
             return True
         
         time.sleep(0.5)
     
     log_message(f"等待超时，继续执行更新", "WARNING")
+    # 即使超时也等待一下，给文件锁释放的机会
+    time.sleep(2)
     return False
 
 
@@ -133,6 +142,43 @@ def cleanup_backup(backup_path):
             log_message(f"清理备份文件: {backup_path}")
         except Exception as e:
             log_message(f"清理备份文件失败: {e}", "WARNING")
+
+
+def is_file_locked(filepath):
+    """检测文件是否被锁定（Windows专用）"""
+    if platform.system() != 'Windows':
+        return False
+    
+    if not os.path.exists(filepath):
+        return False
+    
+    try:
+        # 尝试以独占写入模式打开文件
+        with open(filepath, 'a') as f:
+            pass
+        return False
+    except (IOError, OSError):
+        return True
+
+
+def wait_for_file_unlock(filepath, timeout=10):
+    """等待文件解锁"""
+    if not os.path.exists(filepath):
+        return True
+    
+    log_message(f"检查文件锁状态: {filepath}")
+    
+    for i in range(timeout * 2):  # 每0.5秒检查一次
+        if not is_file_locked(filepath):
+            log_message("文件已解锁")
+            return True
+        
+        if i == 0:
+            log_message("文件被锁定，等待释放...")
+        time.sleep(0.5)
+    
+    log_message("文件锁等待超时", "WARNING")
+    return False
 
 
 class MultiThreadDownloader:
@@ -303,6 +349,7 @@ def download_update_file(update_info):
 
 def install_update_windows(update_file):
     """Windows 平台安装更新"""
+    backup_path = None
     try:
         current_exe = get_current_exe_path()
         log_message("开始安装更新 (Windows)...")
@@ -313,42 +360,90 @@ def install_update_windows(update_file):
             log_message("创建备份失败", "ERROR")
             return False
 
-        # 等待进程释放文件锁并替换文件（带重试）
+        # 等待文件解锁
+        if not wait_for_file_unlock(current_exe, timeout=15):
+            log_message("文件锁等待超时，尝试强制替换", "WARNING")
+
+        # 尝试去除只读属性
+        try:
+            os.chmod(current_exe, stat.S_IWRITE | stat.S_IREAD)
+        except Exception:
+            pass
+
+        # 替换文件（多种策略，带指数退避重试）
         log_message(f"替换文件: {current_exe}")
-        max_retries = 30  # 最长约15秒
+        max_retries = 30
+        success = False
+        
         for i in range(max_retries):
             try:
+                # 策略1: 直接复制覆盖
                 shutil.copy2(update_file, current_exe)
+                success = True
                 break
+            except PermissionError as e:
+                if i == 0:
+                    log_message(f"文件被锁定，等待释放后重试: {e}")
+                # 指数退避，但最大不超过2秒
+                wait_time = min(0.5 * (1.5 ** (i // 5)), 2.0)
+                time.sleep(wait_time)
             except Exception as e:
                 if i == 0:
-                    log_message(f"文件占用，等待释放后重试: {e}")
+                    log_message(f"文件操作失败，重试中: {e}")
                 time.sleep(0.5)
-        else:
-            # 尝试删除-复制策略
+        
+        if not success:
+            # 策略2: 删除后复制
+            log_message("尝试删除-复制策略...")
             try:
-                os.remove(current_exe)
-                time.sleep(0.2)
+                # 尝试移除只读属性
+                try:
+                    os.chmod(current_exe, stat.S_IWRITE)
+                except Exception:
+                    pass
+                
+                # 删除原文件
+                for attempt in range(5):
+                    try:
+                        os.remove(current_exe)
+                        break
+                    except Exception as e:
+                        if attempt == 4:
+                            raise
+                        time.sleep(0.5)
+                
+                # 等待一下确保删除完成
+                time.sleep(0.5)
+                
+                # 复制新文件
                 shutil.copy2(update_file, current_exe)
+                success = True
             except Exception as e2:
-                log_message(f"替换失败: {e2}", "ERROR")
-                # 恢复备份
-                restore_backup(backup_path)
-                return False
-
-        log_message("更新安装成功")
-        return True
+                log_message(f"删除-复制策略失败: {e2}", "ERROR")
+        
+        if success:
+            log_message("更新安装成功")
+            # 清理备份
+            cleanup_backup(backup_path)
+            return True
+        else:
+            log_message("所有替换策略均失败", "ERROR")
+            # 恢复备份
+            restore_backup(backup_path)
+            return False
 
     except Exception as e:
         log_message(f"安装失败: {e}", "ERROR")
         # 尝试恢复备份
-        if 'backup_path' in locals() and backup_path:
+        if backup_path:
             restore_backup(backup_path)
         return False
 
 
 def install_update_unix(update_file):
     """Unix 平台安装更新"""
+    backup_path = None
+    temp_extract_dir = None
     try:
         current_exe = get_current_exe_path()
         current_dir = os.path.dirname(current_exe)
@@ -396,21 +491,52 @@ def install_update_unix(update_file):
             log_message("创建备份失败", "ERROR")
             return False
 
-        # 替换文件
+        # 替换文件（带重试机制）
         log_message(f"替换文件: {current_exe}")
-        shutil.copy2(update_exe, current_exe)
+        success = False
+        
+        for attempt in range(5):
+            try:
+                shutil.copy2(update_exe, current_exe)
+                success = True
+                break
+            except Exception as e:
+                if attempt == 0:
+                    log_message(f"文件替换失败，重试中: {e}")
+                time.sleep(0.5)
+        
+        if not success:
+            log_message("文件替换失败", "ERROR")
+            restore_backup(backup_path)
+            return False
 
         # 设置可执行权限
-        os.chmod(current_exe, 0o755)
+        try:
+            os.chmod(current_exe, 0o755)
+        except Exception as e:
+            log_message(f"设置可执行权限失败: {e}", "WARNING")
 
         log_message("更新安装成功")
+        # 清理备份和临时文件
+        cleanup_backup(backup_path)
+        if temp_extract_dir and os.path.exists(temp_extract_dir):
+            try:
+                shutil.rmtree(temp_extract_dir)
+            except Exception:
+                pass
         return True
 
     except Exception as e:
         log_message(f"安装失败: {e}", "ERROR")
         # 尝试恢复备份
-        if 'backup_path' in locals() and backup_path:
+        if backup_path:
             restore_backup(backup_path)
+        # 清理临时目录
+        if temp_extract_dir and os.path.exists(temp_extract_dir):
+            try:
+                shutil.rmtree(temp_extract_dir)
+            except Exception:
+                pass
         return False
 
 

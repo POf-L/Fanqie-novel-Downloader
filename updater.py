@@ -55,10 +55,10 @@ def _get_packaging_version():
     return _packaging_version
 
 try:
-	# 引入构建元信息，避免与packaging.version冲突
-	import config as app_meta
+    # 引入构建元信息，避免与packaging.version冲突
+    import config as app_meta
 except Exception:
-	app_meta = None
+    app_meta = None
 
 
 def is_official_release_build() -> bool:
@@ -291,6 +291,36 @@ class AutoUpdater:
 
         # 同时输出到控制台
         print(log_message)
+    
+    def _terminate_current_process(self, exit_code: int = 0, delay: float = 0.5) -> None:
+        """强制结束当前进程，尽可能释放文件锁。"""
+        try:
+            if delay > 0:
+                time.sleep(delay)
+        except Exception:
+            pass
+
+        # 刷新输出
+        for stream in (getattr(sys, 'stdout', None), getattr(sys, 'stderr', None)):
+            try:
+                if stream:
+                    stream.flush()
+            except Exception:
+                pass
+
+        # 尝试退出Tk主循环，避免GUI阻塞
+        try:
+            import tkinter  # type: ignore
+            root = getattr(tkinter, "_default_root", None)
+            if root is not None:
+                try:
+                    root.quit()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        os._exit(exit_code)
     
     def check_for_updates(self, force: bool = False) -> Optional[Dict[str, Any]]:
         """
@@ -615,8 +645,7 @@ exit /b 0
         
         # 通知并退出
         self._notify_callbacks('install_progress', '外部安装程序已启动，应用将退出以完成更新...')
-        time.sleep(0.5)
-        sys.exit(0)
+        self._terminate_current_process(delay=0.5)
     
     def _start_force_update(self, update_info: Dict[str, Any]) -> None:
         """启动强制更新流程：在外部脚本中进行下载与覆盖，当前进程只负责启动与退出。"""
@@ -631,16 +660,19 @@ exit /b 0
             except Exception:
                 target_exe = sys.executable
 
+            # 获取当前进程PID
+            current_pid = os.getpid()
+
             # 准备外部更新脚本
             if getattr(sys, 'frozen', False):
                 # 打包后的情况：创建一个独立的Python脚本来执行更新
-                self._create_external_updater_script(update_info_json, target_exe)
+                self._create_external_updater_script(update_info_json, target_exe, current_pid)
             else:
                 # 源码运行：直接调用 Python 执行外部更新器
                 import external_updater
                 script_path = os.path.abspath(external_updater.__file__)
                 # 传递主程序PID作为第三个参数
-                args = [sys.executable, script_path, update_info_json, target_exe, str(os.getpid())]
+                args = [sys.executable, script_path, update_info_json, target_exe, str(current_pid)]
                 
                 if sys.platform == 'win32':
                     # 不使用CREATE_NO_WINDOW，让用户能看到更新过程
@@ -652,19 +684,27 @@ exit /b 0
 
             # 通知并退出当前应用，交由外部脚本处理
             self._notify_callbacks('install_progress', '外部更新程序已启动，应用将退出以完成更新...')
-            time.sleep(0.5)
-            sys.exit(0)
+            
+            # 复位状态标记
+            try:
+                setattr(self, '_force_update_in_progress', False)
+            except Exception:
+                pass
+            
+            # 使用安全退出方法
+            self._terminate_current_process(delay=1.0)
         except Exception as e:
             self._notify_callbacks('force_update_error', str(e))
             print(f"启动外部更新失败: {e}")
-        finally:
             try:
                 setattr(self, '_force_update_in_progress', False)
             except Exception:
                 pass
 
-    def _create_external_updater_script(self, update_info_json: str, target_exe: str):
+    def _create_external_updater_script(self, update_info_json: str, target_exe: str, current_pid: int = None):
         """创建并运行外部更新脚本（用于打包后的exe）"""
+        if current_pid is None:
+            current_pid = os.getpid()
         temp_dir = tempfile.gettempdir()
         
         # 创建Python更新脚本
@@ -851,7 +891,7 @@ if not defined PYTHON_CMD (
     goto direct_update
 ) else (
     echo 使用Python执行更新
-    !PYTHON_CMD! "{updater_script}" {json.dumps(update_info_json)} "{target_exe}" {os.getpid()}
+    !PYTHON_CMD! "{updater_script}" {json.dumps(update_info_json)} "{target_exe}" {current_pid}
     goto end
 )
 
@@ -977,8 +1017,7 @@ exit /b 0
             subprocess.Popen(['cmd', '/c', helper_path], creationflags=creationflags)
             
             self._notify_callbacks('install_progress', '更新程序已启动，应用将退出...')
-            time.sleep(0.5)
-            sys.exit(0)
+            self._terminate_current_process(delay=0.5)
     
     def _install_from_zip(self, zip_path: str, restart: bool):
         """从ZIP文件安装更新"""
@@ -1188,10 +1227,9 @@ if exist "%~f0" (
 
         # 通知用户程序即将退出
         self._notify_callbacks('install_progress', '程序即将退出以完成更新...')
-        time.sleep(0.5)  # 给UI一点时间显示消息
 
         subprocess.Popen(script_file, shell=True)
-        sys.exit(0)
+        self._terminate_current_process(delay=0.5)
     
     def _create_unix_update_script(self, source_dir: str, target_dir: str, restart: bool):
         """创建Unix更新脚本"""
@@ -1257,10 +1295,9 @@ rm -f "$0"
 
         # 通知用户程序即将退出
         self._notify_callbacks('install_progress', '程序即将退出以完成更新...')
-        time.sleep(0.5)  # 给UI一点时间显示消息
 
         subprocess.Popen(['/bin/bash', script_file])
-        sys.exit(0)
+        self._terminate_current_process(delay=0.5)
 
     def _install_from_tarball(self, tar_path: str, restart: bool):
         """从tar.gz或tgz安装更新（Unix平台）"""

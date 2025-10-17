@@ -3118,6 +3118,9 @@ API数量: {saved_api_count}个
                 msg += f"\n\n更新内容:\n{body[:800]}"
             if messagebox.askyesno("发现新版本", msg):
                 if hasattr(self, 'updater') and self.updater:
+                    # 保存配置
+                    self.save_config()
+                    # 开始更新流程（内部会自动退出程序）
                     self.updater._start_force_update(update_info)
         except Exception as e:
             self.log(f"提示更新失败: {e}")
