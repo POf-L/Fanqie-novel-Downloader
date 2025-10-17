@@ -87,7 +87,11 @@ class UpdateChecker:
         """
         self.github_repo = github_repo
         self.current_version = current_version
-        self.api_base = "https://api.githubfast.com"
+        self.api_bases = [
+            "https://api.github.com",
+            "https://api.githubfast.com",
+            "https://gh-api.p-l.workers.dev",
+        ]
         self.check_interval = 3600  # 检查间隔（秒）
         self.last_check_time = None
         self.cached_release = None
@@ -111,19 +115,32 @@ class UpdateChecker:
             # 延迟导入 requests
             requests = _get_requests()
             
-            url = f"{self.api_base}/repos/{self.github_repo}/releases/latest"
-            headers = {
-                'Accept': 'application/vnd.github.v3+json',
-                'User-Agent': 'Tomato-Novel-Downloader'
-            }
-            token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
-            if token:
-                headers['Authorization'] = f'Bearer {token}'
+            release_data = None
+            last_error = None
             
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
+            for api_base in self.api_bases:
+                try:
+                    url = f"{api_base}/repos/{self.github_repo}/releases/latest"
+                    headers = {
+                        'Accept': 'application/vnd.github.v3+json',
+                        'User-Agent': 'Tomato-Novel-Downloader'
+                    }
+                    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+                    if token:
+                        headers['Authorization'] = f'Bearer {token}'
+                    
+                    response = requests.get(url, headers=headers, timeout=10)
+                    response.raise_for_status()
+                    
+                    release_data = response.json()
+                    print(f"成功从 {api_base} 获取更新信息")
+                    break
+                except Exception as e:
+                    last_error = e
+                    print(f"从 {api_base} 检查更新失败: {e}")
             
-            release_data = response.json()
+            if not release_data:
+                raise last_error or Exception("所有API端点均无法获取更新")
             
             # 解析版本信息
             release_info = {
