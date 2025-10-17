@@ -55,10 +55,10 @@ def _get_packaging_version():
     return _packaging_version
 
 try:
-	# 引入构建元信息，避免与packaging.version冲突
-	import config as app_meta
+    # 引入构建元信息，避免与packaging.version冲突
+    import config as app_meta
 except Exception:
-	app_meta = None
+    app_meta = None
 
 
 def is_official_release_build() -> bool:
@@ -87,7 +87,7 @@ class UpdateChecker:
         """
         self.github_repo = github_repo
         self.current_version = current_version
-        self.api_base = "https://api.github.com"
+        self.api_base = "https://api.githubfast.com"
         self.check_interval = 3600  # 检查间隔（秒）
         self.last_check_time = None
         self.cached_release = None
