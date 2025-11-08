@@ -357,8 +357,20 @@ class APIManager:
             # 静默失败，避免刷屏
             return False
 
-# 全局API管理器实例
-api_manager = APIManager()
+# 全局API管理器实例（延迟初始化）
+api_manager = None
+
+def get_api_manager():
+    """获取API管理器实例，延迟初始化"""
+    global api_manager
+    if api_manager is None:
+        try:
+            api_manager = APIManager()
+        except Exception as e:
+            with print_lock:
+                print(f"[API] API管理器初始化失败: {str(e)}")
+            return None
+    return api_manager
 
 class TomatoAPI:
     """对接 cenguigui 番茄 API 的同步客户端"""
@@ -743,10 +755,20 @@ class TomatoAPI:
             return None
 
 
-# 全局 Tomato API 实例
+# 全局 Tomato API 实例（延迟初始化）
+tomato_api = None
 
-
-tomato_api = TomatoAPI()
+def get_tomato_api():
+    """获取Tomato API实例，延迟初始化"""
+    global tomato_api
+    if tomato_api is None:
+        try:
+            tomato_api = TomatoAPI()
+        except Exception as e:
+            with print_lock:
+                print(f"[API] Tomato API初始化失败: {str(e)}")
+            return None
+    return tomato_api
 
 class AsyncAPIManager:
     """异步API管理器，使用 aiohttp - 带速率限制版"""
@@ -846,8 +868,20 @@ class AsyncAPIManager:
         except:
             pass  # 忽略预热失败
 
-# 全局异步API管理器实例
-async_api_manager = AsyncAPIManager()
+# 全局异步API管理器实例（延迟初始化）
+async_api_manager = None
+
+def get_async_api_manager():
+    """获取异步API管理器实例，延迟初始化"""
+    global async_api_manager
+    if async_api_manager is None:
+        try:
+            async_api_manager = AsyncAPIManager()
+        except Exception as e:
+            with print_lock:
+                print(f"[API] 异步API管理器初始化失败: {str(e)}")
+            return None
+    return async_api_manager
 
 class AsyncTomatoAPI:
     """对接 cenguigui 番茄 API 的异步客户端（仅实现批量正文）"""
@@ -1019,7 +1053,10 @@ def down_text(chapter_id, headers, book_id=None):
     """下载章节内容 - 使用新API"""
     try:
         # 使用新API获取章节内容
-        chapter_data = api_manager.get_chapter_content(chapter_id)
+        manager = get_api_manager()
+        if manager is None:
+            return None
+        chapter_data = manager.get_chapter_content(chapter_id)
         
         if chapter_data:
             content = chapter_data.get("content", "")
@@ -1044,7 +1081,10 @@ def down_text(chapter_id, headers, book_id=None):
 def get_chapters_from_api(book_id, headers):
     """从新番茄API获取章节列表（优先 all_items.php 回退 catalog.php）"""
     try:
-        items = tomato_api.get_all_items(book_id)
+        api = get_tomato_api()
+        if api is None:
+            return None
+        items = api.get_all_items(book_id)
         if not items:
             with print_lock:
                 print("无法获取章节列表")
@@ -1076,7 +1116,10 @@ def get_book_info(book_id, headers, gui_callback=None):
 
     try:
         # 优先使用 cenguigui API 获取书籍详情
-        book_details = tomato_api.get_book_detail(book_id)
+        api = get_tomato_api()
+        if api is None:
+            return None
+        book_details = api.get_book_detail(book_id)
         
         if book_details:
             # 从新API获取书籍信息
@@ -1799,7 +1842,10 @@ def download_chapters_in_batches(book_id, chapters_to_download, chapter_results,
         current_batch = start // batch_size + 1
         item_ids = [ch['id'] for ch in batch]
 
-        results = tomato_api.get_multi_content(book_id, item_ids) or []
+        api = get_tomato_api()
+        if api is None:
+            return []
+        results = api.get_multi_content(book_id, item_ids) or []
         result_map = {str(item.get('item_id', '')).strip(): item for item in results if item}
 
         if not result_map:
@@ -1846,7 +1892,10 @@ def download_chapters_in_batches(book_id, chapters_to_download, chapter_results,
 
         for ch in failed_chapters:
             try:
-                data = tomato_api.get_content(ch['id'])
+                api = get_tomato_api()
+                if api is None:
+                    continue
+                data = api.get_content(ch['id'])
                 if data and data.get('content'):
                     processed = process_chapter_content(data.get('content', ''))
                     chapter_results[ch['index']] = {
@@ -1883,7 +1932,10 @@ async def download_single_chapter_async(item_id: str) -> Optional[Dict]:
     try:
         # 使用异步包装同步调用
         loop = asyncio.get_event_loop()
-        data = await loop.run_in_executor(None, tomato_api.get_content, item_id)
+        api = get_tomato_api()
+        if api is None:
+            return None
+        data = await loop.run_in_executor(None, api.get_content, item_id)
         return data
     except Exception:
         return None
@@ -2017,7 +2069,10 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
         # 获取别名信息（沿用番茄API详情）
         original_name = None
         try:
-            details_for_alias = tomato_api.get_book_detail(book_id)
+            api = get_tomato_api()
+            if api is None:
+                return None
+            details_for_alias = api.get_book_detail(book_id)
             if details_for_alias:
                 original_name = details_for_alias.get("original_book_name", name)
         except Exception:
@@ -2109,7 +2164,8 @@ Github：https://github.com/POf-L/Fanqie-novel-Downloader
 ------------------------------------------""")
 
     print("正在测试API连接...")
-    if not api_manager.test_connection():
+    manager = get_api_manager()
+    if manager is None or not manager.test_connection():
         print("API连接失败，请检查网络连接！")
         return
     
@@ -2155,12 +2211,20 @@ class NovelDownloaderAPI:
         # 优先测试番茄API连接，失败则回退测试旧聚合API
         ok = False
         try:
-            ok = tomato_api.test_connection()
+            api = get_tomato_api()
+            if api:
+                ok = api.test_connection()
+            else:
+                ok = False
         except Exception:
             ok = False
         if not ok:
             try:
-                ok = api_manager.test_connection()
+                manager = get_api_manager()
+                if manager:
+                    ok = manager.test_connection()
+                else:
+                    ok = False
             except Exception:
                 ok = False
         if self.gui_verification_callback and len(inspect.signature(self.gui_verification_callback).parameters) > 1:
@@ -2170,7 +2234,10 @@ class NovelDownloaderAPI:
     def search_novels(self, keyword, offset=0, tab_type=1):
         """搜索小说 - 接入 cenguigui 番茄 API"""
         try:
-            search_results = tomato_api.search(keyword, offset=offset or 0)
+            api = get_tomato_api()
+            if api is None:
+                return None
+            search_results = api.search(keyword, offset=offset or 0)
             if search_results:
                 items = []
                 books = search_results.get("books", [])

@@ -108,13 +108,19 @@ class ModernNovelDownloaderGUI:
             
             # 加载 novel_downloader 模块
             import novel_downloader
-            from novel_downloader import NovelDownloaderAPI, api_manager, async_api_manager
+            from novel_downloader import NovelDownloaderAPI, get_api_manager, get_async_api_manager
             
             # 保存到实例变量
             self.novel_downloader = novel_downloader
             self.NovelDownloaderAPI = NovelDownloaderAPI
-            self.api_manager = api_manager
-            self.async_api_manager = async_api_manager
+            self.api_manager = get_api_manager()
+            self.async_api_manager = get_async_api_manager()
+            
+            # 如果API管理器初始化失败，显示警告但不阻止程序启动
+            if self.api_manager is None:
+                self.log("⚠ API管理器初始化失败，部分功能可能不可用")
+            if self.async_api_manager is None:
+                self.log("⚠ 异步API管理器初始化失败，批量下载功能可能不可用")
             
             load_time = time.time() - start_time
             self.modules_loaded = True

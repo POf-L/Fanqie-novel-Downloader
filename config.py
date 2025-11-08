@@ -184,7 +184,7 @@ _remote_config_manager = RemoteConfigManager()
 
 # ===================== 全局配置 =====================
 
-# 基础配置（仅包含运行参数，不包含API配置）
+# 基础配置（包含运行参数和备用API配置）
 _BASE_CONFIG = {
     "max_workers": 2,
     "max_retries": 3,
@@ -198,7 +198,19 @@ _BASE_CONFIG = {
     "api_rate_limit": 5,
     "rate_limit_window": 1.0,
     "enable_remote_config": True,  # 是否启用远程配置
-    "remote_config_timeout": 10    # 远程配置加载超时（秒）
+    "remote_config_timeout": 10,    # 远程配置加载超时（秒）
+    # 备用API配置（当远程配置无法获取时使用）
+    "api_base_url": "https://api-return.cflin.ddns-ip.net/",
+    "api_endpoint": "json-api/getChapterContent",
+    "tomato_api_base": "https://fanqienovel.com/",
+    "tomato_endpoints": {
+        "search": "api/reader/search",
+        "detail": "api/reader/directory/detail",
+        "book": "api/reader/directory/detail",
+        "content": "api/reader/novel/content",
+        "catalog": "api/reader/directory/list",
+        "all_items": "api/reader/directory/all_items"
+    }
 }
 
 # 全局配置（将在初始化时尝试从远程加载）
@@ -206,37 +218,51 @@ CONFIG = _BASE_CONFIG.copy()
 
 print_lock = threading.Lock()
 
-# 从远程加载配置（必须成功）
+# 从远程加载配置（失败时使用备用配置）
 def _load_remote_config():
-    """从远程加载配置，失败时抛出异常"""
+    """从远程加载配置，失败时使用备用配置"""
     if not CONFIG.get("enable_remote_config", True):
-        raise RuntimeError("远程配置已禁用，但本地无API配置可用")
+        with print_lock:
+            print("[配置] 远程配置已禁用，使用本地备用配置")
+        return
     
     with print_lock:
         print("[配置] 正在从远程服务器获取API配置...")
     
     try:
-        # 使用严格模式获取远程配置
+        # 使用非严格模式获取远程配置
         timeout = CONFIG.get("remote_config_timeout", 10)
-        remote_data = _remote_config_manager.fetch_remote_config(timeout=timeout, strict=True)
+        remote_data = _remote_config_manager.fetch_remote_config(timeout=timeout, strict=False)
         
-        # 合并配置
-        merged_config = _remote_config_manager.merge_config(CONFIG, remote_data)
-        config_info = _remote_config_manager.get_config_info(remote_data)
-        
-        # 更新全局配置
-        CONFIG.update(merged_config)
-        
-        with print_lock:
-            print(f"[配置] ✓ {config_info}")
+        if remote_data:
+            # 合并配置
+            merged_config = _remote_config_manager.merge_config(CONFIG, remote_data)
+            config_info = _remote_config_manager.get_config_info(remote_data)
+            
+            # 更新全局配置
+            CONFIG.update(merged_config)
+            
+            with print_lock:
+                print(f"[配置] ✓ {config_info}")
+        else:
+            with print_lock:
+                print("[配置] ⚠ 无法获取远程配置，使用本地备用配置")
+                print("[配置] 备用API地址: " + CONFIG.get("api_base_url", "未配置"))
             
     except Exception as e:
         with print_lock:
-            print(f"[配置] ✗ 远程配置加载失败: {str(e)}")
-        raise RuntimeError(f"无法获取远程API配置，程序无法启动: {str(e)}")
+            print(f"[配置] ⚠ 远程配置加载失败: {str(e)}")
+            print("[配置] 使用本地备用配置")
+            print("[配置] 备用API地址: " + CONFIG.get("api_base_url", "未配置"))
 
-# 初始化时加载远程配置
-_load_remote_config()
+# 初始化时加载远程配置（使用try-catch避免导入失败）
+try:
+    _load_remote_config()
+except Exception as e:
+    with print_lock:
+        print(f"[配置] ⚠ 配置加载异常: {str(e)}")
+        print("[配置] 使用本地备用配置继续启动")
+        print("[配置] 备用API地址: " + CONFIG.get("api_base_url", "未配置"))
 
 _UA_SINGLETON = None
 _UA_LOCK = threading.Lock()
