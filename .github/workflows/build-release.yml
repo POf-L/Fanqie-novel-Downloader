@@ -1,8 +1,12 @@
-name: Build Release and Debug
+name: Build and Release
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -160,7 +164,7 @@ jobs:
 
   release:
     name: Create Release
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
     needs: [version, build]
     runs-on: ubuntu-latest
     
@@ -180,13 +184,28 @@ jobs:
           ls -lh release/
         shell: bash
 
+      - name: Determine release version
+        id: release_version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            # 使用标签名称（去掉 refs/tags/ 前缀）
+            VERSION="${{ github.ref_name }}"
+            echo "使用标签版本: $VERSION"
+          else
+            # 使用自动生成的版本号
+            VERSION="v${{ needs.version.outputs.version }}"
+            echo "使用自动版本: $VERSION"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.version.outputs.version }}
-          name: TomatoNovelDownloader v${{ needs.version.outputs.version }}
+          tag_name: ${{ steps.release_version.outputs.version }}
+          name: TomatoNovelDownloader ${{ steps.release_version.outputs.version }}
           body: |
-            ## 📦 Release ${{ needs.version.outputs.version }}
+            ## 📦 Release ${{ steps.release_version.outputs.version }}
             
             ### 提交信息
             ${{ github.event.head_commit.message }}
