@@ -8,8 +8,9 @@ import requests
 import webbrowser
 from PIL import Image, ImageTk
 from io import BytesIO
-from novel_downloader import NovelDownloaderAPI, api_manager, async_api_manager
-import novel_downloader
+# novel_downloader 将在后台异步加载，避免阻塞界面启动
+# from novel_downloader import NovelDownloaderAPI, api_manager, async_api_manager
+# import novel_downloader
 from ebooklib import epub
 from config import __version__, __github_repo__
 import sys
@@ -56,6 +57,13 @@ class ModernNovelDownloaderGUI:
         self.search_results_data = []  # 存储搜索结果数据
         self.cover_images = {}  # 存储封面图片，防止被垃圾回收
         
+        # 模块加载状态
+        self.modules_loaded = False
+        self.novel_downloader = None
+        self.NovelDownloaderAPI = None
+        self.api_manager = None
+        self.async_api_manager = None
+        
         # 性能优化：限制并发下载
         self.max_concurrent_downloads = 2  # 限制同时下载的封面数
         self.download_semaphore = threading.Semaphore(self.max_concurrent_downloads)
@@ -85,12 +93,74 @@ class ModernNovelDownloaderGUI:
         # 创建UI
         self.create_widgets()
         
-        # 检查已有的验证状态
-        self.check_existing_verification()
-
-
+        # 在后台异步加载重型模块
+        self.log("🔄 正在后台加载核心模块，请稍候...")
+        threading.Thread(target=self._load_modules_async, daemon=True).start()
+        
         # 禁用启动时的API测试，避免启动卡顿
         # self.root.after(1000, self._test_api_connection_at_startup)
+    
+    def _load_modules_async(self):
+        """在后台线程中加载重型模块"""
+        try:
+            import time
+            start_time = time.time()
+            
+            # 加载 novel_downloader 模块
+            import novel_downloader
+            from novel_downloader import NovelDownloaderAPI, api_manager, async_api_manager
+            
+            # 保存到实例变量
+            self.novel_downloader = novel_downloader
+            self.NovelDownloaderAPI = NovelDownloaderAPI
+            self.api_manager = api_manager
+            self.async_api_manager = async_api_manager
+            
+            load_time = time.time() - start_time
+            self.modules_loaded = True
+            
+            # 在主线程中更新UI
+            self.root.after(0, lambda: self._on_modules_loaded(load_time))
+            
+        except Exception as e:
+            # 加载失败，在主线程中显示错误
+            self.root.after(0, lambda: self._on_modules_load_failed(str(e)))
+    
+    def _on_modules_loaded(self, load_time):
+        """模块加载完成后的回调（在主线程中执行）"""
+        self.log(f"✅ 核心模块加载完成！耗时: {load_time:.2f}秒")
+        self.progress_info.config(text="准备就绪", fg=self.colors['success'])
+        
+        # 启用所有功能按钮
+        self._enable_functions()
+        
+        # 检查已有的验证状态
+        self.check_existing_verification()
+    
+    def _on_modules_load_failed(self, error_msg):
+        """模块加载失败的回调（在主线程中执行）"""
+        self.log(f"❌ 核心模块加载失败: {error_msg}")
+        self.progress_info.config(text="模块加载失败", fg=self.colors['error'])
+        messagebox.showerror(
+            "启动错误",
+            f"无法加载核心模块：\n{error_msg}\n\n请检查依赖是否安装完整。"
+        )
+    
+    def _disable_functions(self):
+        """禁用需要 novel_downloader 模块的功能"""
+        # 将在 create_download_tab 后调用，此时按钮可能还未创建
+        # 所以需要检查属性是否存在
+        if hasattr(self, 'download_btn'):
+            self.download_btn.config(state=tk.DISABLED)
+        if hasattr(self, 'clear_btn'):
+            self.clear_btn.config(state=tk.DISABLED)
+    
+    def _enable_functions(self):
+        """启用需要 novel_downloader 模块的功能"""
+        if hasattr(self, 'download_btn'):
+            self.download_btn.config(state=tk.NORMAL)
+        if hasattr(self, 'clear_btn'):
+            self.clear_btn.config(state=tk.NORMAL)
     
     def setup_fonts(self):
         """设置字体"""
@@ -390,12 +460,16 @@ class ModernNovelDownloaderGUI:
                                               self.start_download,
                                               self.colors['success'])
         self.download_btn.pack(side=tk.LEFT, padx=(0, 10))
+        # 初始禁用，等待模块加载完成
+        self.download_btn.config(state=tk.DISABLED)
         
         self.clear_btn = self.create_button(button_frame, 
                                            "🧹 清理设置", 
                                            self.clear_settings,
                                            self.colors['warning'])
         self.clear_btn.pack(side=tk.LEFT)
+        # 初始禁用，等待模块加载完成
+        self.clear_btn.config(state=tk.DISABLED)
         
         # 进度卡片
         progress_card = self.create_card(main_container, "📈 下载进度")
@@ -1467,6 +1541,10 @@ class ModernNovelDownloaderGUI:
     
     def start_download(self):
         """开始下载 - 先显示章节选择对话框"""
+        if not self.modules_loaded:
+            messagebox.showwarning("请稍候", "核心模块正在加载中，请稍候片刻...")
+            return
+        
         if self.is_downloading:
             return
             
@@ -1494,7 +1572,7 @@ class ModernNovelDownloaderGUI:
             # api_manager 已经在文件开头导入
             
             # 获取章节列表
-            chapters = api_manager.get_chapter_list(book_id)
+            chapters = self.api_manager.get_chapter_list(book_id)
             
             if not chapters:
                 self.root.after(0, lambda: messagebox.showerror("错误", "无法获取章节列表"))
@@ -1698,7 +1776,7 @@ class ModernNovelDownloaderGUI:
         try:
             # 检查API连接
             # api_manager 已经在文件开头导入
-            if not api_manager.test_connection():
+            if not self.api_manager.test_connection():
                 # API连接失败
                 self.root.after(0, lambda: messagebox.showerror(
                     "API未验证",
@@ -2100,6 +2178,9 @@ class ModernNovelDownloaderGUI:
     
     def initialize_api(self):
         """初始化API，只在需要时调用"""
+        if not self.modules_loaded:
+            return None  # 模块还未加载
+        
         if self.api is None:
             # 创建GUI验证码处理回调
             def gui_verification_callback(captcha_url):
@@ -2123,7 +2204,7 @@ class ModernNovelDownloaderGUI:
                 return result.get('token')
 
             # 创建API实例，传入GUI回调
-            self.api = NovelDownloaderAPI(gui_verification_callback)
+            self.api = self.NovelDownloaderAPI(gui_verification_callback)
 
             # 注意：不在这里调用预加载，避免重复触发验证
 
@@ -2136,7 +2217,7 @@ class ModernNovelDownloaderGUI:
             
             # 测试API连接
             # api_manager 已经在文件开头导入
-            if api_manager.test_connection():
+            if self.api_manager.test_connection():
                 self.log("API连接正常，可以开始使用")
                 self.update_verification_status("API连接正常 ✓", self.colors['success'])
             else:
@@ -2179,9 +2260,9 @@ class ModernNovelDownloaderGUI:
         title_label.pack(pady=20)
         
         # API信息显示
-        update_info = api_manager.get_last_update_info()
+        update_info = self.api_manager.get_last_update_info()
         if update_info:
-            update_time = api_manager.format_update_time(update_info['last_update'])
+            update_time = self.api_manager.format_update_time(update_info['last_update'])
             api_count = update_info['api_count']
             batch_enabled = update_info['batch_enabled']
             
@@ -2239,18 +2320,18 @@ API数量: {api_count}个
         # 处理用户选择
         if result['choice'] == 'use_saved':
             self.log("用户选择使用保存的API")
-            api_manager.apply_saved_apis(saved_api_data)
+            self.api_manager.apply_saved_apis(saved_api_data)
             self.log("已应用保存的API配置")
         elif result['choice'] == 'update':
             self.log("用户选择更新API")
             self._perform_network_verification()
         elif result['choice'] == 'clear_and_update':
             self.log("用户选择清除并重新获取API")
-            api_manager.clear_saved_apis()
+            self.api_manager.clear_saved_apis()
             self._perform_network_verification()
         else:
             self.log("用户取消选择，使用保存的API")
-            api_manager.apply_saved_apis(saved_api_data)
+            self.api_manager.apply_saved_apis(saved_api_data)
     
     def _perform_network_verification(self):
         """执行网络验证"""
@@ -2844,7 +2925,7 @@ API数量: {api_count}个
             # 进行连接测试
             self.update_verification_status("正在测试连接...", self.colors['warning'])
             
-            if api_manager.test_connection():
+            if self.api_manager.test_connection():
                 # 连接成功，更新状态
                 self.update_verification_status("API连接正常 ✓", self.colors['success'])
                 messagebox.showinfo(
@@ -2915,7 +2996,7 @@ API数量: {api_count}个
         
         # 当前API状态
         # api_manager 已经在文件开头导入
-        api_connected = api_manager.test_connection()
+        api_connected = self.api_manager.test_connection()
         
         status_text = f"""当前API状态:
 连接状态: {'正常' if api_connected else '失败'}
@@ -2930,11 +3011,11 @@ API服务器: {CONFIG.get('api_base_url', '未配置')}"""
         status_label.pack(pady=10)
         
         # 保存的API信息
-        saved_api_data = api_manager.load_apis()
+        saved_api_data = self.api_manager.load_apis()
         if saved_api_data:
-            update_info = api_manager.get_last_update_info()
+            update_info = self.api_manager.get_last_update_info()
             if update_info:
-                update_time = api_manager.format_update_time(update_info['last_update'])
+                update_time = self.api_manager.format_update_time(update_info['last_update'])
                 saved_api_count = update_info['api_count']
                 saved_batch_enabled = update_info['batch_enabled']
                 
@@ -2965,7 +3046,7 @@ API数量: {saved_api_count}个
         
         def apply_saved():
             if saved_api_data:
-                api_manager.apply_saved_apis(saved_api_data)
+                self.api_manager.apply_saved_apis(saved_api_data)
                 messagebox.showinfo("成功", "已应用保存的API配置")
                 dialog.destroy()
             else:
@@ -2973,7 +3054,7 @@ API数量: {saved_api_count}个
         
         def clear_saved():
             if messagebox.askyesno("确认", "确定要清除保存的API配置吗？"):
-                api_manager.clear_saved_apis()
+                self.api_manager.clear_saved_apis()
                 messagebox.showinfo("成功", "已清除保存的API配置")
                 dialog.destroy()
         
@@ -3005,7 +3086,10 @@ API数量: {saved_api_count}个
         # 检查新API连接
         # api_manager 和 novel_downloader 已经在文件开头导入
         
-        if api_manager.test_connection():
+        if not self.modules_loaded:
+            return  # 模块还未加载，跳过检查
+        
+        if self.api_manager.test_connection():
             self.update_verification_status("API连接正常 ✓", self.colors['success'])
         else:
             self.update_verification_status("API连接失败 (请检查网络)", self.colors['error'])
