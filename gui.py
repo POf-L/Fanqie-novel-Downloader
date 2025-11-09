@@ -294,6 +294,29 @@ class ModernNovelDownloaderGUI:
                         command=command)
         return btn
     
+    def _add_placeholder(self, entry, placeholder_text):
+        """为Entry添加占位符功能"""
+        placeholder_color = self.colors['text_secondary']
+        default_color = self.colors['text_primary']
+        
+        def on_focus_in(event):
+            if entry.get() == placeholder_text:
+                entry.delete(0, tk.END)
+                entry.config(fg=default_color)
+        
+        def on_focus_out(event):
+            if not entry.get():
+                entry.insert(0, placeholder_text)
+                entry.config(fg=placeholder_color)
+        
+        # 设置初始占位符
+        entry.insert(0, placeholder_text)
+        entry.config(fg=placeholder_color)
+        
+        # 绑定事件
+        entry.bind('<FocusIn>', on_focus_in)
+        entry.bind('<FocusOut>', on_focus_out)
+    
     def create_search_tab(self):
         """创建搜索标签页"""
         # 主容器
@@ -385,7 +408,7 @@ class ModernNovelDownloaderGUI:
         id_frame = tk.Frame(download_card, bg=self.colors['surface'])
         id_frame.pack(fill=tk.X, pady=(0, 10))
         
-        tk.Label(id_frame, text="书籍ID:", 
+        tk.Label(id_frame, text="书籍ID/URL:", 
                 font=self.fonts['body'], 
                 bg=self.colors['surface'], 
                 fg=self.colors['text_primary']).pack(side=tk.LEFT)
@@ -399,6 +422,9 @@ class ModernNovelDownloaderGUI:
                                      highlightthickness=1,
                                      highlightcolor=self.colors['primary'])
         self.book_id_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0))
+        
+        # 添加占位符提示
+        self._add_placeholder(self.book_id_entry, "请输入书籍ID或Fanqie小说URL，如：https://fanqienovel.com/page/7199473033239596087")
         
         # 保存路径
         path_frame = tk.Frame(download_card, bg=self.colors['surface'])
@@ -1545,6 +1571,32 @@ class ModernNovelDownloaderGUI:
             messagebox.showerror("错误", f"清理设置文件失败: {str(e)}")
             self.log(f"清理设置文件失败: {str(e)}")
     
+    def extract_book_id_from_url(self, input_text):
+        """从输入文本中提取书籍ID，支持URL格式"""
+        input_text = input_text.strip()
+        
+        # 如果输入是URL格式，尝试提取ID
+        if input_text.startswith('http'):
+            # 支持多种Fanqie URL格式
+            import re
+            
+            # 匹配 https://fanqienovel.com/page/7199473033239596087 格式
+            match = re.search(r'fanqienovel\.com/page/(\d+)', input_text)
+            if match:
+                book_id = match.group(1)
+                self.log(f"🔗 从URL中提取到书籍ID: {book_id}")
+                return book_id
+            
+            # 支持其他可能的URL格式
+            match = re.search(r'fanqienovel\.com.*?(\d{15,})', input_text)
+            if match:
+                book_id = match.group(1)
+                self.log(f"🔗 从URL中提取到书籍ID: {book_id}")
+                return book_id
+        
+        # 如果不是URL或无法提取，直接返回原始输入（可能是纯ID）
+        return input_text
+    
     def start_download(self):
         """开始下载 - 先显示章节选择对话框"""
         if not self.modules_loaded:
@@ -1554,12 +1606,27 @@ class ModernNovelDownloaderGUI:
         if self.is_downloading:
             return
             
-        book_id = self.book_id_entry.get().strip()
+        input_text = self.book_id_entry.get().strip()
         save_path = self.save_path_entry.get().strip()
         file_format = self.format_var.get()
         
+        # 检查是否为占位符文本或空输入
+        placeholder_text = "请输入书籍ID或Fanqie小说URL，如：https://fanqienovel.com/page/7199473033239596087"
+        if not input_text or input_text == placeholder_text:
+            messagebox.showerror("错误", "请输入书籍ID或URL")
+            return
+        
+        # 尝试从URL中提取书籍ID
+        book_id = self.extract_book_id_from_url(input_text)
+        
+        # 如果从URL成功提取了ID且与输入不同，更新输入框显示
+        if book_id != input_text:
+            self.book_id_entry.delete(0, tk.END)
+            self.book_id_entry.insert(0, book_id)
+            self.log(f"✅ 已自动提取并设置书籍ID: {book_id}")
+        
         if not book_id:
-            messagebox.showerror("错误", "请输入书籍ID")
+            messagebox.showerror("错误", "无法从输入中提取有效的书籍ID")
             return
             
         if not os.path.isdir(save_path):
