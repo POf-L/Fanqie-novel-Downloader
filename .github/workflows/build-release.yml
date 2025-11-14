@@ -1,0 +1,283 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 生成版本号的job
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+      build_time: ${{ steps.version.outputs.BUILD_TIME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Generate version
+        id: version
+        run: |
+          VERSION=$(date -u +'%Y.%m.%d.%H%M')+$(echo ${{ github.sha }} | cut -c1-7)
+          BUILD_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_OUTPUT
+          echo "Generated version: $VERSION"
+          echo "Build time: $BUILD_TIME"
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+
+          # Windows 构建
+          - os: windows-latest
+            variant: release
+            executable: TomatoNovelDownloader
+            ext: .exe
+            artifact_name: TomatoNovelDownloader-windows
+          - os: windows-latest
+            variant: debug
+            executable: TomatoNovelDownloader-debug
+            ext: .exe
+            artifact_name: TomatoNovelDownloader-debug-windows
+          # Linux 构建
+          - os: ubuntu-latest
+            variant: release
+            executable: TomatoNovelDownloader-linux
+            ext: ''
+            artifact_name: TomatoNovelDownloader-linux
+          - os: ubuntu-latest
+            variant: debug
+            executable: TomatoNovelDownloader-debug-linux
+            ext: ''
+            artifact_name: TomatoNovelDownloader-debug-linux
+          # macOS 构建
+          - os: macos-latest
+            variant: release
+            executable: TomatoNovelDownloader-macos
+            ext: ''
+            artifact_name: TomatoNovelDownloader-macos
+          - os: macos-latest
+            variant: debug
+            executable: TomatoNovelDownloader-debug-macos
+            ext: ''
+            artifact_name: TomatoNovelDownloader-debug-macos
+
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} - ${{ matrix.variant }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk tk-dev libheif1 libheif-dev
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install tcl-tk libheif || true
+
+      - name: Update version.py
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          BUILD_TIME="${{ needs.version.outputs.build_time }}"
+          echo "Using version: $VERSION"
+          echo "Using build time: $BUILD_TIME"
+          
+          # 完全重写version.py文件，确保__build_channel__正确设置
+          echo "# -*- coding: utf-8 -*-" > version.py
+          echo '"""' >> version.py
+          echo "版本信息文件 - GitHub Actions自动生成" >> version.py
+          echo '"""' >> version.py
+          echo "" >> version.py
+          echo "__version__ = \"$VERSION\"" >> version.py
+          echo "__author__ = \"Tomato Novel Downloader\"" >> version.py
+          echo "__description__ = \"A modern novel downloader with GitHub auto-update support\"" >> version.py
+          echo "__github_repo__ = \"POf-L/Fanqie-novel-Downloader\"" >> version.py
+          echo "__build_time__ = \"$BUILD_TIME\"" >> version.py
+          echo "__build_channel__ = \"github-actions\"" >> version.py
+          
+          echo "✅ 更新后的version.py:"
+          cat version.py
+        shell: bash
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --prefer-binary -r requirements.txt
+          python -m pip install --prefer-binary pyinstaller
+        shell: bash
+
+      - name: Create runtime hook (inline)
+        run: |
+          # 创建内联的runtime hook，避免依赖单独文件
+          cat > runtime_hook.py << 'EOF'
+          # -*- coding: utf-8 -*-
+          """
+          Runtime hook for PyInstaller
+          Ensures that local modules can be imported from the bundle
+          """
+          
+          import sys
+          import os
+          
+          # Add the application directory to sys.path to make local modules importable
+          if hasattr(sys, '_MEIPASS'):
+              # Running in a PyInstaller bundle
+              sys.path.insert(0, sys._MEIPASS)
+              
+              # Also ensure the modules are importable
+              import importlib.util
+              
+              # List of local modules that need to be available
+              local_modules = ['updater', 'external_updater', 'config']
+              
+              for module_name in local_modules:
+                  module_path = os.path.join(sys._MEIPASS, f'{module_name}.py')
+                  if os.path.exists(module_path):
+                      # Load the module from the file
+                      spec = importlib.util.spec_from_file_location(module_name, module_path)
+                      if spec and spec.loader:
+                          module = importlib.util.module_from_spec(spec)
+                          sys.modules[module_name] = module
+                          spec.loader.exec_module(module)
+          EOF
+          
+          echo "✅ Runtime hook created successfully"
+          cat runtime_hook.py
+        shell: bash
+
+      - name: Build application (${{ matrix.variant }})
+        run: |
+          python build_app.py --variant=${{ matrix.variant }} --name=${{ matrix.executable }}
+        shell: bash
+
+      - name: Verify build
+        run: |
+          ls -la dist/
+          target="dist/${{ matrix.executable }}${{ matrix.ext }}"
+          if [ -f "$target" ]; then
+            echo "✅ Build successful: $(basename "$target")"
+            echo "File size: $(ls -lh "$target" | awk '{print $5}')"
+          else
+            echo "❌ Build failed: $(basename "$target") not found"
+            exit 1
+          fi
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.executable }}${{ matrix.ext }}
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+          ls -lh release/
+        shell: bash
+
+      - name: Determine release version
+        id: release_version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            # 使用标签名称（去掉 refs/tags/ 前缀）
+            VERSION="${{ github.ref_name }}"
+            echo "使用标签版本: $VERSION"
+          else
+            # 使用自动生成的版本号
+            VERSION="v${{ needs.version.outputs.version }}"
+            echo "使用自动版本: $VERSION"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_version.outputs.version }}
+          name: TomatoNovelDownloader ${{ steps.release_version.outputs.version }}
+          body: |
+            ## 📦 Release ${{ steps.release_version.outputs.version }}
+            
+            ### 提交信息
+            ${{ github.event.head_commit.message }}
+            
+            ### 构建信息
+            - **构建时间**: ${{ needs.version.outputs.build_time }}
+            - **提交哈希**: `${{ github.sha }}`
+            - **分支**: ${{ github.ref_name }}
+            - **提交者**: ${{ github.event.head_commit.author.name }}
+
+            ### 支持平台
+            - 💻 **Windows (x64)**:
+              - `TomatoNovelDownloader.exe` (Release版，无控制台)
+              - `TomatoNovelDownloader-debug.exe` (Debug版，带控制台输出)
+            - 🐧 **Linux (x64)**:
+              - `TomatoNovelDownloader-linux` (Release版)
+              - `TomatoNovelDownloader-debug-linux` (Debug版)
+            - 🍎 **macOS (Intel & Apple Silicon)**:
+              - `TomatoNovelDownloader-macos` (Release版)
+              - `TomatoNovelDownloader-debug-macos` (Debug版)
+
+            ### 使用说明
+            1. **Release版**: 适合日常使用，无控制台窗口，界面更简洁
+            2. **Debug版**: 包含详细日志输出，遇到问题时使用此版本方便排查
+            
+            ### 下载提示
+            - Windows用户请下载 `.exe` 文件
+            - Linux用户请下载后执行 `chmod +x` 赋予执行权限
+            - macOS用户首次运行可能需要在"系统偏好设置 > 安全性与隐私"中允许运行
+
+          files: release/*
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
