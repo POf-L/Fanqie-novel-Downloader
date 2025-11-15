@@ -170,7 +170,6 @@ def main():
     
     # 打开 Web 界面
     print("\n打开应用界面...")
-    print("注意: 此应用仅限程序内部访问，外部浏览器无法直接访问")
     open_web_interface(port, access_token)
 
 if __name__ == '__main__':

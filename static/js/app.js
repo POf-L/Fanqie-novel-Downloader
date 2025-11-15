@@ -343,6 +343,42 @@ async function checkForUpdate() {
     }
 }
 
+function simpleMarkdownToHtml(markdown) {
+    if (!markdown) return '暂无更新说明';
+    
+    let html = markdown;
+    
+    // 转换标题
+    html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+    html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+    
+    // 转换粗体
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // 转换斜体
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // 转换代码块
+    html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+    
+    // 转换列表
+    html = html.replace(/^\- (.*$)/gim, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+    
+    // 转换换行
+    html = html.replace(/\n/g, '<br>');
+    
+    // 清理多余的br标签
+    html = html.replace(/<br><h/g, '<h');
+    html = html.replace(/<\/h([1-6])><br>/g, '</h$1>');
+    html = html.replace(/<br><\/ul>/g, '</ul>');
+    html = html.replace(/<ul><br>/g, '<ul>');
+    
+    return html;
+}
+
 function showUpdateModal(updateInfo) {
     const modal = document.getElementById('updateModal');
     const currentVersion = document.getElementById('currentVersion');
@@ -356,7 +392,7 @@ function showUpdateModal(updateInfo) {
     latestVersion.textContent = updateInfo.latest_version;
     
     const releaseBody = updateInfo.release_info?.body || updateInfo.message || '暂无更新说明';
-    updateDescription.innerHTML = releaseBody.replace(/\n/g, '<br>');
+    updateDescription.innerHTML = simpleMarkdownToHtml(releaseBody);
     
     modal.style.display = 'flex';
     
