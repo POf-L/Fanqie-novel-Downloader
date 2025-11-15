@@ -343,12 +343,14 @@ function showUpdateModal(updateInfo) {
     
     currentVersion.textContent = updateInfo.current_version;
     latestVersion.textContent = updateInfo.latest_version;
-    updateDescription.innerHTML = updateInfo.description || '暂无更新说明';
+    
+    const releaseBody = updateInfo.release_info?.body || updateInfo.message || '暂无更新说明';
+    updateDescription.innerHTML = releaseBody.replace(/\n/g, '<br>');
     
     modal.style.display = 'flex';
     
     downloadUpdateBtn.onclick = () => {
-        window.open(updateInfo.download_url, '_blank');
+        window.open(updateInfo.url || updateInfo.release_info?.html_url, '_blank');
         modal.style.display = 'none';
     };
     

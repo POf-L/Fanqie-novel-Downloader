@@ -378,7 +378,7 @@ def api_check_update():
         if update_info:
             return jsonify({
                 'success': True,
-                'has_update': True,
+                'has_update': update_info.get('has_update', False),
                 'data': update_info
             })
         else:
