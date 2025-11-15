@@ -45,25 +45,48 @@ jobs:
       fail-fast: false
       matrix:
         include:
-
-          # Windows 构建
+          # Windows 发布版
           - os: windows-latest
             variant: release
             executable: TomatoNovelDownloader
             ext: .exe
             artifact_name: TomatoNovelDownloader-windows-x64
-          # Linux 构建
+            build_flags: '--windowed'
+          # Windows 调试版
+          - os: windows-latest
+            variant: debug
+            executable: TomatoNovelDownloader-debug
+            ext: .exe
+            artifact_name: TomatoNovelDownloader-debug-windows-x64
+            build_flags: '--console'
+          # Linux 发布版
           - os: ubuntu-latest
             variant: release
             executable: TomatoNovelDownloader
             ext: ''
             artifact_name: TomatoNovelDownloader-linux-x64
-          # macOS 构建
+            build_flags: '--windowed'
+          # Linux 调试版
+          - os: ubuntu-latest
+            variant: debug
+            executable: TomatoNovelDownloader-debug
+            ext: ''
+            artifact_name: TomatoNovelDownloader-debug-linux-x64
+            build_flags: '--console'
+          # macOS 发布版
           - os: macos-latest
             variant: release
             executable: TomatoNovelDownloader
             ext: ''
             artifact_name: TomatoNovelDownloader-macos-x64
+            build_flags: '--windowed'
+          # macOS 调试版
+          - os: macos-latest
+            variant: debug
+            executable: TomatoNovelDownloader-debug
+            ext: ''
+            artifact_name: TomatoNovelDownloader-debug-macos-x64
+            build_flags: '--console'
 
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os }} - ${{ matrix.variant }}
@@ -126,7 +149,7 @@ jobs:
         run: |
           python -m PyInstaller --onefile \
             --name=${{ matrix.executable }} \
-            --windowed \
+            ${{ matrix.build_flags }} \
             --add-data "static:static" \
             --add-data "templates:templates" \
             --hidden-import=flask \
@@ -221,12 +244,20 @@ jobs:
             - **提交者**: ${{ github.event.head_commit.author.name }}
 
             ### 支持平台
-            - 💻 **Windows (x64)**:
-              - `TomatoNovelDownloader.exe` (HTML5 Web版本)
-            - 🐧 **Linux (x64)**:
-              - `TomatoNovelDownloader` (HTML5 Web版本)
-            - 🍎 **macOS (Intel & Apple Silicon)**:
-              - `TomatoNovelDownloader` (HTML5 Web版本)
+            
+            #### 🎯 发布版本 (推荐)
+            - 💻 **Windows (x64)**: `TomatoNovelDownloader.exe`
+            - 🐧 **Linux (x64)**: `TomatoNovelDownloader`
+            - 🍎 **macOS (x64)**: `TomatoNovelDownloader`
+            
+            > 发布版无控制台窗口，用户体验更好
+            
+            #### 🔧 调试版本 (开发/调试用)
+            - 💻 **Windows (x64)**: `TomatoNovelDownloader-debug.exe`
+            - 🐧 **Linux (x64)**: `TomatoNovelDownloader-debug`
+            - 🍎 **macOS (x64)**: `TomatoNovelDownloader-debug`
+            
+            > 调试版带控制台窗口，可查看详细日志信息
 
             ### 新版本特性
             - ✨ HTML5 + CSS3 现代化界面
@@ -234,11 +265,13 @@ jobs:
             - ✨ Flask REST API 后端
             - ✨ PyWebView 原生窗口集成
             - ✨ 跨平台支持（Windows/Mac/Linux）
+            - ✨ 自动检查更新功能
             
             ### 使用说明
-            1. 下载对应操作系统的可执行文件
-            2. 直接运行可执行文件，应用会自动启动
-            3. 应用会在浏览器打开（或使用 PyWebView 窗口）
+            1. **普通用户**: 下载发布版可执行文件
+            2. **开发调试**: 下载调试版查看详细日志
+            3. 直接运行可执行文件，应用会自动启动
+            4. 应用会在浏览器打开（或使用 PyWebView 窗口）
 
           files: release/*
           draft: false
