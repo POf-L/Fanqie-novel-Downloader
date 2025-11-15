@@ -246,63 +246,51 @@ def build_executable(variant="release", executable_name=None):
     else:
         target_name = "TomatoNovelDownloader-debug" if variant == "debug" else "TomatoNovelDownloader"
     
-    # 检查是否有对应的spec文件
-    spec_file = "debug.spec" if variant == "debug" else "build.spec"
+    # Web版本使用 main.py 作为入口
+    print("Building Web version with main.py as entry point")
     
-    if os.path.exists(spec_file):
-        print(f"Using {spec_file} configuration file")
-        # 使用spec文件时不能使用--name参数，需要使用spec中定义的名称
-        cmd = [sys.executable, "-m", "PyInstaller", spec_file, "--clean", "--noconfirm"]
-        # spec文件中定义的默认名称
-        built_name = "TomatoNovelDownloader-debug" if variant == "debug" else "TomatoNovelDownloader"
+    # 构建基础命令
+    cmd = [
+        sys.executable, "-m", "PyInstaller",
+        "--onefile",
+        f"--name={target_name}",
+    ]
+    
+    # 根据变体选择窗口模式或控制台模式
+    if variant == "debug":
+        cmd.append("--console")
     else:
-        print(f"{spec_file} not found, using default configuration")
-        
-        # 构建基础命令
-        cmd = [
-            sys.executable, "-m", "PyInstaller",
-            "--onefile",
-            f"--name={target_name}",
-        ]
-        
-        # 根据变体选择窗口模式或控制台模式
-        if variant == "debug":
-            cmd.append("--console")
-        else:
-            cmd.append("--windowed")
-        
-        # 添加隐藏导入（自动从 requirements.txt 读取）
-        hidden_imports = get_hidden_imports()
-        
-        for import_name in hidden_imports:
-            cmd.extend(["--hidden-import", import_name])
-        
-        # 添加数据收集
-        cmd.extend(["--collect-data", "fake_useragent"])
-        cmd.extend(["--collect-submodules", "PIL"])
-        
-        # 添加入口文件
-        cmd.append("gui.py")
-        
-        # 没有使用spec文件时，built_name和target_name相同
-        built_name = target_name
+        cmd.append("--windowed")
+    
+    # 添加隐藏导入（自动从 requirements.txt 读取）
+    hidden_imports = get_hidden_imports()
+    
+    for import_name in hidden_imports:
+        cmd.extend(["--hidden-import", import_name])
+    
+    # 添加数据收集
+    cmd.extend(["--collect-data", "fake_useragent"])
+    cmd.extend(["--collect-submodules", "PIL"])
+    
+    # 添加静态文件和模板
+    cmd.extend(["--add-data", "static:static"])
+    cmd.extend(["--add-data", "templates:templates"])
+    
+    # 添加入口文件（Web版）
+    cmd.append("main.py")
+    
+    # built_name和target_name相同
+    built_name = target_name
     
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
         print("Build successful")
         print(result.stdout)
-        # 如果使用spec文件，返回built_name和target_name
-        if os.path.exists(spec_file):
-            return True, built_name, target_name
-        else:
-            return True, target_name, target_name
+        return True, target_name, target_name
     except subprocess.CalledProcessError as e:
         print("Build failed")
         print(f"Error output: {e.stderr}")
-        if os.path.exists(spec_file):
-            return False, built_name, target_name
-        else:
-            return False, target_name, target_name
+        return False, target_name, target_name
 
 def check_output(expected_name):
     """检查编译输出

@@ -51,34 +51,19 @@ jobs:
             variant: release
             executable: TomatoNovelDownloader
             ext: .exe
-            artifact_name: TomatoNovelDownloader-windows
-          - os: windows-latest
-            variant: debug
-            executable: TomatoNovelDownloader-debug
-            ext: .exe
-            artifact_name: TomatoNovelDownloader-debug-windows
+            artifact_name: TomatoNovelDownloader-windows-x64
           # Linux 构建
           - os: ubuntu-latest
             variant: release
-            executable: TomatoNovelDownloader-linux
+            executable: TomatoNovelDownloader
             ext: ''
-            artifact_name: TomatoNovelDownloader-linux
-          - os: ubuntu-latest
-            variant: debug
-            executable: TomatoNovelDownloader-debug-linux
-            ext: ''
-            artifact_name: TomatoNovelDownloader-debug-linux
+            artifact_name: TomatoNovelDownloader-linux-x64
           # macOS 构建
           - os: macos-latest
             variant: release
-            executable: TomatoNovelDownloader-macos
+            executable: TomatoNovelDownloader
             ext: ''
-            artifact_name: TomatoNovelDownloader-macos
-          - os: macos-latest
-            variant: debug
-            executable: TomatoNovelDownloader-debug-macos
-            ext: ''
-            artifact_name: TomatoNovelDownloader-debug-macos
+            artifact_name: TomatoNovelDownloader-macos-x64
 
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os }} - ${{ matrix.variant }}
@@ -100,12 +85,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk tk-dev libheif1 libheif-dev
+          sudo apt-get install -y libheif1 libheif-dev
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install tcl-tk libheif || true
+          brew install libheif || true
 
       - name: Update version.py
         run: |
@@ -137,48 +122,28 @@ jobs:
           python -m pip install --prefer-binary pyinstaller
         shell: bash
 
-      - name: Create runtime hook (inline)
-        run: |
-          # 创建内联的runtime hook，避免依赖单独文件
-          cat > runtime_hook.py << 'EOF'
-          # -*- coding: utf-8 -*-
-          """
-          Runtime hook for PyInstaller
-          Ensures that local modules can be imported from the bundle
-          """
-          
-          import sys
-          import os
-          
-          # Add the application directory to sys.path to make local modules importable
-          if hasattr(sys, '_MEIPASS'):
-              # Running in a PyInstaller bundle
-              sys.path.insert(0, sys._MEIPASS)
-              
-              # Also ensure the modules are importable
-              import importlib.util
-              
-              # List of local modules that need to be available
-              local_modules = ['updater', 'external_updater', 'config']
-              
-              for module_name in local_modules:
-                  module_path = os.path.join(sys._MEIPASS, f'{module_name}.py')
-                  if os.path.exists(module_path):
-                      # Load the module from the file
-                      spec = importlib.util.spec_from_file_location(module_name, module_path)
-                      if spec and spec.loader:
-                          module = importlib.util.module_from_spec(spec)
-                          sys.modules[module_name] = module
-                          spec.loader.exec_module(module)
-          EOF
-          
-          echo "✅ Runtime hook created successfully"
-          cat runtime_hook.py
-        shell: bash
-
       - name: Build application (${{ matrix.variant }})
         run: |
-          python build_app.py --variant=${{ matrix.variant }} --name=${{ matrix.executable }}
+          python -m PyInstaller --onefile \
+            --name=${{ matrix.executable }} \
+            --windowed \
+            --add-data "static:static" \
+            --add-data "templates:templates" \
+            --hidden-import=flask \
+            --hidden-import=flask_cors \
+            --hidden-import=pywebview \
+            --hidden-import=PIL \
+            --hidden-import=requests \
+            --hidden-import=aiohttp \
+            --hidden-import=beautifulsoup4 \
+            --hidden-import=ebooklib \
+            --hidden-import=fake_useragent \
+            --hidden-import=config \
+            --hidden-import=updater \
+            --hidden-import=packaging \
+            --hidden-import=packaging.version \
+            --collect-data fake_useragent \
+            main.py
         shell: bash
 
       - name: Verify build
@@ -257,23 +222,23 @@ jobs:
 
             ### 支持平台
             - 💻 **Windows (x64)**:
-              - `TomatoNovelDownloader.exe` (Release版，无控制台)
-              - `TomatoNovelDownloader-debug.exe` (Debug版，带控制台输出)
+              - `TomatoNovelDownloader.exe` (HTML5 Web版本)
             - 🐧 **Linux (x64)**:
-              - `TomatoNovelDownloader-linux` (Release版)
-              - `TomatoNovelDownloader-debug-linux` (Debug版)
+              - `TomatoNovelDownloader` (HTML5 Web版本)
             - 🍎 **macOS (Intel & Apple Silicon)**:
-              - `TomatoNovelDownloader-macos` (Release版)
-              - `TomatoNovelDownloader-debug-macos` (Debug版)
+              - `TomatoNovelDownloader` (HTML5 Web版本)
 
-            ### 使用说明
-            1. **Release版**: 适合日常使用，无控制台窗口，界面更简洁
-            2. **Debug版**: 包含详细日志输出，遇到问题时使用此版本方便排查
+            ### 新版本特性
+            - ✨ HTML5 + CSS3 现代化界面
+            - ✨ 响应式设计，完美适配各种屏幕
+            - ✨ Flask REST API 后端
+            - ✨ PyWebView 原生窗口集成
+            - ✨ 跨平台支持（Windows/Mac/Linux）
             
-            ### 下载提示
-            - Windows用户请下载 `.exe` 文件
-            - Linux用户请下载后执行 `chmod +x` 赋予执行权限
-            - macOS用户首次运行可能需要在"系统偏好设置 > 安全性与隐私"中允许运行
+            ### 使用说明
+            1. 下载对应操作系统的可执行文件
+            2. 直接运行可执行文件，应用会自动启动
+            3. 应用会在浏览器打开（或使用 PyWebView 窗口）
 
           files: release/*
           draft: false
