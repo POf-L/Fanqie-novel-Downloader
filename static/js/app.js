@@ -90,7 +90,7 @@ class APIClient {
     }
     
     async request(endpoint, options = {}) {
-        try:
+        try {
             const url = `${this.baseURL}${endpoint}`;
             const headers = {
                 'Content-Type': 'application/json',
