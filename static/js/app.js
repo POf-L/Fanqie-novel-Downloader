@@ -84,8 +84,8 @@ const logger = new Logger('logContent');
 /* ===================== API 客户端 ===================== */
 
 class APIClient {
-    constructor(baseURL = 'http://127.0.0.1:5000') {
-        this.baseURL = baseURL;
+    constructor(baseURL = null) {
+        this.baseURL = baseURL || window.location.origin;
         this.statusPoll = null;
     }
     
