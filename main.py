@@ -108,8 +108,6 @@ def main():
     
     # 查找可用端口
     port = find_free_port()
-    print(f"服务端口: {port}")
-    print(f"访问令牌: {access_token[:8]}...")
     
     # 检查更新(异步，不阻塞启动)
     def check_update_async():
