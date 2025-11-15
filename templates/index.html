@@ -115,6 +115,30 @@
         </main>
     </div>
 
+    <!-- 更新提示弹窗 -->
+    <div class="modal" id="updateModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🎉 发现新版本</h3>
+                <button class="modal-close" id="updateModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="update-info">
+                    <p><strong>当前版本：</strong><span id="currentVersion"></span></p>
+                    <p><strong>最新版本：</strong><span id="latestVersion"></span></p>
+                    <div class="update-description">
+                        <strong>更新说明：</strong>
+                        <div id="updateDescription"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="downloadUpdateBtn">立即下载</button>
+                <button class="btn btn-secondary" id="closeUpdateBtn">稍后提醒</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/app.js"></script>
 </body>
 </html>

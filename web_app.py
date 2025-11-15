@@ -366,6 +366,29 @@ def api_select_folder():
     except Exception as e:
         return jsonify({'success': False, 'message': f'文件夹选择失败: {str(e)}'}), 500
 
+@app.route('/api/check-update', methods=['GET'])
+def api_check_update():
+    """检查更新"""
+    try:
+        from updater import check_and_notify
+        from config import __version__, __github_repo__
+        
+        update_info = check_and_notify(__version__, __github_repo__, silent=True)
+        
+        if update_info:
+            return jsonify({
+                'success': True,
+                'has_update': True,
+                'data': update_info
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'has_update': False
+            })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'检查更新失败: {str(e)}'}), 500
+
 if __name__ == '__main__':
     print(f'配置文件位置: {CONFIG_FILE}')
     app.run(host='127.0.0.1', port=5000, debug=False)

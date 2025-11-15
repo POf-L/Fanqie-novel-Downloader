@@ -278,6 +278,16 @@ class APIClient {
             return { success: false };
         }
     }
+    
+    async checkUpdate() {
+        try {
+            const result = await this.request('/api/check-update');
+            return result;
+        } catch (error) {
+            console.error('检查更新失败:', error);
+            return { success: false };
+        }
+    }
 }
 
 const api = new APIClient();
@@ -306,6 +316,55 @@ function initializeUI() {
     
     // 版本信息
     document.getElementById('version').textContent = '1.0.0';
+    
+    checkForUpdate();
+}
+
+async function checkForUpdate() {
+    try {
+        const result = await api.checkUpdate();
+        
+        if (result.success && result.has_update) {
+            showUpdateModal(result.data);
+        }
+    } catch (error) {
+        console.error('检查更新失败:', error);
+    }
+}
+
+function showUpdateModal(updateInfo) {
+    const modal = document.getElementById('updateModal');
+    const currentVersion = document.getElementById('currentVersion');
+    const latestVersion = document.getElementById('latestVersion');
+    const updateDescription = document.getElementById('updateDescription');
+    const downloadUpdateBtn = document.getElementById('downloadUpdateBtn');
+    const closeUpdateBtn = document.getElementById('closeUpdateBtn');
+    const updateModalClose = document.getElementById('updateModalClose');
+    
+    currentVersion.textContent = updateInfo.current_version;
+    latestVersion.textContent = updateInfo.latest_version;
+    updateDescription.innerHTML = updateInfo.description || '暂无更新说明';
+    
+    modal.style.display = 'flex';
+    
+    downloadUpdateBtn.onclick = () => {
+        window.open(updateInfo.download_url, '_blank');
+        modal.style.display = 'none';
+    };
+    
+    closeUpdateBtn.onclick = () => {
+        modal.style.display = 'none';
+    };
+    
+    updateModalClose.onclick = () => {
+        modal.style.display = 'none';
+    };
+    
+    modal.onclick = (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    };
 }
 
 async function handleDownload() {
