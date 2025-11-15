@@ -4,6 +4,7 @@ const AppState = {
     isDownloading: false,
     currentProgress: 0,
     savePath: '',
+    accessToken: '',
     
     setDownloading(value) {
         this.isDownloading = value;
@@ -17,6 +18,10 @@ const AppState = {
     setSavePath(path) {
         this.savePath = path;
         document.getElementById('savePath').value = path;
+    },
+    
+    setAccessToken(token) {
+        this.accessToken = token;
     },
     
     updateUIState() {
@@ -85,13 +90,19 @@ class APIClient {
     }
     
     async request(endpoint, options = {}) {
-        try {
+        try:
             const url = `${this.baseURL}${endpoint}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            
+            if (AppState.accessToken) {
+                headers['X-Access-Token'] = AppState.accessToken;
+            }
+            
             const response = await fetch(url, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                },
+                headers: headers,
                 ...options
             });
             
@@ -541,6 +552,15 @@ async function handleBrowse() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     logger.log('🚀 应用启动...');
+    
+    // 从URL获取访问令牌
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token) {
+        AppState.setAccessToken(token);
+        logger.log('✓ 访问令牌已加载');
+    }
+    
     initializeUI();
     
     // 初始化模块

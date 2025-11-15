@@ -8,7 +8,8 @@ import json
 import threading
 import queue
 import tempfile
-from flask import Flask, render_template, request, jsonify, send_from_directory
+import secrets
+from flask import Flask, render_template, request, jsonify, send_from_directory, abort
 from flask_cors import CORS
 import logging
 import re
@@ -19,6 +20,14 @@ log.setLevel(logging.ERROR)
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 CORS(app)
+
+# 访问令牌（由main.py在启动时设置）
+ACCESS_TOKEN = None
+
+def set_access_token(token):
+    """设置访问令牌"""
+    global ACCESS_TOKEN
+    ACCESS_TOKEN = token
 
 # 配置文件路径 - 保存到系统临时目录
 TEMP_DIR = tempfile.gettempdir()
@@ -135,12 +144,30 @@ def download_worker():
 download_thread = threading.Thread(target=download_worker, daemon=True)
 download_thread.start()
 
+# ===================== 访问控制中间件 =====================
+
+@app.before_request
+def check_access():
+    """请求前验证访问令牌"""
+    # 静态文件不需要验证
+    if request.path.startswith('/static/'):
+        return None
+    
+    # 验证token
+    if ACCESS_TOKEN is not None:
+        token = request.args.get('token') or request.headers.get('X-Access-Token')
+        if token != ACCESS_TOKEN:
+            return jsonify({'error': 'Forbidden'}), 403
+    
+    return None
+
 # ===================== API 路由 =====================
 
 @app.route('/')
 def index():
     """主页"""
-    return render_template('index.html')
+    token = request.args.get('token', '')
+    return render_template('index.html', access_token=token)
 
 @app.route('/api/init', methods=['POST'])
 def api_init():
