@@ -207,7 +207,32 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          find artifacts -type f -exec cp {} release/ \;
+          
+          # 复制Windows文件（保持原名）
+          if [ -d "artifacts/TomatoNovelDownloader-windows-x64" ]; then
+            cp artifacts/TomatoNovelDownloader-windows-x64/TomatoNovelDownloader.exe release/
+          fi
+          if [ -d "artifacts/TomatoNovelDownloader-debug-windows-x64" ]; then
+            cp artifacts/TomatoNovelDownloader-debug-windows-x64/TomatoNovelDownloader-debug.exe release/
+          fi
+          
+          # 复制Linux文件（重命名以包含平台信息）
+          if [ -d "artifacts/TomatoNovelDownloader-linux-x64" ]; then
+            cp artifacts/TomatoNovelDownloader-linux-x64/TomatoNovelDownloader release/TomatoNovelDownloader-linux
+          fi
+          if [ -d "artifacts/TomatoNovelDownloader-debug-linux-x64" ]; then
+            cp artifacts/TomatoNovelDownloader-debug-linux-x64/TomatoNovelDownloader-debug release/TomatoNovelDownloader-debug-linux
+          fi
+          
+          # 复制macOS文件（重命名以包含平台信息）
+          if [ -d "artifacts/TomatoNovelDownloader-macos-x64" ]; then
+            cp artifacts/TomatoNovelDownloader-macos-x64/TomatoNovelDownloader release/TomatoNovelDownloader-macos
+          fi
+          if [ -d "artifacts/TomatoNovelDownloader-debug-macos-x64" ]; then
+            cp artifacts/TomatoNovelDownloader-debug-macos-x64/TomatoNovelDownloader-debug release/TomatoNovelDownloader-debug-macos
+          fi
+          
+          echo "📦 Release files prepared:"
           ls -lh release/
         shell: bash
 
@@ -247,15 +272,15 @@ jobs:
             
             #### 🎯 发布版本 (推荐)
             - 💻 **Windows (x64)**: `TomatoNovelDownloader.exe`
-            - 🐧 **Linux (x64)**: `TomatoNovelDownloader`
-            - 🍎 **macOS (x64)**: `TomatoNovelDownloader`
+            - 🐧 **Linux (x64)**: `TomatoNovelDownloader-linux`
+            - 🍎 **macOS (x64)**: `TomatoNovelDownloader-macos`
             
             > 发布版无控制台窗口，用户体验更好
             
             #### 🔧 调试版本 (开发/调试用)
             - 💻 **Windows (x64)**: `TomatoNovelDownloader-debug.exe`
-            - 🐧 **Linux (x64)**: `TomatoNovelDownloader-debug`
-            - 🍎 **macOS (x64)**: `TomatoNovelDownloader-debug`
+            - 🐧 **Linux (x64)**: `TomatoNovelDownloader-debug-linux`
+            - 🍎 **macOS (x64)**: `TomatoNovelDownloader-debug-macos`
             
             > 调试版带控制台窗口，可查看详细日志信息
 
