@@ -221,17 +221,87 @@ def get_api_manager():
 # ===================== 辅助函数 =====================
 
 def process_chapter_content(content):
-    """处理章节内容"""
+    """处理章节内容，保持段落格式"""
     if not content:
         return ""
     
-    content = re.sub(r'<br\s*/?>','\n', content)
-    content = re.sub(r'<p>', '\n', content)
-    content = re.sub(r'</p>', '\n', content)
-    content = re.sub(r'<[^>]+>', '', content)
-    content = re.sub(r'\n{3,}', '\n\n', content)
+    # 先处理段落标签，确保段落之间有适当的分隔
+    content = re.sub(r'</p>', '\n\n', content)  # 段落结束用双换行
+    content = re.sub(r'<p>', '', content)      # 段落开始不需要额外换行
     
-    return content.strip()
+    # 处理换行标签
+    content = re.sub(r'<br\s*/?>', '\n', content)
+    
+    # 处理div等块级标签
+    content = re.sub(r'</div>', '\n\n', content)
+    content = re.sub(r'<div[^>]*>', '', content)
+    
+    # 移除所有其他HTML标签
+    content = re.sub(r'<[^>]+>', '', content)
+    
+    # 处理多余的空白字符
+    content = re.sub(r'[ \t]+', ' ', content)      # 多个空格替换为单个空格
+    content = re.sub(r'\n[ \t]+', '\n', content)   # 移除行首空格
+    content = re.sub(r'[ \t]+\n', '\n', content)   # 移除行尾空格
+    
+    # 先进行长段落智能分段处理
+    lines = content.split('\n')
+    processed_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            processed_lines.append('')
+            continue
+        
+        # 如果一行很长（超过100字符）且包含多个句号，尝试分段
+        if len(line) > 100 and line.count('。') >= 2:
+            # 在句号后分段，但避免在特定情况下分段
+            sentences = re.split(r'(.*?。)', line)
+            current_segment = ''
+            
+            for sentence in sentences:
+                if not sentence.strip():
+                    continue
+                
+                # 检查是否应该分段
+                sentence_start = sentence.strip()
+                forbidden_starts = ('但', '而', '且', '或', '如', '如果', '因为', '所以', '这', '那')
+                should_split = (
+                    current_segment and 
+                    len(current_segment) > 40 and  # 当前段落已有一定长度
+                    not any(sentence_start.startswith(word) for word in forbidden_starts)
+                )
+                
+                if should_split:
+                    processed_lines.append(current_segment.strip())
+                    processed_lines.append('')  # 空行表示段落分隔
+                    current_segment = sentence
+                else:
+                    current_segment += sentence
+            
+            if current_segment:
+                processed_lines.append(current_segment.strip())
+        else:
+            processed_lines.append(line)
+    
+    content = '\n'.join(processed_lines)
+    
+    # 智能段落识别：根据中文标点符号和内容特征识别段落
+    # 1. 对话段落：确保对话前后有适当分隔
+    content = re.sub(r'(["''])([^"'']*?["''])', r'\n\1\2\n', content)
+    
+    # 规范化换行符：确保段落之间有双换行，但避免过多的空行
+    content = re.sub(r'\n{4,}', '\n\n\n', content)  # 最多保留3个连续换行
+    content = re.sub(r'\n{3}', '\n\n', content)     # 3个换行变为2个
+    
+    # 确保对话和段落之间有适当分隔
+    content = re.sub(r'([。！？])(["''])\n', r'\1\2\n\n', content)
+    
+    # 移除开头和结尾的空白
+    content = content.strip()
+    
+    return content
 
 
 def load_status(save_path):
