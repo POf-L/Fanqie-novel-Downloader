@@ -13,6 +13,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory,
 from flask_cors import CORS
 import logging
 import re
+from utils import parse_chapters_list
 
 # 禁用Flask默认日志
 log = logging.getLogger('werkzeug')
@@ -216,31 +217,7 @@ def api_book_info():
         if not chapters_data:
             return jsonify({'success': False, 'message': '无法获取章节列表'}), 400
         
-        chapters = []
-        if isinstance(chapters_data, dict):
-            all_item_ids = chapters_data.get("allItemIds", [])
-            chapter_list = chapters_data.get("chapterListWithVolume", [])
-            
-            if chapter_list:
-                idx = 0
-                for volume in chapter_list:
-                    if isinstance(volume, list):
-                        for ch in volume:
-                            if isinstance(ch, dict):
-                                item_id = ch.get("itemId") or ch.get("item_id")
-                                title = ch.get("title", f"第{idx+1}章")
-                                if item_id:
-                                    chapters.append({"id": str(item_id), "title": title, "index": idx})
-                                    idx += 1
-            else:
-                for idx, item_id in enumerate(all_item_ids):
-                    chapters.append({"id": str(item_id), "title": f"第{idx+1}章", "index": idx})
-        elif isinstance(chapters_data, list):
-            for idx, ch in enumerate(chapters_data):
-                item_id = ch.get("item_id") or ch.get("chapter_id")
-                title = ch.get("title", f"第{idx+1}章")
-                if item_id:
-                    chapters.append({"id": str(item_id), "title": title, "index": idx})
+        chapters = parse_chapters_list(chapters_data)
         
         # 返回书籍信息和章节列表
         return jsonify({
