@@ -71,8 +71,8 @@ def insert_watermark(content: str, watermark_text: str = None, num_insertions: i
     
     # 自动计算插入次数
     if num_insertions is None:
-        # 根据内容长度计算，大约每5000字插入一次
-        num_insertions = max(1, len(content) // 5000 + random.randint(0, 2))
+        # 根据内容长度计算，大约每50000字插入一次
+        num_insertions = max(1, len(content) // 50000 + random.randint(0, 2))
     
     # 将水印文本添加隐形字符
     watermarked_text = add_invisible_chars_to_text(watermark_text, insertion_rate=0.25)
