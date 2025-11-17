@@ -225,13 +225,32 @@ def process_chapter_content(content):
     if not content:
         return ""
     
-    content = re.sub(r'<br\s*/?>','\n', content)
-    content = re.sub(r'<p>', '\n', content)
-    content = re.sub(r'</p>', '\n', content)
+    # 将br标签和p标签替换为换行符
+    content = re.sub(r'<br\s*/?>\s*', '\n', content)
+    content = re.sub(r'<p[^>]*>\s*', '\n', content)
+    content = re.sub(r'</p>\s*', '\n', content)
+    
+    # 移除其他HTML标签
     content = re.sub(r'<[^>]+>', '', content)
+    
+    # 清理空白字符
+    content = re.sub(r'[ \t]+', ' ', content)  # 多个空格或制表符替换为单个空格
+    content = re.sub(r'\n[ \t]+', '\n', content)  # 行首空白
+    content = re.sub(r'[ \t]+\n', '\n', content)  # 行尾空白
+    
+    # 将多个连续换行符规范化为双换行（段落分隔）
     content = re.sub(r'\n{3,}', '\n\n', content)
     
-    return content.strip()
+    # 处理段落：确保每个非空行都是一个段落
+    lines = content.split('\n')
+    paragraphs = []
+    for line in lines:
+        line = line.strip()
+        if line:  # 非空行
+            paragraphs.append(line)
+    
+    # 用双换行符连接段落
+    return '\n\n'.join(paragraphs)
 
 
 def load_status(save_path):
@@ -322,12 +341,16 @@ def create_epub(name, author_name, description, cover_url, chapters, save_path):
         title = ch_data.get('title', f'第{idx + 1}章')
         content = ch_data.get('content', '')
         
+        # 将换行符转换为HTML段落标签
+        paragraphs = content.split('\n\n') if content else []
+        html_paragraphs = ''.join(f'<p>{p.strip()}</p>' for p in paragraphs if p.strip())
+        
         chapter = epub.EpubHtml(
             title=title,
             file_name=chapter_file,
             lang='zh-CN'
         )
-        chapter.content = f'<h1>{title}</h1><div>{content}</div>'
+        chapter.content = f'<h1>{title}</h1><div>{html_paragraphs}</div>'
         
         book.add_item(chapter)
         spine_items.append(chapter)
