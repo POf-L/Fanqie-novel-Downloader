@@ -179,9 +179,6 @@ python web_app.py
    - 应用会自动检测并降级到系统浏览器
    - 功能完全相同，无需额外操作
 
-3. **查看详细说明**：
-   - 参考 `WEBVIEW_TROUBLESHOOTING.md` 文件获取完整的故障排除指南
-
 **注意**：此问题已修复，应用会自动处理并切换到系统浏览器，不影响正常使用。
 
 ### 错误：Address already in use
