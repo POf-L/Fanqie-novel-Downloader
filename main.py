@@ -68,10 +68,29 @@ def open_web_interface(port, access_token):
                 background_color='#FAFAFA'
             )
             
-            webview.start()
+            try:
+                webview.start()
+            except AttributeError as e:
+                # 处理 'NoneType' object has no attribute 'BrowserProcessId' 等浏览器引擎初始化错误
+                error_msg = str(e)
+                if 'BrowserProcessId' in error_msg or 'NoneType' in error_msg:
+                    print(f"PyWebView 浏览器引擎初始化失败: {error_msg}")
+                    print("自动切换到系统浏览器...")
+                    raise ImportError("WebView engine failed")
+                else:
+                    raise
+            except Exception as e:
+                # 处理其他 webview 相关错误
+                error_msg = str(e)
+                if any(keyword in error_msg.lower() for keyword in ['browser', 'webview', 'edge', 'chromium']):
+                    print(f"PyWebView 启动失败: {error_msg}")
+                    print("自动切换到系统浏览器...")
+                    raise ImportError("WebView failed to start")
+                else:
+                    raise
             
         except ImportError:
-            print("PyWebView 未安装，使用系统浏览器打开...")
+            print("PyWebView 未安装或不可用，使用系统浏览器打开...")
             import webbrowser
             time.sleep(2)  # 等待 Flask 启动
             webbrowser.open(url)
