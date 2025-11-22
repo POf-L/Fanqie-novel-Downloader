@@ -1,3 +1,4 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/POf-L/Fanqie-novel-Downloader)
 # 番茄小说下载器
 
 简洁高效的小说下载与导出工具，采用 HTML5 现代化界面，支持 TXT/EPUB 多格式导出。
