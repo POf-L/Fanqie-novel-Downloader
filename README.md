@@ -160,6 +160,29 @@ python web_app.py
 
 ## 故障排除
 
+### 错误：应用窗口无法打开或显示 BrowserProcessId 错误
+
+**原因**：PyWebView 浏览器引擎初始化失败（常见于 Windows 系统）
+
+**现象**：
+- 应用启动后没有窗口出现
+- 控制台显示 `'NoneType' object has no attribute 'BrowserProcessId'`
+- 应用自动切换到系统浏览器
+
+**解决**：
+1. **Windows 用户** - 安装 Microsoft Edge WebView2 Runtime：
+   - 下载地址：https://go.microsoft.com/fwlink/p/?LinkId=2124703
+   - 或等待应用自动在系统浏览器中打开（推荐）
+
+2. **使用系统浏览器模式**：
+   - 应用会自动检测并降级到系统浏览器
+   - 功能完全相同，无需额外操作
+
+3. **查看详细说明**：
+   - 参考 `WEBVIEW_TROUBLESHOOTING.md` 文件获取完整的故障排除指南
+
+**注意**：此问题已修复，应用会自动处理并切换到系统浏览器，不影响正常使用。
+
 ### 错误：Address already in use
 
 **原因**：端口 5000 被占用
