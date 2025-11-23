@@ -323,9 +323,6 @@ function initializeUI() {
     // 下载按钮
     document.getElementById('downloadBtn').addEventListener('click', handleDownload);
     
-    // 选择章节按钮
-    document.getElementById('selectChaptersBtn').addEventListener('click', handleSelectChapters);
-    
     // 取消按钮
     document.getElementById('cancelBtn').addEventListener('click', handleCancel);
     
@@ -521,11 +518,12 @@ function simpleMarkdownToHtml(markdown) {
     return html;
 }
 
-function showUpdateModal(updateInfo) {
+async function showUpdateModal(updateInfo) {
     const modal = document.getElementById('updateModal');
     const currentVersion = document.getElementById('currentVersion');
     const latestVersion = document.getElementById('latestVersion');
     const updateDescription = document.getElementById('updateDescription');
+    const versionSelector = document.getElementById('versionSelector');
     const downloadUpdateBtn = document.getElementById('downloadUpdateBtn');
     const closeUpdateBtn = document.getElementById('closeUpdateBtn');
     const updateModalClose = document.getElementById('updateModalClose');
@@ -536,12 +534,94 @@ function showUpdateModal(updateInfo) {
     const releaseBody = updateInfo.release_info?.body || updateInfo.message || '暂无更新说明';
     updateDescription.innerHTML = simpleMarkdownToHtml(releaseBody);
     
-    modal.style.display = 'flex';
+    // 获取可下载的版本选项
+    try {
+        const response = await fetch('/api/get-update-assets');
+        const result = await response.json();
+        
+        if (result.success && result.assets && result.assets.length > 0) {
+            // 显示版本选择器
+            versionSelector.innerHTML = '<h4>选择下载版本:</h4>';
+            const optionsContainer = document.createElement('div');
+            optionsContainer.className = 'version-options';
+            
+            result.assets.forEach((asset, index) => {
+                const option = document.createElement('label');
+                option.className = 'version-option';
+                if (asset.recommended) {
+                    option.classList.add('recommended');
+                }
+                
+                const radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = 'version';
+                radio.value = asset.download_url;
+                radio.dataset.filename = asset.name;
+                if (asset.recommended) {
+                    radio.checked = true;
+                }
+                
+                const label = document.createElement('span');
+                label.innerHTML = `
+                    <strong>${asset.type === 'standalone' ? '完整版' : asset.type === 'debug' ? '调试版' : '标准版'}</strong> 
+                    (${asset.size_mb} MB)
+                    ${asset.recommended ? '<span class="badge">推荐</span>' : ''}
+                    <br>
+                    <small>${asset.description}</small>
+                `;
+                
+                option.appendChild(radio);
+                option.appendChild(label);
+                optionsContainer.appendChild(option);
+            });
+            
+            versionSelector.appendChild(optionsContainer);
+            versionSelector.style.display = 'block';
+            
+            // 修改下载按钮逻辑
+            downloadUpdateBtn.onclick = () => {
+                const selectedRadio = document.querySelector('input[name="version"]:checked');
+                if (selectedRadio) {
+                    const downloadUrl = selectedRadio.value;
+                    const filename = selectedRadio.dataset.filename;
+                    
+                    // 创建隐藏的 <a> 标签触发下载
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = filename;
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    // 同时打开 Release 页面作为备选
+                    setTimeout(() => {
+                        window.open(result.release_url, '_blank');
+                    }, 500);
+                    
+                    modal.style.display = 'none';
+                } else {
+                    alert('请选择一个版本');
+                }
+            };
+        } else {
+            // 如果无法获取 assets,使用默认行为
+            versionSelector.style.display = 'none';
+            downloadUpdateBtn.onclick = () => {
+                window.open(updateInfo.url || updateInfo.release_info?.html_url, '_blank');
+                modal.style.display = 'none';
+            };
+        }
+    } catch (error) {
+        console.error('获取下载选项失败:', error);
+        versionSelector.style.display = 'none';
+        downloadUpdateBtn.onclick = () => {
+            window.open(updateInfo.url || updateInfo.release_info?.html_url, '_blank');
+            modal.style.display = 'none';
+        };
+    }
     
-    downloadUpdateBtn.onclick = () => {
-        window.open(updateInfo.url || updateInfo.release_info?.html_url, '_blank');
-        modal.style.display = 'none';
-    };
+    modal.style.display = 'flex';
     
     closeUpdateBtn.onclick = () => {
         modal.style.display = 'none';
@@ -605,7 +685,8 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
         selectionHtml = `
             <div class="chapter-selection-info" style="padding: 15px; background: #f8f9fa; border-radius: 4px; margin-bottom: 15px;">
                 <p style="margin: 0 0 5px 0; color: #28a745; font-weight: bold;">✅ 已手动选择 ${AppState.selectedChapters.length} 个章节</p>
-                <p style="margin: 0; color: #6c757d; font-size: 0.9em;">提示：自定义选择模式下不支持"整书极速下载"</p>
+                <p style="margin: 0; color: #6c757d; font-size: 0.9em;">提示：自定义选择模式下不支持“整书极速下载”</p>
+                <button class="btn btn-sm btn-secondary" onclick="window.reSelectChapters()" style="margin-top: 10px;">重新选择章节</button>
             </div>
         `;
     } else {
@@ -618,6 +699,10 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                 <label>
                     <input type="radio" name="chapterMode" value="range">
                     自定义章节范围
+                </label>
+                <label>
+                    <input type="radio" name="chapterMode" value="manual">
+                    手动选择章节
                 </label>
             </div>
             
@@ -637,6 +722,23 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                             `<option value="${idx}" ${idx === bookInfo.chapters.length - 1 ? 'selected' : ''}>${idx + 1}. ${ch.title}</option>`
                         ).join('')}
                     </select>
+                </div>
+            </div>
+            
+            <div class="chapter-manual-container" id="chapterManualContainer" style="display: none; margin-top: 15px;">
+                <div class="chapter-actions" style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee; display: flex; gap: 10px; align-items: center;">
+                    <button class="btn btn-sm btn-secondary" onclick="window.selectAllChaptersInDialog()">全选</button>
+                    <button class="btn btn-sm btn-secondary" onclick="window.selectNoneChaptersInDialog()">全不选</button>
+                    <button class="btn btn-sm btn-secondary" onclick="window.invertChaptersInDialog()">反选</button>
+                    <span id="dialogSelectedCount" style="margin-left: 15px; font-weight: bold;">已选: 0 章</span>
+                </div>
+                <div class="chapter-list" id="dialogChapterList" style="max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
+                    ${bookInfo.chapters.map((ch, idx) => `
+                        <label class="chapter-item" style="display: flex; align-items: center; padding: 8px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" value="${idx}" onchange="window.updateDialogSelectedCount()" style="margin-right: 8px;">
+                            <span style="flex: 1; font-size: 0.9em;">${ch.title}</span>
+                        </label>
+                    `).join('')}
                 </div>
             </div>
         `;
@@ -676,10 +778,12 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
     if (!AppState.selectedChapters) {
         const chapterModeInputs = modal.querySelectorAll('input[name="chapterMode"]');
         const chapterInputs = modal.querySelector('#chapterInputs');
+        const chapterManualContainer = modal.querySelector('#chapterManualContainer');
         
         chapterModeInputs.forEach(input => {
             input.addEventListener('change', (e) => {
                 chapterInputs.style.display = e.target.value === 'range' ? 'block' : 'none';
+                chapterManualContainer.style.display = e.target.value === 'manual' ? 'block' : 'none';
             });
         });
     }
@@ -691,7 +795,7 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
         
         if (selectedChapters) {
             logger.log(`📚 准备下载《${bookInfo.book_name}》`);
-            logger.log(`📑 模式: 手动选择 (${selectedChapters.length} 章)`);
+            logger.log(`📁 模式: 手动选择 (${selectedChapters.length} 章)`);
         } else {
             const mode = modal.querySelector('input[name="chapterMode"]:checked').value;
             if (mode === 'range') {
@@ -704,7 +808,19 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                 }
                 
                 logger.log(`📚 准备下载《${bookInfo.book_name}》`);
-                logger.log(`📑 章节范围: 第 ${startChapter + 1} 章 - 第 ${endChapter + 1} 章`);
+                logger.log(`📁 章节范围: 第 ${startChapter + 1} 章 - 第 ${endChapter + 1} 章`);
+            } else if (mode === 'manual') {
+                // 获取手动选择的章节
+                const checkboxes = modal.querySelectorAll('#dialogChapterList input[type="checkbox"]:checked');
+                selectedChapters = Array.from(checkboxes).map(cb => parseInt(cb.value));
+                
+                if (selectedChapters.length === 0) {
+                    alert('请至少选择一个章节');
+                    return;
+                }
+                
+                logger.log(`📚 准备下载《${bookInfo.book_name}》`);
+                logger.log(`📁 模式: 手动选择 (${selectedChapters.length} 章)`);
             } else {
                 logger.log(`📚 准备下载《${bookInfo.book_name}》全部章节`);
             }
@@ -725,6 +841,44 @@ async function handleCancel() {
     }
 }
 
+// 全局辅助函数 - 对话框内的章节选择
+window.updateDialogSelectedCount = function() {
+    const checkboxes = document.querySelectorAll('#dialogChapterList input[type="checkbox"]');
+    const checked = Array.from(checkboxes).filter(cb => cb.checked);
+    const countElement = document.getElementById('dialogSelectedCount');
+    if (countElement) {
+        countElement.textContent = `已选: ${checked.length} 章`;
+    }
+};
+
+window.selectAllChaptersInDialog = function() {
+    const checkboxes = document.querySelectorAll('#dialogChapterList input[type="checkbox"]');
+    checkboxes.forEach(cb => cb.checked = true);
+    window.updateDialogSelectedCount();
+};
+
+window.selectNoneChaptersInDialog = function() {
+    const checkboxes = document.querySelectorAll('#dialogChapterList input[type="checkbox"]');
+    checkboxes.forEach(cb => cb.checked = false);
+    window.updateDialogSelectedCount();
+};
+
+window.invertChaptersInDialog = function() {
+    const checkboxes = document.querySelectorAll('#dialogChapterList input[type="checkbox"]');
+    checkboxes.forEach(cb => cb.checked = !cb.checked);
+    window.updateDialogSelectedCount();
+};
+
+window.reSelectChapters = function() {
+    // 重置章节选择状态
+    AppState.selectedChapters = null;
+    // 关闭当前对话框
+    const modal = document.querySelector('.modal');
+    if (modal) modal.remove();
+    // 重新点击下载按钮
+    handleDownload();
+};
+
 function handleClear() {
     if (confirm('确定要清理所有设置吗？')) {
         document.getElementById('bookId').value = '';
@@ -733,10 +887,6 @@ function handleClear() {
         
         // 重置章节选择
         AppState.selectedChapters = null;
-        const btn = document.getElementById('selectChaptersBtn');
-        btn.textContent = `📑 选择章节`;
-        btn.classList.remove('btn-success');
-        btn.classList.add('btn-info');
         
         logger.clear();
         logger.log('🧹 设置已清理');

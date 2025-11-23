@@ -419,6 +419,40 @@ def api_check_update():
     except Exception as e:
         return jsonify({'success': False, 'message': f'检查更新失败: {str(e)}'}), 500
 
+@app.route('/api/get-update-assets', methods=['GET'])
+def api_get_update_assets():
+    """获取更新文件的下载选项"""
+    try:
+        from updater import get_latest_release, parse_release_assets
+        from config import __github_repo__
+        import platform
+        
+        # 获取最新版本信息
+        latest_info = get_latest_release(__github_repo__)
+        if not latest_info:
+            return jsonify({'success': False, 'message': '无法获取版本信息'}), 500
+        
+        # 检测当前平台
+        system = platform.system().lower()
+        if system == 'darwin':
+            platform_name = 'macos'
+        elif system == 'linux':
+            platform_name = 'linux'
+        else:
+            platform_name = 'windows'
+        
+        # 解析 assets
+        assets = parse_release_assets(latest_info, platform_name)
+        
+        return jsonify({
+            'success': True,
+            'platform': platform_name,
+            'assets': assets,
+            'release_url': latest_info.get('html_url', '')
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'获取下载选项失败: {str(e)}'}), 500
+
 if __name__ == '__main__':
     print(f'配置文件位置: {CONFIG_FILE}')
     app.run(host='127.0.0.1', port=5000, debug=False)

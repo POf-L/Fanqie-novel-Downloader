@@ -62,14 +62,12 @@ def insert_watermark(content: str, watermark_text: str = None, num_insertions: i
     
     # 自动计算插入次数
     if num_insertions is None:
-        # 根据内容长度计算，大约每50000字插入一次
-        # 至少插入1次（如果内容足够长），否则不插入或插入1次? 
-        # 用户希望"频率降低"，所以移除随机增加的部分
+        # 根据内容长度计算，大约每1000字插入一次
         content_len = len(content)
-        if content_len < 5000: # 太短不插入
+        if content_len < 500: # 太短不插入
             num_insertions = 0
         else:
-            num_insertions = max(1, int(content_len / 50000))
+            num_insertions = max(1, int(content_len / 1000))
     
     # 将水印文本添加隐形字符
     watermarked_text = add_invisible_chars_to_text(watermark_text, insertion_rate=0.25)
@@ -112,7 +110,7 @@ def insert_watermark(content: str, watermark_text: str = None, num_insertions: i
 
 def apply_watermark_to_chapter(content: str) -> str:
     """
-    为章节内容应用完整的水印处理（水印插入 + 隐形字符）
+    为章节内容应用完整的水印处理（在章节末尾添加水印 + 隐形字符）
     
     Args:
         content: 章节内容
@@ -123,8 +121,14 @@ def apply_watermark_to_chapter(content: str) -> str:
     if not content:
         return content
     
-    # 首先插入水印文本
-    content = insert_watermark(content)
+    # 默认水印文本
+    watermark_text = "当前小说使用https://github.com/POf-L/Fanqie-novel-Downloader免费下载器下载，购买的请立即差评并申请退款和举报！"
+    
+    # 将水印文本添加隐形字符
+    watermarked_text = add_invisible_chars_to_text(watermark_text, insertion_rate=0.25)
+    
+    # 在章节末尾添加水印（使用双换行分隔）
+    content = content + '\n\n' + watermarked_text
     
     # 然后在整个内容中添加隐形字符
     content = add_invisible_chars_to_text(content, insertion_rate=0.15)
