@@ -673,14 +673,17 @@ async function handleDownload() {
         return;
     }
     
+    logger.log('✅ 获取成功，准备显示确认窗口');
     showConfirmDialog(bookInfo, savePath, fileFormat);
 }
 
 function showConfirmDialog(bookInfo, savePath, fileFormat) {
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    
-    let selectionHtml = '';
+    console.log('showConfirmDialog called with:', bookInfo);
+    try {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        
+        let selectionHtml = '';
     if (AppState.selectedChapters) {
         selectionHtml = `
             <div class="chapter-selection-info" style="padding: 15px; background: #f8f9fa; border-radius: 4px; margin-bottom: 15px;">
@@ -775,6 +778,9 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
     
     document.body.appendChild(modal);
     
+    // Force display flex
+    modal.style.display = 'flex';
+    
     if (!AppState.selectedChapters) {
         const chapterModeInputs = modal.querySelectorAll('input[name="chapterMode"]');
         const chapterInputs = modal.querySelector('#chapterInputs');
@@ -797,32 +803,39 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
             logger.log(`📚 准备下载《${bookInfo.book_name}》`);
             logger.log(`📁 模式: 手动选择 (${selectedChapters.length} 章)`);
         } else {
-            const mode = modal.querySelector('input[name="chapterMode"]:checked').value;
-            if (mode === 'range') {
-                startChapter = parseInt(modal.querySelector('#startChapter').value);
-                endChapter = parseInt(modal.querySelector('#endChapter').value);
-                
-                if (startChapter > endChapter) {
-                    alert('起始章节不能大于结束章节');
-                    return;
-                }
-                
-                logger.log(`📚 准备下载《${bookInfo.book_name}》`);
-                logger.log(`📁 章节范围: 第 ${startChapter + 1} 章 - 第 ${endChapter + 1} 章`);
-            } else if (mode === 'manual') {
-                // 获取手动选择的章节
-                const checkboxes = modal.querySelectorAll('#dialogChapterList input[type="checkbox"]:checked');
-                selectedChapters = Array.from(checkboxes).map(cb => parseInt(cb.value));
-                
-                if (selectedChapters.length === 0) {
-                    alert('请至少选择一个章节');
-                    return;
-                }
-                
-                logger.log(`📚 准备下载《${bookInfo.book_name}》`);
-                logger.log(`📁 模式: 手动选择 (${selectedChapters.length} 章)`);
+            // Safe check for chapterMode
+            const modeInput = modal.querySelector('input[name="chapterMode"]:checked');
+            if (!modeInput && !selectedChapters) {
+                // Default to all if nothing checked (shouldn't happen due to default checked)
+                startChapter = null; endChapter = null;
             } else {
-                logger.log(`📚 准备下载《${bookInfo.book_name}》全部章节`);
+                const mode = modeInput.value;
+                if (mode === 'range') {
+                    startChapter = parseInt(modal.querySelector('#startChapter').value);
+                    endChapter = parseInt(modal.querySelector('#endChapter').value);
+                    
+                    if (startChapter > endChapter) {
+                        alert('起始章节不能大于结束章节');
+                        return;
+                    }
+                    
+                    logger.log(`📚 准备下载《${bookInfo.book_name}》`);
+                    logger.log(`📁 章节范围: 第 ${startChapter + 1} 章 - 第 ${endChapter + 1} 章`);
+                } else if (mode === 'manual') {
+                    // 获取手动选择的章节
+                    const checkboxes = modal.querySelectorAll('#dialogChapterList input[type="checkbox"]:checked');
+                    selectedChapters = Array.from(checkboxes).map(cb => parseInt(cb.value));
+                    
+                    if (selectedChapters.length === 0) {
+                        alert('请至少选择一个章节');
+                        return;
+                    }
+                    
+                    logger.log(`📚 准备下载《${bookInfo.book_name}》`);
+                    logger.log(`📁 模式: 手动选择 (${selectedChapters.length} 章)`);
+                } else {
+                    logger.log(`📚 准备下载《${bookInfo.book_name}》全部章节`);
+                }
             }
         }
         
@@ -832,6 +845,11 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
         api.startDownload(bookInfo.book_id, savePath, fileFormat, startChapter, endChapter, selectedChapters);
         modal.remove();
     });
+    } catch (e) {
+        console.error('Error showing confirm dialog:', e);
+        logger.log(`❌ 显示确认窗口失败: ${e.message}`);
+        alert('显示确认窗口失败，请查看控制台日志');
+    }
 }
 
 

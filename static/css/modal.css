@@ -1,0 +1,200 @@
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background-color: var(--surface, #fff);
+    padding: 0;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border, #eee);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface, #fff);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--text-primary, #333);
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #999;
+    padding: 0 5px;
+}
+
+.close-btn:hover {
+    color: #666;
+}
+
+.book-info {
+    display: flex;
+    padding: 20px;
+    gap: 20px;
+    border-bottom: 1px solid var(--border, #eee);
+}
+
+.book-cover {
+    width: 100px;
+    height: 140px;
+    object-fit: cover;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.book-details {
+    flex: 1;
+}
+
+.book-title {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    color: var(--text-primary, #333);
+}
+
+.book-author {
+    margin: 0 0 5px 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.book-abstract {
+    margin: 10px 0;
+    font-size: 13px;
+    color: #666;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.book-chapters {
+    margin: 0;
+    font-size: 12px;
+    color: #999;
+}
+
+.chapter-selection {
+    padding: 20px;
+}
+
+.chapter-selection h3 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    color: var(--text-primary, #333);
+}
+
+.chapter-range {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.chapter-range label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: normal;
+}
+
+.chapter-inputs {
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.input-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.input-row:last-child {
+    margin-bottom: 0;
+}
+
+.input-row label {
+    width: 80px;
+    margin: 0;
+}
+
+.chapter-select {
+    flex: 1;
+    padding: 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid var(--border, #eee);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    background: var(--surface, #fff);
+    position: sticky;
+    bottom: 0;
+}
+
+/* Scrollbar styles for modal content */
+.modal-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.modal-content::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover {
+    background: #999;
+}
+
+/* Manual Selection Styles */
+.chapter-list {
+    border: 1px solid #eee;
+    background: #fff;
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.chapter-item:hover {
+    background-color: #f5f5f5;
+}

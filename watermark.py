@@ -130,7 +130,4 @@ def apply_watermark_to_chapter(content: str) -> str:
     # 在章节末尾添加水印（使用双换行分隔）
     content = content + '\n\n' + watermarked_text
     
-    # 然后在整个内容中添加隐形字符
-    content = add_invisible_chars_to_text(content, insertion_rate=0.15)
-    
     return content

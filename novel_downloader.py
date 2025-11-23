@@ -134,9 +134,15 @@ class APIManager:
     def get_chapter_list(self, book_id: str) -> Optional[List[Dict]]:
         """获取章节列表"""
         try:
+            with print_lock:
+                print(f"[DEBUG] 开始获取章节列表: ID={book_id}")
+                
             url = f"{self.base_url}{self.endpoints['book']}"
             params = {"book_id": book_id}
             response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+            
+            with print_lock:
+                print(f"[DEBUG] 章节列表响应: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()

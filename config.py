@@ -96,7 +96,14 @@ def _get_ua() -> UserAgent:
         with _UA_LOCK:
             if _UA_SINGLETON is None:
                 try:
-                    _UA_SINGLETON = UserAgent(cache=True, fallback=random.choice(_DEFAULT_USER_AGENTS))
+                    # 尝试不带参数初始化 (适配 1.x 版本)
+                    _UA_SINGLETON = UserAgent(fallback=random.choice(_DEFAULT_USER_AGENTS))
+                except TypeError:
+                    # 适配旧版本
+                    try:
+                        _UA_SINGLETON = UserAgent(cache=True, fallback=random.choice(_DEFAULT_USER_AGENTS))
+                    except Exception:
+                        _UA_SINGLETON = None
                 except Exception:
                     _UA_SINGLETON = None
     return _UA_SINGLETON

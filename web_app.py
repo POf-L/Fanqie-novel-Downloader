@@ -9,6 +9,7 @@ import threading
 import queue
 import tempfile
 import secrets
+import time
 from flask import Flask, render_template, request, jsonify, send_from_directory, abort
 from flask_cors import CORS
 import logging
@@ -110,28 +111,42 @@ def download_worker():
                     else:
                         update_status(message=message)
                 
+                # 强制刷新 API 实例，防止线程间 Session 污染
+                if hasattr(api_manager, '_tls'):
+                    api_manager._tls = threading.local()
+                
                 # 获取书籍信息
-                update_status(message='获取书籍信息...')
-                book_detail = api_manager.get_book_detail(book_id)
+                update_status(message='正在连接服务器获取书籍信息...')
+                
+                # 增加超时重试机制
+                book_detail = None
+                for _ in range(3):
+                    book_detail = api_manager.get_book_detail(book_id)
+                    if book_detail:
+                        break
+                    time.sleep(1)
+                
                 if not book_detail:
-                    update_status(message='获取书籍信息失败', is_downloading=False)
+                    update_status(message='获取书籍信息失败，请检查网络或书籍ID', is_downloading=False)
                     continue
                 
                 book_name = book_detail.get('book_name', book_id)
                 update_status(book_name=book_name, message=f'准备下载《{book_name}》...')
                 
                 # 执行下载
-                update_status(message='启动下载...')
+                update_status(message='启动下载引擎...')
                 success = api.run_download(book_id, save_path, file_format, start_chapter, end_chapter, selected_chapters, progress_callback)
                 
                 if success:
                     update_status(progress=100, message=f'✅ 下载完成！已保存至 {save_path}', is_downloading=False)
                 else:
-                    update_status(message='下载失败', progress=0, is_downloading=False)
+                    update_status(message='下载过程中断或失败', progress=0, is_downloading=False)
                     
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 error_str = str(e)
-                update_status(message=f'❌ 下载失败: {error_str}', progress=0, is_downloading=False)
+                update_status(message=f'❌ 下载异常: {error_str}', progress=0, is_downloading=False)
                 print(f"下载异常: {error_str}")
         
         except queue.Empty:
@@ -185,6 +200,7 @@ def api_status():
 @app.route('/api/book-info', methods=['POST'])
 def api_book_info():
     """获取书籍详情和章节列表"""
+    print(f"[DEBUG] Received book-info request: {request.data}")
     data = request.get_json()
     book_id = data.get('book_id', '').strip()
     
@@ -208,12 +224,16 @@ def api_book_info():
     
     try:
         # 获取书籍信息
+        print(f"[DEBUG] calling get_book_detail for {book_id}")
         book_detail = api_manager.get_book_detail(book_id)
+        print(f"[DEBUG] book_detail result: {str(book_detail)[:100]}")
         if not book_detail:
             return jsonify({'success': False, 'message': '获取书籍信息失败'}), 400
         
         # 获取章节列表
+        print(f"[DEBUG] calling get_chapter_list for {book_id}")
         chapters_data = api_manager.get_chapter_list(book_id)
+        print(f"[DEBUG] chapters_data type: {type(chapters_data)}")
         if not chapters_data:
             return jsonify({'success': False, 'message': '无法获取章节列表'}), 400
         
@@ -243,6 +263,8 @@ def api_book_info():
                 if item_id:
                     chapters.append({"id": str(item_id), "title": title, "index": idx})
         
+        print(f"[DEBUG] Found {len(chapters)} chapters")
+
         # 返回书籍信息和章节列表
         return jsonify({
             'success': True,
@@ -256,6 +278,8 @@ def api_book_info():
             }
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'message': f'获取信息失败: {str(e)}'}), 500
 
 @app.route('/api/download', methods=['POST'])
