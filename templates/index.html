@@ -65,9 +65,38 @@
 
                     <!-- 按钮组 -->
                     <div class="button-group">
+                        <button class="btn btn-info" id="selectChaptersBtn">📑 选择章节</button>
                         <button class="btn btn-primary" id="downloadBtn">🚀 开始下载</button>
                         <button class="btn btn-danger" id="cancelBtn" style="display:none;">⏹ 取消下载</button>
                         <button class="btn btn-secondary" id="clearBtn">🧹 清理设置</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ... (status card) ... -->
+            
+            <!-- 章节选择弹窗 -->
+            <div class="modal" id="chapterModal" style="display: none;">
+                <div class="modal-content" style="max-width: 800px; width: 90%;">
+                    <div class="modal-header">
+                        <h3>📑 选择章节</h3>
+                        <button class="modal-close" id="chapterModalClose">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="chapter-actions" style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
+                            <button class="btn btn-sm btn-secondary" id="selectAllBtn">全选</button>
+                            <button class="btn btn-sm btn-secondary" id="selectNoneBtn">全不选</button>
+                            <button class="btn btn-sm btn-secondary" id="selectInvertBtn">反选</button>
+                            <span id="selectedCount" style="margin-left: 15px; font-weight: bold;">已选: 0 章</span>
+                        </div>
+                        <div class="chapter-list" id="chapterList" style="max-height: 500px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
+                            <!-- 章节列表将在这里动态生成 -->
+                            <div style="text-align: center; width: 100%; padding: 20px;">请先点击获取...</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-primary" id="confirmChaptersBtn">确定</button>
+                        <button class="btn btn-secondary" id="cancelChaptersBtn">取消</button>
                     </div>
                 </div>
             </div>

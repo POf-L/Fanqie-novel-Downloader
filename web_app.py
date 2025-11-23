@@ -94,6 +94,7 @@ def download_worker():
             file_format = task.get('file_format', 'txt')
             start_chapter = task.get('start_chapter', None)
             end_chapter = task.get('end_chapter', None)
+            selected_chapters = task.get('selected_chapters', None)
             
             update_status(is_downloading=True, progress=0, message='初始化...')
             
@@ -121,7 +122,7 @@ def download_worker():
                 
                 # 执行下载
                 update_status(message='启动下载...')
-                success = api.run_download(book_id, save_path, file_format, start_chapter, end_chapter, progress_callback)
+                success = api.run_download(book_id, save_path, file_format, start_chapter, end_chapter, selected_chapters, progress_callback)
                 
                 if success:
                     update_status(progress=100, message=f'✅ 下载完成！已保存至 {save_path}', is_downloading=False)
@@ -270,6 +271,7 @@ def api_download():
     file_format = data.get('file_format', 'txt')
     start_chapter = data.get('start_chapter')
     end_chapter = data.get('end_chapter')
+    selected_chapters = data.get('selected_chapters')
     
     if not book_id:
         return jsonify({'success': False, 'message': '请输入书籍ID或URL'}), 400
@@ -298,7 +300,8 @@ def api_download():
         'save_path': save_path,
         'file_format': file_format,
         'start_chapter': start_chapter,
-        'end_chapter': end_chapter
+        'end_chapter': end_chapter,
+        'selected_chapters': selected_chapters
     }
     download_queue.put(task)
     update_status(is_downloading=True, progress=0, message='任务已加入队列')

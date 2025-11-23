@@ -293,6 +293,7 @@ jobs:
         with:
           tag_name: ${{ steps.release_version.outputs.version }}
           name: TomatoNovelDownloader ${{ steps.release_version.outputs.version }}
+          generate_release_notes: true
           body: |
             ## 📦 Release ${{ steps.release_version.outputs.version }}
             
@@ -303,13 +304,12 @@ jobs:
             - **构建时间**: ${{ needs.version.outputs.build_time }}
             - **提交哈希**: `${{ github.sha }}`
             - **分支**: ${{ github.ref_name }}
-            - **提交者**: ${{ github.event.head_commit.author.name }}
-
-            ### 支持平台
+            
+            ### 📂 下载文件说明
             
             #### 🎯 发布版本 (推荐)
-            - 💻 **Windows (x64)**: `TomatoNovelDownloader.exe` (需系统安装 WebView2)
-            - 📦 **Windows (内置 WebView2)**: `TomatoNovelDownloader-Standalone.exe` (独立运行，体积较大)
+            - 💻 **Windows (x64)**: `TomatoNovelDownloader.exe` (需系统已安装 WebView2)
+            - 📦 **Windows (内置 WebView2)**: `TomatoNovelDownloader-Standalone.exe` (独立运行，无需配置)
             - 🐧 **Linux (x64)**: `TomatoNovelDownloader-linux`
             - 🍎 **macOS (x64)**: `TomatoNovelDownloader-macos`
             
@@ -320,22 +320,6 @@ jobs:
             - 🐧 **Linux (x64)**: `TomatoNovelDownloader-debug-linux`
             - 🍎 **macOS (x64)**: `TomatoNovelDownloader-debug-macos`
             
-            > 调试版带控制台窗口，可查看详细日志信息
-
-            ### 新版本特性
-            - ✨ HTML5 + CSS3 现代化界面
-            - ✨ 响应式设计，完美适配各种屏幕
-            - ✨ Flask REST API 后端
-            - ✨ PyWebView 原生窗口集成
-            - ✨ 跨平台支持（Windows/Mac/Linux）
-            - ✨ 自动检查更新功能
-            
-            ### 使用说明
-            1. **普通用户**: 下载发布版可执行文件
-            2. **开发调试**: 下载调试版查看详细日志
-            3. 直接运行可执行文件，应用会自动启动
-            4. 应用会在浏览器打开（或使用 PyWebView 窗口）
-
           files: release/*
           draft: false
           prerelease: false

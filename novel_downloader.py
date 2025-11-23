@@ -208,6 +208,65 @@ class APIManager:
             
             return None
 
+    def get_full_content(self, book_id: str) -> Optional[str]:
+        """获取整本小说内容(纯文本)"""
+        try:
+            url = f"{self.base_url}{self.endpoints['content']}"
+            # 使用 tab='下载' 获取整书内容
+            params = {"book_id": book_id, "tab": "下载"}
+            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=60, stream=True)
+            
+            if response.status_code == 200:
+                # 手动解码，防止编码问题
+                response.encoding = 'utf-8'
+                return response.text
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"获取整书内容异常: {str(e)}")
+            return None
+
+def parse_novel_text(text: str) -> List[Dict]:
+    """解析整本小说文本，分离章节"""
+    lines = text.splitlines()
+    chapters = []
+    
+    current_chapter = None
+    current_content = []
+    
+    # 匹配章节标题 (支持 "第xxx章" 或 "数字. ")
+    chapter_pattern = re.compile(r'^\s*(第[0-9一二三四五六七八九十百千]+章|[0-9]+\.)\s*.*')
+    
+    for line in lines:
+        match = chapter_pattern.match(line)
+        if match:
+            # 保存上一章
+            if current_chapter:
+                current_chapter['content'] = '\n'.join(current_content)
+                chapters.append(current_chapter)
+            
+            # 开始新章
+            title = line.strip()
+            current_chapter = {
+                'title': title,
+                'id': str(len(chapters)), # 生成虚拟ID
+                'index': len(chapters)
+            }
+            current_content = []
+        else:
+            # 如果已经在章节中，添加到内容
+            if current_chapter:
+                current_content.append(line)
+            # 否则忽略(头部元数据)
+    
+    # 保存最后一章
+    if current_chapter:
+        current_chapter['content'] = '\n'.join(current_content)
+        chapters.append(current_chapter)
+        
+    return chapters
+
+
 # 全局API管理器实例
 api_manager = None
 
@@ -397,7 +456,7 @@ def create_txt(name, author_name, description, chapters, save_path):
     return txt_path
 
 
-def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=None, gui_callback=None):
+def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=None, selected_chapters=None, gui_callback=None):
     """运行下载"""
     
     api = get_api_manager()
@@ -424,96 +483,136 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
         
         log_message(f"书名: {name}, 作者: {author_name}", 10)
         
-        log_message("正在获取章节列表...", 15)
-        chapters_data = api.get_chapter_list(book_id)
-        if not chapters_data:
-            log_message("获取章节列表失败")
-            return False
-        
-        chapters = []
-        if isinstance(chapters_data, dict):
-            all_item_ids = chapters_data.get("allItemIds", [])
-            chapter_list = chapters_data.get("chapterListWithVolume", [])
-            
-            if chapter_list:
-                idx = 0
-                for volume in chapter_list:
-                    if isinstance(volume, list):
-                        for ch in volume:
-                            if isinstance(ch, dict):
-                                item_id = ch.get("itemId") or ch.get("item_id")
-                                title = ch.get("title", f"第{idx+1}章")
-                                if item_id:
-                                    chapters.append({"id": str(item_id), "title": title, "index": idx})
-                                    idx += 1
-            else:
-                for idx, item_id in enumerate(all_item_ids):
-                    chapters.append({"id": str(item_id), "title": f"第{idx+1}章", "index": idx})
-        elif isinstance(chapters_data, list):
-            for idx, ch in enumerate(chapters_data):
-                item_id = ch.get("item_id") or ch.get("chapter_id")
-                title = ch.get("title", f"第{idx+1}章")
-                if item_id:
-                    chapters.append({"id": str(item_id), "title": title, "index": idx})
-        
-        if not chapters:
-            log_message("未找到章节")
-            return False
-        
-        total_chapters = len(chapters)
-        log_message(f"共找到 {total_chapters} 章", 20)
-        
-        if start_chapter is not None or end_chapter is not None:
-            start_idx = (start_chapter - 1) if start_chapter else 0
-            end_idx = end_chapter if end_chapter else total_chapters
-            chapters = chapters[start_idx:end_idx]
-            log_message(f"下载章节范围: {start_idx+1} 到 {end_idx}")
-        
-        downloaded_ids = load_status(save_path)
-        chapters_to_download = [ch for ch in chapters if ch["id"] not in downloaded_ids]
-        
-        if not chapters_to_download:
-            log_message("所有章节已下载")
-        else:
-            log_message(f"开始下载 {len(chapters_to_download)} 章...", 25)
-        
         chapter_results = {}
-        completed = 0
-        total_tasks = len(chapters_to_download)
+        use_full_download = False
         
-        with tqdm(total=total_tasks, desc="下载进度", disable=gui_callback is not None) as pbar:
-            with ThreadPoolExecutor(max_workers=CONFIG.get("max_workers", 5)) as executor:
-                future_to_chapter = {
-                    executor.submit(api.get_chapter_content, ch["id"]): ch
-                    for ch in chapters_to_download
-                }
+        # 尝试极速下载模式 (仅当没有指定范围且没有选择特定章节时)
+        if start_chapter is None and end_chapter is None and not selected_chapters:
+            log_message("正在尝试极速下载模式 (整书下载)...", 15)
+            full_text = api.get_full_content(book_id)
+            if full_text:
+                log_message("整书内容获取成功，正在解析...", 30)
+                chapters_parsed = parse_novel_text(full_text)
                 
-                for future in as_completed(future_to_chapter):
-                    ch = future_to_chapter[future]
-                    try:
-                        data = future.result()
-                        if data and data.get('content'):
-                            processed = process_chapter_content(data.get('content', ''))
+                if chapters_parsed:
+                    log_message(f"解析成功，共 {len(chapters_parsed)} 章", 50)
+                    # 处理章节内容
+                    with tqdm(total=len(chapters_parsed), desc="处理章节", disable=gui_callback is not None) as pbar:
+                        for i, ch in enumerate(chapters_parsed):
+                            processed = process_chapter_content(ch['content'])
                             chapter_results[ch['index']] = {
                                 'title': ch['title'],
                                 'content': processed
                             }
-                            downloaded_ids.add(ch['id'])
-                            completed += 1
-                            if pbar:
-                                pbar.update(1)
-                            if gui_callback:
-                                progress = int((completed / total_tasks) * 60) + 25
-                                gui_callback(progress, f"已下载: {completed}/{total_tasks}")
-                    except Exception:
-                        pass
-        
-        save_status(save_path, downloaded_ids)
+                            if pbar: pbar.update(1)
+                    
+                    use_full_download = True
+                    log_message("章节处理完成", 80)
+                else:
+                    log_message("解析失败或未找到章节，切换回普通模式")
+            else:
+                log_message("极速下载失败，切换回普通模式")
+
+        # 如果没有使用极速模式，则走普通模式
+        if not use_full_download:
+            log_message("正在获取章节列表...", 15)
+            chapters_data = api.get_chapter_list(book_id)
+            if not chapters_data:
+                log_message("获取章节列表失败")
+                return False
+            
+            chapters = []
+            if isinstance(chapters_data, dict):
+                all_item_ids = chapters_data.get("allItemIds", [])
+                chapter_list = chapters_data.get("chapterListWithVolume", [])
+                
+                if chapter_list:
+                    idx = 0
+                    for volume in chapter_list:
+                        if isinstance(volume, list):
+                            for ch in volume:
+                                if isinstance(ch, dict):
+                                    item_id = ch.get("itemId") or ch.get("item_id")
+                                    title = ch.get("title", f"第{idx+1}章")
+                                    if item_id:
+                                        chapters.append({"id": str(item_id), "title": title, "index": idx})
+                                        idx += 1
+                else:
+                    for idx, item_id in enumerate(all_item_ids):
+                        chapters.append({"id": str(item_id), "title": f"第{idx+1}章", "index": idx})
+            elif isinstance(chapters_data, list):
+                for idx, ch in enumerate(chapters_data):
+                    item_id = ch.get("item_id") or ch.get("chapter_id")
+                    title = ch.get("title", f"第{idx+1}章")
+                    if item_id:
+                        chapters.append({"id": str(item_id), "title": title, "index": idx})
+            
+            if not chapters:
+                log_message("未找到章节")
+                return False
+            
+            total_chapters = len(chapters)
+            log_message(f"共找到 {total_chapters} 章", 20)
+            
+            if start_chapter is not None or end_chapter is not None:
+                start_idx = (start_chapter - 1) if start_chapter else 0
+                end_idx = end_chapter if end_chapter else total_chapters
+                chapters = chapters[start_idx:end_idx]
+                log_message(f"下载章节范围: {start_idx+1} 到 {end_idx}")
+            
+            if selected_chapters:
+                try:
+                    selected_indices = set(int(x) for x in selected_chapters)
+                    chapters = [ch for ch in chapters if ch['index'] in selected_indices]
+                    log_message(f"已选择 {len(chapters)} 个特定章节")
+                except Exception as e:
+                    log_message(f"章节筛选出错: {e}")
+            
+            downloaded_ids = load_status(save_path)
+            chapters_to_download = [ch for ch in chapters if ch["id"] not in downloaded_ids]
+            
+            if not chapters_to_download:
+                log_message("所有章节已下载")
+            else:
+                log_message(f"开始下载 {len(chapters_to_download)} 章...", 25)
+            
+            completed = 0
+            total_tasks = len(chapters_to_download)
+            
+            with tqdm(total=total_tasks, desc="下载进度", disable=gui_callback is not None) as pbar:
+                with ThreadPoolExecutor(max_workers=CONFIG.get("max_workers", 5)) as executor:
+                    future_to_chapter = {
+                        executor.submit(api.get_chapter_content, ch["id"]): ch
+                        for ch in chapters_to_download
+                    }
+                    
+                    for future in as_completed(future_to_chapter):
+                        ch = future_to_chapter[future]
+                        try:
+                            data = future.result()
+                            if data and data.get('content'):
+                                processed = process_chapter_content(data.get('content', ''))
+                                chapter_results[ch['index']] = {
+                                    'title': ch['title'],
+                                    'content': processed
+                                }
+                                downloaded_ids.add(ch['id'])
+                                completed += 1
+                                if pbar:
+                                    pbar.update(1)
+                                if gui_callback:
+                                    progress = int((completed / total_tasks) * 60) + 25
+                                    gui_callback(progress, f"已下载: {completed}/{total_tasks}")
+                        except Exception:
+                            pass
+            
+            save_status(save_path, downloaded_ids)
         
         if gui_callback:
             gui_callback(85, "正在生成文件...")
         
         sorted_chapters = [chapter_results[idx] for idx in sorted(chapter_results.keys()) if idx in chapter_results]
+
         
         if file_format == 'epub':
             output_file = create_epub(name, author_name, description, cover_url, sorted_chapters, save_path)
@@ -540,13 +639,13 @@ class NovelDownloader:
         """取消下载"""
         self.is_cancelled = True
     
-    def run_download(self, book_id, save_path, file_format='txt', start_chapter=None, end_chapter=None, gui_callback=None):
+    def run_download(self, book_id, save_path, file_format='txt', start_chapter=None, end_chapter=None, selected_chapters=None, gui_callback=None):
         """运行下载"""
         try:
             if gui_callback:
                 self.gui_verification_callback = gui_callback
             
-            return Run(book_id, save_path, file_format, start_chapter, end_chapter, gui_callback)
+            return Run(book_id, save_path, file_format, start_chapter, end_chapter, selected_chapters, gui_callback)
         except Exception as e:
             print(f"下载失败: {str(e)}")
             return False
