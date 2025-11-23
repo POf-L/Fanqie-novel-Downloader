@@ -46,6 +46,93 @@ current_download_status = {
 }
 status_lock = threading.Lock()
 
+# 更新下载状态
+update_download_status = {
+    'is_downloading': False,
+    'progress': 0,
+    'message': '',
+    'filename': '',
+    'total_size': 0,
+    'downloaded_size': 0,
+    'completed': False,
+    'error': None,
+    'save_path': ''
+}
+update_lock = threading.Lock()
+
+def get_update_status():
+    """获取更新下载状态"""
+    with update_lock:
+        return update_download_status.copy()
+
+def set_update_status(**kwargs):
+    """设置更新下载状态"""
+    with update_lock:
+        for key, value in kwargs.items():
+            if key in update_download_status:
+                update_download_status[key] = value
+
+def update_download_worker(url, save_path, filename):
+    """更新下载工作线程"""
+    try:
+        set_update_status(
+            is_downloading=True, 
+            progress=0, 
+            message='正在连接服务器...', 
+            filename=filename,
+            completed=False,
+            error=None,
+            save_path=save_path
+        )
+        
+        import requests
+        full_path = os.path.join(save_path, filename)
+        
+        # 支持断点续传（简单的检查文件是否存在）
+        # 这里为了安全起见，如果是更新包，最好是重新下载，避免文件损坏
+        
+        response = requests.get(url, stream=True, timeout=30)
+        response.raise_for_status()
+        
+        total_size = int(response.headers.get('content-length', 0))
+        set_update_status(total_size=total_size, message='开始下载...')
+        
+        downloaded = 0
+        chunk_size = 8192
+        
+        with open(full_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if not get_update_status()['is_downloading']: # 检查是否取消
+                    break
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
+                    set_update_status(
+                        progress=progress, 
+                        downloaded_size=downloaded,
+                        message=f'正在下载: {progress}%'
+                    )
+        
+        if get_update_status()['is_downloading']:
+            set_update_status(
+                is_downloading=False, 
+                completed=True, 
+                progress=100, 
+                message='下载完成'
+            )
+        else:
+            # 被取消
+            if os.path.exists(full_path):
+                os.remove(full_path)
+                
+    except Exception as e:
+        set_update_status(
+            is_downloading=False, 
+            error=str(e), 
+            message=f'下载失败: {str(e)}'
+        )
+
 # 延迟导入重型模块
 api = None
 api_manager = None
@@ -476,6 +563,67 @@ def api_get_update_assets():
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'获取下载选项失败: {str(e)}'}), 500
+
+@app.route('/api/download-update', methods=['POST'])
+def api_download_update():
+    """开始下载更新包"""
+    data = request.get_json()
+    url = data.get('url')
+    filename = data.get('filename')
+    
+    if not url or not filename:
+        return jsonify({'success': False, 'message': '参数错误'}), 400
+        
+    # 使用默认下载路径或配置路径
+    save_path = os.path.expanduser('~\\Downloads')
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                save_path = config.get('save_path', save_path)
+        except:
+            pass
+            
+    if not os.path.exists(save_path):
+        try:
+            os.makedirs(save_path)
+        except:
+            save_path = os.path.expanduser('~\\Downloads')
+
+    # 启动下载线程
+    t = threading.Thread(
+        target=update_download_worker, 
+        args=(url, save_path, filename),
+        daemon=True
+    )
+    t.start()
+    
+    return jsonify({'success': True, 'message': '开始下载'})
+
+@app.route('/api/update-status', methods=['GET'])
+def api_get_update_status_route():
+    """获取更新下载状态"""
+    return jsonify(get_update_status())
+
+@app.route('/api/open-folder', methods=['POST'])
+def api_open_folder():
+    """打开文件夹"""
+    data = request.get_json()
+    path = data.get('path')
+    
+    if not path or not os.path.exists(path):
+        return jsonify({'success': False, 'message': '路径不存在'}), 400
+        
+    try:
+        if os.name == 'nt':
+            os.startfile(path)
+        elif os.name == 'posix':
+            subprocess.call(['open', path])
+        else:
+            subprocess.call(['xdg-open', path])
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 if __name__ == '__main__':
     print(f'配置文件位置: {CONFIG_FILE}')

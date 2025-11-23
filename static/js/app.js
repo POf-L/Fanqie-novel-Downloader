@@ -306,6 +306,38 @@ class APIClient {
             return { success: false };
         }
     }
+    
+    async downloadUpdate(url, filename) {
+        try {
+            const result = await this.request('/api/download-update', {
+                method: 'POST',
+                body: JSON.stringify({ url, filename })
+            });
+            return result;
+        } catch (error) {
+            console.error('启动更新下载失败:', error);
+            return { success: false, message: error.message };
+        }
+    }
+    
+    async getUpdateStatus() {
+        try {
+            return await this.request('/api/update-status');
+        } catch (error) {
+            return null;
+        }
+    }
+    
+    async openFolder(path) {
+        try {
+            await this.request('/api/open-folder', {
+                method: 'POST',
+                body: JSON.stringify({ path })
+            });
+        } catch (error) {
+            console.error('打开文件夹失败:', error);
+        }
+    }
 }
 
 const api = new APIClient();
