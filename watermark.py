@@ -6,21 +6,12 @@
 import random
 import re
 
-# 隐形字符列表
+# 隐形字符列表 (仅保留不影响阅读顺序的字符)
 INVISIBLE_CHARS = [
     '\u200B',  # 零宽空格 Zero-width space
     '\u200C',  # 零宽非连接符 Zero-width non-joiner
     '\u200D',  # 零宽连接符 Zero-width joiner
-    '\u200E',  # 左至右符号 Left-to-right mark
-    '\u200F',  # 右至左符号 Right-to-left mark
-    '\u202A',  # 左至右嵌入 Left-to-right embedding
-    '\u202B',  # 右至左嵌入 Right-to-left embedding
-    '\u202C',  # 弹出方向格式 Pop directional formatting
-    '\u202D',  # 左至右覆盖 Left-to-right override
-    '\u202E',  # 右至左覆盖 Right-to-left override
-    '\u061C',  # 阿拉伯字母标记 Arabic letter mark
     '\uFEFF',  # 零宽不换行空格 Zero-width no-break space
-    '\u00AD',  # 软连字符 Soft hyphen
 ]
 
 
@@ -72,7 +63,13 @@ def insert_watermark(content: str, watermark_text: str = None, num_insertions: i
     # 自动计算插入次数
     if num_insertions is None:
         # 根据内容长度计算，大约每50000字插入一次
-        num_insertions = max(1, len(content) // 50000 + random.randint(0, 2))
+        # 至少插入1次（如果内容足够长），否则不插入或插入1次? 
+        # 用户希望"频率降低"，所以移除随机增加的部分
+        content_len = len(content)
+        if content_len < 5000: # 太短不插入
+            num_insertions = 0
+        else:
+            num_insertions = max(1, int(content_len / 50000))
     
     # 将水印文本添加隐形字符
     watermarked_text = add_invisible_chars_to_text(watermark_text, insertion_rate=0.25)
