@@ -122,7 +122,7 @@ def apply_watermark_to_chapter(content: str) -> str:
         return content
     
     # 默认水印文本
-    watermark_text = "当前小说使用https://github.com/POf-L/Fanqie-novel-Downloader免费下载器下载，购买的请立即差评并申请退款和举报！"
+    watermark_text = "当前小说使用https://github.com/POf-L/Fanqie-novel-Downloader下载"
     
     # 将水印文本添加隐形字符
     watermarked_text = add_invisible_chars_to_text(watermark_text, insertion_rate=0.25)
