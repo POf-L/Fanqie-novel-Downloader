@@ -59,6 +59,13 @@ jobs:
             ext: .exe
             artifact_name: TomatoNovelDownloader-debug-windows-x64
             build_flags: '--console'
+          # Windows Standalone (内置 WebView2)
+          - os: windows-latest
+            variant: release-standalone
+            executable: TomatoNovelDownloader-Standalone
+            ext: .exe
+            artifact_name: TomatoNovelDownloader-standalone-windows-x64
+            build_flags: '--windowed --add-data "WebView2;WebView2"'
           # Linux 发布版
           - os: ubuntu-latest
             variant: release
@@ -145,6 +152,33 @@ jobs:
           python -m pip install --prefer-binary pyinstaller
         shell: bash
 
+      - name: Download WebView2 Runtime (Standalone only)
+        if: matrix.variant == 'release-standalone'
+        run: |
+          # 下载 WebView2 Fixed Version Runtime (通过 NuGet 包获取)
+          curl -L -o webview2.zip "https://www.nuget.org/api/v2/package/WebView2.Runtime.X64/129.0.2792.52"
+          7z x webview2.zip -oWebView2Temp
+          
+          # 查找包含 msedgewebview2.exe 的文件夹
+          TARGET_DIR=$(find WebView2Temp -name "msedgewebview2.exe" | head -n 1 | xargs dirname)
+          
+          if [ -z "$TARGET_DIR" ]; then
+            echo "Error: Could not find msedgewebview2.exe in package"
+            # 尝试列出文件以供调试
+            find WebView2Temp
+            exit 1
+          fi
+          
+          echo "Found runtime at $TARGET_DIR"
+          # 移动到项目根目录的 WebView2 文件夹
+          mv "$TARGET_DIR" ./WebView2
+          
+          # 清理临时文件
+          rm -rf WebView2Temp webview2.zip
+          
+          echo "✅ WebView2 Runtime prepared"
+        shell: bash
+
       - name: Build application (${{ matrix.variant }})
         run: |
           python -m PyInstaller --onefile \
@@ -215,6 +249,9 @@ jobs:
           if [ -d "artifacts/TomatoNovelDownloader-debug-windows-x64" ]; then
             cp artifacts/TomatoNovelDownloader-debug-windows-x64/TomatoNovelDownloader-debug.exe release/
           fi
+          if [ -d "artifacts/TomatoNovelDownloader-standalone-windows-x64" ]; then
+            cp artifacts/TomatoNovelDownloader-standalone-windows-x64/TomatoNovelDownloader-Standalone.exe release/
+          fi
           
           # 复制Linux文件（重命名以包含平台信息）
           if [ -d "artifacts/TomatoNovelDownloader-linux-x64" ]; then
@@ -271,7 +308,8 @@ jobs:
             ### 支持平台
             
             #### 🎯 发布版本 (推荐)
-            - 💻 **Windows (x64)**: `TomatoNovelDownloader.exe`
+            - 💻 **Windows (x64)**: `TomatoNovelDownloader.exe` (需系统安装 WebView2)
+            - 📦 **Windows (内置 WebView2)**: `TomatoNovelDownloader-Standalone.exe` (独立运行，体积较大)
             - 🐧 **Linux (x64)**: `TomatoNovelDownloader-linux`
             - 🍎 **macOS (x64)**: `TomatoNovelDownloader-macos`
             

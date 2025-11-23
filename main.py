@@ -125,6 +125,14 @@ def main():
     # 生成随机访问令牌
     access_token = secrets.token_urlsafe(32)
     
+    # 检查是否存在内置的 WebView2 Runtime (用于 Standalone 版本)
+    if getattr(sys, 'frozen', False):
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        webview2_path = os.path.join(base_path, 'WebView2')
+        if os.path.exists(webview2_path):
+            print(f"正在配置内置 WebView2: {webview2_path}")
+            os.environ["WEBVIEW2_BROWSER_EXECUTABLE_FOLDER"] = webview2_path
+    
     # 查找可用端口
     port = find_free_port()
     

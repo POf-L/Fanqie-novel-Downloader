@@ -3,7 +3,7 @@
 配置管理模块 - 包含版本信息、全局配置
 """
 
-__version__ = "1.0.0"
+__version__ = "debug"
 __author__ = "Tomato Novel Downloader"
 __description__ = "A modern novel downloader with GitHub auto-update support"
 __github_repo__ = "POf-L/Fanqie-novel-Downloader"
@@ -24,27 +24,61 @@ else:
 
 import random
 import threading
+import requests
 from typing import Dict
 from fake_useragent import UserAgent
 
-CONFIG = {
-    "api_base_url": "https://fq.shusan.cn",
-    "request_timeout": 10,
-    "max_retries": 3,
-    "connection_pool_size": 10,
-    "max_workers": 5,
-    "download_delay": 0.5,
-    "retry_delay": 2,
-    "status_file": ".download_status.json",
-    "endpoints": {
-        "search": "/api/search",
-        "detail": "/api/detail",
-        "book": "/api/book",
-        "directory": "/api/directory",
-        "content": "/api/content",
-        "chapter": "/api/chapter",
+REMOTE_CONFIG_URL = "https://qbin.me/r/fpoash/"
+
+def load_remote_config() -> Dict:
+    """从远程 URL 加载配置"""
+    print(f"正在获取最新的 API 配置: {REMOTE_CONFIG_URL}")
+    
+    default_config = {
+        "api_base_url": "",
+        "request_timeout": 10,
+        "max_retries": 3,
+        "connection_pool_size": 10,
+        "max_workers": 5,
+        "download_delay": 0.5,
+        "retry_delay": 2,
+        "status_file": ".download_status.json",
+        "endpoints": {}
     }
-}
+
+    try:
+        response = requests.get(REMOTE_CONFIG_URL, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        
+        if "config" in data:
+            remote_conf = data["config"]
+            
+            # 更新基础配置
+            default_config.update({
+                "api_base_url": remote_conf.get("api_base_url", ""),
+                "request_timeout": remote_conf.get("request_timeout", 10),
+                "max_retries": remote_conf.get("max_retries", 3),
+                "connection_pool_size": remote_conf.get("connection_pool_size", 100),
+                "max_workers": remote_conf.get("max_workers", 2),
+            })
+            
+            # 更新端点配置 (映射 tomato_endpoints -> endpoints)
+            if "tomato_endpoints" in remote_conf:
+                default_config["endpoints"] = remote_conf["tomato_endpoints"]
+                
+            print(f"成功加载配置，API 地址: {default_config['api_base_url']}")
+            return default_config
+            
+    except Exception as e:
+        print(f"获取远程配置失败: {str(e)}")
+        # 如果获取失败且用户要求不保留硬编码，这里可能导致程序无法运行
+        # 但为了保证程序基本结构完整，返回空配置或报错
+        print("⚠️ 警告: 无法连接配置服务器，程序可能无法正常工作")
+    
+    return default_config
+
+CONFIG = load_remote_config()
 
 print_lock = threading.Lock()
 
