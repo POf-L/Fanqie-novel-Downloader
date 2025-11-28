@@ -58,16 +58,19 @@ jobs:
           tag_name: ${{ steps.version.outputs.TAG_NAME }}
           name: "🔄 [构建中] TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}"
           body: |
-            ## 📦 Release ${{ steps.version.outputs.TAG_NAME }}
+            ## 🚀 新版本 ${{ steps.version.outputs.TAG_NAME }} 正在构建...
             
-            ### ⏳ 构建状态
+            > **⚠️ 温馨提示**
+            >
+            > Github Actions 正在后台为您编译各平台版本。
+            > **无需等待构建完全结束**，一旦您所需的版本出现在下方的 `Assets` 列表中，即可立即下载使用。
             
-            > **🔄 正在构建中...** 文件上传后即可下载，全部完成后软件将收到更新通知。
-            
-            ### 构建信息
-            - **构建时间**: ${{ steps.version.outputs.BUILD_TIME }}
-            - **提交哈希**: `${{ github.sha }}`
-            - **分支**: ${{ github.ref_name }}
+            ### 📋 构建信息
+            | 项目 | 详情 |
+            | :--- | :--- |
+            | 🕒 **构建时间** | ${{ steps.version.outputs.BUILD_TIME }} |
+            | 🌿 **分支/Tag** | `${{ github.ref_name }}` |
+            | 🔗 **Commit** | `${{ github.sha }}` |
           draft: false
           prerelease: true
         env:
@@ -283,6 +286,14 @@ jobs:
           path: dist/${{ matrix.release_name }}
           if-no-files-found: error
 
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          files: dist/${{ matrix.release_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build completed
         run: echo "✅ Build and artifact prepared for ${{ matrix.variant }}"
 
@@ -381,6 +392,14 @@ jobs:
           path: dist/TomatoNovelDownloader-termux-arm64
           if-no-files-found: error
 
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          files: dist/TomatoNovelDownloader-termux-arm64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Termux build completed
         run: echo "✅ Termux ARM64 build completed"
 
@@ -447,44 +466,29 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
-          files: dist/*
+          make_latest: true
           body: |
-            ## 📦 Release ${{ needs.prepare-release.outputs.tag_name }}
+            ## 🎉 TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
             
-            ### ✅ 构建完成
+            > ${{ steps.get_commit_msg.outputs.msg }}
+            
+            ---
+            
+            ### 📥 下载通道
+            
+            | 平台 | 推荐文件 | 说明 |
+            | :--- | :--- | :--- |
+            | **🪟 Windows** | `...Standalone.exe` | ✅ **首选** (内置运行库，开箱即用) |
+            | | `TomatoNovelDownloader.exe` | 纯净版 (需自备 WebView2) |
+            | **🐧 Linux** | `...linux` | x64 架构 (需安装 GTK3/WebKit) |
+            | **🍎 macOS** | `...macos` | Intel 芯片 (x64) |
+            | **🤖 Termux** | `...termux-arm64` | Android Termux 命令行版 |
+            
+            ### 📊 构建报告
             
             ${{ steps.check_builds.outputs.status }}
             
-            ### 提交信息
-            ${{ steps.get_commit_msg.outputs.msg }}
-            
-            ### 构建信息
-            - **构建时间**: ${{ needs.prepare-release.outputs.build_time }}
-            - **提交哈希**: `${{ github.sha }}`
-            - **分支**: ${{ github.ref_name }}
-            
-            ### 📂 下载文件说明
-            
-            #### 🎯 发布版本 (推荐)
-            | 平台 | 文件名 | 说明 |
-            |------|--------|------|
-            | 💻 Windows (x64) | `TomatoNovelDownloader.exe` | 需系统已安装 WebView2 |
-            | 📦 Windows 完整版 | `TomatoNovelDownloader-Standalone.exe` | 内置 WebView2，开箱即用 |
-            | 🐧 Linux (x64) | `TomatoNovelDownloader-linux` | 需安装 GTK3/WebKit |
-            | 🍎 macOS (x64) | `TomatoNovelDownloader-macos` | Intel Mac |
-            
-            #### 🔧 调试版本 (开发/调试用)
-            | 平台 | 文件名 |
-            |------|--------|
-            | 💻 Windows | `TomatoNovelDownloader-debug.exe` |
-            | 🐧 Linux | `TomatoNovelDownloader-debug-linux` |
-            | 🍎 macOS | `TomatoNovelDownloader-debug-macos` |
-            
-            #### 📱 Termux 命令行版本 (Android)
-            | 平台 | 文件名 | 说明 |
-            |------|--------|------|
-            | 🤖 ARM64 | `TomatoNovelDownloader-termux-arm64` | 纯命令行，无 GUI 依赖 |
-            
+            > **构建时间**: ${{ needs.prepare-release.outputs.build_time }} | **Commit**: `${{ github.sha }}`
           draft: false
           prerelease: false
         env:
@@ -496,17 +500,20 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: "⚠️ [部分失败] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}"
-          files: dist/*
+          make_latest: false
           body: |
-            ## ⚠️ 构建未完全成功
+            ## ⚠️ 构建未完全成功 (${{ needs.prepare-release.outputs.tag_name }})
             
+            > 检测到部分平台构建失败，但这不影响其他已上传文件的使用。
+            
+            ### 🏗️ 状态报告
             ${{ steps.check_builds.outputs.status }}
             
-            已上传的文件可正常下载，但软件不会收到更新通知。
+            ---
             
-            ### 构建信息
-            - **构建时间**: ${{ needs.prepare-release.outputs.build_time }}
-            - **提交哈希**: `${{ github.sha }}`
+            ### ℹ️ 元数据
+            - 🕒 **时间**: ${{ needs.prepare-release.outputs.build_time }}
+            - 🔗 **Commit**: `${{ github.sha }}`
           draft: false
           prerelease: true
         env:

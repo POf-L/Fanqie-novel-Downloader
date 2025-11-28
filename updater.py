@@ -344,7 +344,7 @@ exit /b 0
     # 写入批处理文件
     try:
         bat_path = os.path.join(tempfile.gettempdir(), 'fanqie_update.bat')
-        with open(bat_path, 'w', encoding='gbk') as f:
+        with open(bat_path, 'w', encoding='utf-8') as f:
             f.write(bat_content)
         
         # 获取当前进程 PID
