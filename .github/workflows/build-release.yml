@@ -73,25 +73,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # 仅生成版本号 (用于 PR)
-  version-only:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.VERSION }}
-      build_time: ${{ steps.version.outputs.BUILD_TIME }}
-    steps:
-      - name: Generate version
-        id: version
-        run: |
-          VERSION=$(date -u +'%Y.%m.%d.%H%M')+$(echo ${{ github.sha }} | cut -c1-7)
-          BUILD_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_OUTPUT
-
   build:
     needs: [prepare-release]
-    if: always() && (needs.prepare-release.result == 'success' || github.event_name == 'pull_request')
+    if: needs.prepare-release.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -182,8 +166,8 @@ jobs:
 
       - name: Update version.py
         run: |
-          VERSION="${{ needs.prepare-release.outputs.version || github.sha }}"
-          BUILD_TIME="${{ needs.prepare-release.outputs.build_time || 'N/A' }}"
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          BUILD_TIME="${{ needs.prepare-release.outputs.build_time }}"
           echo "Using version: $VERSION"
           echo "Using build time: $BUILD_TIME"
           
@@ -327,7 +311,7 @@ jobs:
   # Termux ARM64 命令行版本构建
   build-termux:
     needs: [prepare-release]
-    if: always() && (needs.prepare-release.result == 'success' || github.event_name == 'pull_request')
+    if: needs.prepare-release.result == 'success'
     runs-on: ubuntu-latest
     name: Termux ARM64 CLI
 
@@ -344,8 +328,8 @@ jobs:
 
       - name: Update version.py
         run: |
-          VERSION="${{ needs.prepare-release.outputs.version || github.sha }}"
-          BUILD_TIME="${{ needs.prepare-release.outputs.build_time || 'N/A' }}"
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          BUILD_TIME="${{ needs.prepare-release.outputs.build_time }}"
           
           echo "# -*- coding: utf-8 -*-" > version.py
           echo '"""' >> version.py
