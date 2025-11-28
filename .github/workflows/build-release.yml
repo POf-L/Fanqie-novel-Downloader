@@ -265,15 +265,7 @@ jobs:
           fi
         shell: bash
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.executable }}${{ matrix.ext }}
-          if-no-files-found: error
-
       - name: Rename for release
-        if: needs.prepare-release.outputs.tag_name != ''
         run: |
           SRC="dist/${{ matrix.executable }}${{ matrix.ext }}"
           DST="dist/${{ matrix.release_name }}"
@@ -284,39 +276,15 @@ jobs:
           fi
         shell: bash
 
-      - name: Random delay to avoid upload conflicts
-        if: needs.prepare-release.outputs.tag_name != ''
-        run: |
-          DELAY=$((RANDOM % 10 + 1))
-          echo "Waiting ${DELAY}s to avoid concurrent upload conflicts..."
-          sleep $DELAY
-        shell: bash
-
-      - name: Upload to Release
-        id: upload_release
-        if: needs.prepare-release.outputs.tag_name != ''
-        uses: softprops/action-gh-release@v2
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: dist/${{ matrix.release_name }}
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
-      - name: Retry Upload to Release (on failure)
-        if: needs.prepare-release.outputs.tag_name != '' && steps.upload_release.outcome == 'failure'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: dist/${{ matrix.release_name }}
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.release_name }}
+          if-no-files-found: error
 
       - name: Build completed
-        run: echo "✅ Build and artifact upload completed for ${{ matrix.variant }}"
+        run: echo "✅ Build and artifact prepared for ${{ matrix.variant }}"
 
   # Termux ARM64 命令行版本构建
   build-termux:
@@ -409,31 +377,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TomatoNovelDownloader-termux-arm64
-          path: dist/TomatoNovelDownloader-termux
+          path: dist/TomatoNovelDownloader-termux-arm64
           if-no-files-found: error
-
-      - name: Upload to Release
-        id: upload_termux
-        if: needs.prepare-release.outputs.tag_name != ''
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: dist/TomatoNovelDownloader-termux-arm64
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
-      - name: Retry Upload to Release (on failure)
-        if: needs.prepare-release.outputs.tag_name != '' && steps.upload_termux.outcome == 'failure'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: dist/TomatoNovelDownloader-termux-arm64
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
 
       - name: Termux build completed
         run: echo "✅ Termux ARM64 build completed"
@@ -448,6 +393,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: 'TomatoNovelDownloader-*'
+          merge-multiple: true
+
+      - name: List all artifacts
+        run: |
+          ls -laR dist/
+          echo "Total size: $(du -sh dist/)"
 
       - name: Check build results
         id: check_builds
@@ -482,6 +439,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
+          files: dist/*
           body: |
             ## 📦 Release ${{ needs.prepare-release.outputs.tag_name }}
             
@@ -530,6 +488,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: "⚠️ [部分失败] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}"
+          files: dist/*
           body: |
             ## ⚠️ 构建未完全成功
             
