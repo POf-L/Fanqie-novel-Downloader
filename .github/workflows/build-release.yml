@@ -389,6 +389,8 @@ jobs:
               --collect-data fake_useragent \
               novel_downloader.py
             
+            # 在容器内完成重命名，避免权限问题
+            cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
             ls -la dist/
 
       - name: Verify Termux build
@@ -409,10 +411,6 @@ jobs:
           name: TomatoNovelDownloader-termux-arm64
           path: dist/TomatoNovelDownloader-termux
           if-no-files-found: error
-
-      - name: Rename for release
-        run: |
-          cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
 
       - name: Upload to Release
         id: upload_termux
