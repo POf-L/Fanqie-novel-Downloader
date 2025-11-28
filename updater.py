@@ -252,12 +252,144 @@ def check_and_notify(current_version: str, repo: str, silent: bool = False) -> O
             'release_info': latest_info
         }
 
+def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> bool:
+    """
+    在 Windows 上应用更新：创建批处理脚本来替换当前程序并重启
+    
+    Args:
+        new_exe_path: 新版本 exe 文件路径
+        current_exe_path: 当前程序路径，如果为 None 则自动检测
+    
+    Returns:
+        是否成功启动更新过程
+    """
+    import sys
+    import os
+    import subprocess
+    import tempfile
+    
+    # 检查是否为 Windows 平台
+    if sys.platform != 'win32':
+        print('自动更新仅支持 Windows 平台')
+        return False
+    
+    # 检查是否为打包后的 exe
+    if not getattr(sys, 'frozen', False):
+        print('自动更新仅支持打包后的 exe 程序')
+        return False
+    
+    # 获取当前程序路径
+    if current_exe_path is None:
+        current_exe_path = sys.executable
+    
+    # 检查新版本文件是否存在
+    if not os.path.exists(new_exe_path):
+        print(f'新版本文件不存在: {new_exe_path}')
+        return False
+    
+    # 创建更新批处理脚本
+    bat_content = f'''@echo off
+chcp 65001 >nul
+echo ====================================
+echo 番茄小说下载器 - 自动更新
+echo ====================================
+echo.
+echo 正在等待程序退出...
+
+:wait_loop
+tasklist /FI "PID eq %1" 2>nul | find /I "%1" >nul
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >nul
+    goto wait_loop
+)
+
+echo 程序已退出，开始更新...
+echo.
+
+:: 备份旧版本
+set BACKUP_PATH="{current_exe_path}.backup"
+if exist "{current_exe_path}" (
+    echo 备份旧版本...
+    copy /Y "{current_exe_path}" %BACKUP_PATH% >nul
+    if errorlevel 1 (
+        echo 备份失败，更新终止
+        pause
+        exit /b 1
+    )
+)
+
+:: 替换新版本
+echo 安装新版本...
+copy /Y "{new_exe_path}" "{current_exe_path}" >nul
+if errorlevel 1 (
+    echo 更新失败，正在恢复旧版本...
+    copy /Y %BACKUP_PATH% "{current_exe_path}" >nul
+    pause
+    exit /b 1
+)
+
+:: 清理
+echo 清理临时文件...
+del /F /Q "{new_exe_path}" >nul 2>&1
+del /F /Q %BACKUP_PATH% >nul 2>&1
+
+echo.
+echo ✓ 更新完成！正在启动新版本...
+echo.
+timeout /t 2 /nobreak >nul
+
+:: 启动新版本
+start "" "{current_exe_path}"
+
+:: 删除自身
+del /F /Q "%~f0" >nul 2>&1
+exit /b 0
+'''
+    
+    # 写入批处理文件
+    try:
+        bat_path = os.path.join(tempfile.gettempdir(), 'fanqie_update.bat')
+        with open(bat_path, 'w', encoding='gbk') as f:
+            f.write(bat_content)
+        
+        # 获取当前进程 PID
+        pid = os.getpid()
+        
+        # 启动批处理脚本（使用新的控制台窗口，传递当前 PID）
+        subprocess.Popen(
+            ['cmd', '/c', 'start', '番茄小说下载器更新', '/wait', bat_path, str(pid)],
+            shell=False,
+            creationflags=subprocess.CREATE_NEW_CONSOLE
+        )
+        
+        print(f'更新脚本已启动，程序即将退出...')
+        return True
+        
+    except Exception as e:
+        print(f'创建更新脚本失败: {e}')
+        return False
+
+
+def get_update_exe_path(save_path: str, filename: str) -> str:
+    """获取下载的更新文件完整路径"""
+    import os
+    return os.path.join(save_path, filename)
+
+
+def can_auto_update() -> bool:
+    """检查当前环境是否支持自动更新"""
+    import sys
+    # 只有 Windows 平台的打包 exe 才支持自动更新
+    return sys.platform == 'win32' and getattr(sys, 'frozen', False)
+
+
 if __name__ == '__main__':
     # 测试代码
     from config import __version__, __github_repo__
     
     print(f'当前版本: {__version__}')
     print(f'检查仓库: {__github_repo__}')
+    print(f'支持自动更新: {can_auto_update()}')
     print('-' * 60)
     
     check_and_notify(__version__, __github_repo__)

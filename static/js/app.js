@@ -610,14 +610,134 @@ async function showUpdateModal(updateInfo) {
             versionSelector.appendChild(optionsContainer);
             versionSelector.style.display = 'block';
             
+            // 检查是否支持自动更新
+            let canAutoUpdate = false;
+            try {
+                const autoUpdateCheck = await fetch('/api/can-auto-update');
+                const autoUpdateResult = await autoUpdateCheck.json();
+                canAutoUpdate = autoUpdateResult.success && autoUpdateResult.can_auto_update;
+            } catch (e) {
+                console.log('无法检查自动更新支持:', e);
+            }
+            
             // 修改下载按钮逻辑
-            downloadUpdateBtn.onclick = () => {
+            downloadUpdateBtn.onclick = async () => {
                 const selectedRadio = document.querySelector('input[name="version"]:checked');
-                if (selectedRadio) {
-                    const downloadUrl = selectedRadio.value;
-                    const filename = selectedRadio.dataset.filename;
+                if (!selectedRadio) {
+                    alert('请选择一个版本');
+                    return;
+                }
+                
+                const downloadUrl = selectedRadio.value;
+                const filename = selectedRadio.dataset.filename;
+                
+                if (canAutoUpdate && filename.endsWith('.exe')) {
+                    // Windows 自动更新流程
+                    downloadUpdateBtn.disabled = true;
+                    downloadUpdateBtn.textContent = '正在下载...';
                     
-                    // 创建隐藏的 <a> 标签触发下载
+                    // 创建或显示进度条
+                    let progressContainer = document.getElementById('updateProgressContainer');
+                    if (!progressContainer) {
+                        progressContainer = document.createElement('div');
+                        progressContainer.id = 'updateProgressContainer';
+                        progressContainer.innerHTML = `
+                            <div style="margin-top: 15px; padding: 10px; background: #f5f5f5; border-radius: 8px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                    <span id="updateProgressText">准备下载...</span>
+                                    <span id="updateProgressPercent">0%</span>
+                                </div>
+                                <div style="background: #ddd; border-radius: 4px; height: 8px; overflow: hidden;">
+                                    <div id="updateProgressBar" style="background: #4CAF50; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                                </div>
+                            </div>
+                            <button id="installUpdateBtn" style="display: none; margin-top: 10px; width: 100%; padding: 12px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                                ✨ 立即安装更新
+                            </button>
+                        `;
+                        versionSelector.parentNode.insertBefore(progressContainer, versionSelector.nextSibling);
+                    }
+                    progressContainer.style.display = 'block';
+                    
+                    // 启动下载
+                    try {
+                        const downloadResult = await fetch('/api/download-update', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: downloadUrl, filename: filename })
+                        });
+                        const downloadData = await downloadResult.json();
+                        
+                        if (!downloadData.success) {
+                            throw new Error(downloadData.message || '启动下载失败');
+                        }
+                        
+                        // 轮询下载进度
+                        const pollProgress = async () => {
+                            try {
+                                const statusRes = await fetch('/api/update-status');
+                                const status = await statusRes.json();
+                                
+                                const progressBar = document.getElementById('updateProgressBar');
+                                const progressText = document.getElementById('updateProgressText');
+                                const progressPercent = document.getElementById('updateProgressPercent');
+                                const installBtn = document.getElementById('installUpdateBtn');
+                                
+                                if (status.is_downloading) {
+                                    progressBar.style.width = status.progress + '%';
+                                    progressText.textContent = status.message;
+                                    progressPercent.textContent = status.progress + '%';
+                                    setTimeout(pollProgress, 500);
+                                } else if (status.completed) {
+                                    progressBar.style.width = '100%';
+                                    progressText.textContent = '✅ 下载完成';
+                                    progressPercent.textContent = '100%';
+                                    downloadUpdateBtn.textContent = '下载完成';
+                                    
+                                    // 显示安装按钮
+                                    installBtn.style.display = 'block';
+                                    installBtn.onclick = async () => {
+                                        installBtn.disabled = true;
+                                        installBtn.textContent = '正在准备更新...';
+                                        
+                                        try {
+                                            const applyRes = await fetch('/api/apply-update', { method: 'POST' });
+                                            const applyResult = await applyRes.json();
+                                            
+                                            if (applyResult.success) {
+                                                installBtn.textContent = '更新中，程序即将重启...';
+                                                progressText.textContent = '🔄 ' + applyResult.message;
+                                            } else {
+                                                alert('应用更新失败: ' + applyResult.message);
+                                                installBtn.disabled = false;
+                                                installBtn.textContent = '✨ 立即安装更新';
+                                            }
+                                        } catch (e) {
+                                            alert('应用更新失败: ' + e.message);
+                                            installBtn.disabled = false;
+                                            installBtn.textContent = '✨ 立即安装更新';
+                                        }
+                                    };
+                                } else if (status.error) {
+                                    progressText.textContent = '❌ ' + status.message;
+                                    downloadUpdateBtn.disabled = false;
+                                    downloadUpdateBtn.textContent = '重新下载';
+                                }
+                            } catch (e) {
+                                console.error('获取下载状态失败:', e);
+                                setTimeout(pollProgress, 1000);
+                            }
+                        };
+                        
+                        setTimeout(pollProgress, 500);
+                        
+                    } catch (e) {
+                        alert('下载失败: ' + e.message);
+                        downloadUpdateBtn.disabled = false;
+                        downloadUpdateBtn.textContent = '下载更新';
+                    }
+                } else {
+                    // 非 Windows 或非自动更新模式，使用浏览器下载
                     const link = document.createElement('a');
                     link.href = downloadUrl;
                     link.download = filename;
@@ -632,8 +752,6 @@ async function showUpdateModal(updateInfo) {
                     }, 500);
                     
                     modal.style.display = 'none';
-                } else {
-                    alert('请选择一个版本');
                 }
             };
         } else {

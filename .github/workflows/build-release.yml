@@ -223,10 +223,101 @@ jobs:
           path: dist/${{ matrix.executable }}${{ matrix.ext }}
           if-no-files-found: error
 
+  # Termux ARM64 命令行版本构建
+  build-termux:
+    needs: version
+    runs-on: ubuntu-latest
+    name: Termux ARM64 CLI
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Update version.py
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          BUILD_TIME="${{ needs.version.outputs.build_time }}"
+          
+          echo "# -*- coding: utf-8 -*-" > version.py
+          echo '"""' >> version.py
+          echo "版本信息文件 - GitHub Actions自动生成" >> version.py
+          echo '"""' >> version.py
+          echo "" >> version.py
+          echo "__version__ = \"$VERSION\"" >> version.py
+          echo "__author__ = \"Tomato Novel Downloader\"" >> version.py
+          echo "__description__ = \"A modern novel downloader with GitHub auto-update support\"" >> version.py
+          echo "__github_repo__ = \"POf-L/Fanqie-novel-Downloader\"" >> version.py
+          echo "__build_time__ = \"$BUILD_TIME\"" >> version.py
+          echo "__build_channel__ = \"github-actions-termux\"" >> version.py
+
+      - name: Build Termux ARM64 binary
+        uses: uraimo/run-on-arch-action@v2
+        with:
+          arch: aarch64
+          distro: ubuntu22.04
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"
+          install: |
+            apt-get update -q
+            apt-get install -y python3 python3-pip python3-venv binutils
+          run: |
+            cd /workspace
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install --upgrade pip
+            pip install -r requirements-termux.txt
+            pip install pyinstaller
+            
+            # 构建命令行版本 (使用 novel_downloader.py 作为入口)
+            pyinstaller --onefile \
+              --name=TomatoNovelDownloader-termux \
+              --console \
+              --hidden-import=requests \
+              --hidden-import=aiohttp \
+              --hidden-import=PIL \
+              --hidden-import=ebooklib \
+              --hidden-import=fake_useragent \
+              --hidden-import=tqdm \
+              --hidden-import=bs4 \
+              --hidden-import=config \
+              --hidden-import=packaging \
+              --hidden-import=packaging.version \
+              --collect-data fake_useragent \
+              novel_downloader.py
+            
+            ls -la dist/
+
+      - name: Verify Termux build
+        run: |
+          ls -la dist/
+          if [ -f "dist/TomatoNovelDownloader-termux" ]; then
+            echo "✅ Termux ARM64 build successful"
+            file dist/TomatoNovelDownloader-termux
+            echo "File size: $(ls -lh dist/TomatoNovelDownloader-termux | awk '{print $5}')"
+          else
+            echo "❌ Termux build failed"
+            exit 1
+          fi
+
+      - name: Upload Termux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TomatoNovelDownloader-termux-arm64
+          path: dist/TomatoNovelDownloader-termux
+          if-no-files-found: error
+
   release:
     name: Create Release
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [version, build]
+    needs: [version, build, build-termux]
     runs-on: ubuntu-latest
     
     steps:
@@ -267,6 +358,11 @@ jobs:
           fi
           if [ -d "artifacts/TomatoNovelDownloader-debug-macos-x64" ]; then
             cp artifacts/TomatoNovelDownloader-debug-macos-x64/TomatoNovelDownloader-debug release/TomatoNovelDownloader-debug-macos
+          fi
+          
+          # 复制Termux ARM64文件
+          if [ -d "artifacts/TomatoNovelDownloader-termux-arm64" ]; then
+            cp artifacts/TomatoNovelDownloader-termux-arm64/TomatoNovelDownloader-termux release/TomatoNovelDownloader-termux-arm64
           fi
           
           echo "📦 Release files prepared:"
@@ -319,6 +415,11 @@ jobs:
             - 💻 **Windows (x64)**: `TomatoNovelDownloader-debug.exe`
             - 🐧 **Linux (x64)**: `TomatoNovelDownloader-debug-linux`
             - 🍎 **macOS (x64)**: `TomatoNovelDownloader-debug-macos`
+            
+            #### 📱 Termux 命令行版本 (Android)
+            - 🤖 **Termux (ARM64)**: `TomatoNovelDownloader-termux-arm64`
+            
+            > Termux 版本为纯命令行交互式版本，无 GUI 依赖，适合在 Android 手机上通过 Termux 使用
             
           files: release/*
           draft: false

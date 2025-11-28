@@ -605,6 +605,80 @@ def api_get_update_status_route():
     """获取更新下载状态"""
     return jsonify(get_update_status())
 
+@app.route('/api/can-auto-update', methods=['GET'])
+def api_can_auto_update():
+    """检查是否支持自动更新"""
+    try:
+        from updater import can_auto_update
+        return jsonify({
+            'success': True,
+            'can_auto_update': can_auto_update()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/apply-update', methods=['POST'])
+def api_apply_update():
+    """应用已下载的更新（仅 Windows）"""
+    try:
+        from updater import apply_windows_update, can_auto_update
+        import sys
+        
+        # 检查是否支持自动更新
+        if not can_auto_update():
+            return jsonify({
+                'success': False, 
+                'message': '当前环境不支持自动更新，请手动替换程序文件'
+            }), 400
+        
+        # 获取下载的更新文件信息
+        status = get_update_status()
+        if not status.get('completed'):
+            return jsonify({
+                'success': False, 
+                'message': '更新文件尚未下载完成'
+            }), 400
+        
+        save_path = status.get('save_path', '')
+        filename = status.get('filename', '')
+        
+        if not save_path or not filename:
+            return jsonify({
+                'success': False, 
+                'message': '更新文件信息不完整'
+            }), 400
+        
+        new_exe_path = os.path.join(save_path, filename)
+        
+        if not os.path.exists(new_exe_path):
+            return jsonify({
+                'success': False, 
+                'message': f'更新文件不存在: {new_exe_path}'
+            }), 400
+        
+        # 应用更新
+        if apply_windows_update(new_exe_path):
+            # 更新成功启动，准备退出程序
+            def delayed_exit():
+                import time
+                time.sleep(1)
+                os._exit(0)
+            
+            threading.Thread(target=delayed_exit, daemon=True).start()
+            
+            return jsonify({
+                'success': True, 
+                'message': '更新程序已启动，应用即将关闭并自动更新...'
+            })
+        else:
+            return jsonify({
+                'success': False, 
+                'message': '启动更新程序失败'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'应用更新失败: {str(e)}'}), 500
+
 @app.route('/api/open-folder', methods=['POST'])
 def api_open_folder():
     """打开文件夹"""
