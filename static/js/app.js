@@ -766,7 +766,9 @@ async function showUpdateModal(updateInfo) {
     
     // 获取可下载的版本选项
     try {
-        const response = await fetch('/api/get-update-assets');
+        const response = await fetch('/api/get-update-assets', {
+            headers: AppState.accessToken ? { 'X-Access-Token': AppState.accessToken } : {}
+        });
         const result = await response.json();
         
         if (result.success && result.assets && result.assets.length > 0) {
@@ -811,9 +813,12 @@ async function showUpdateModal(updateInfo) {
             // 检查是否支持自动更新
             let canAutoUpdate = false;
             try {
-                const autoUpdateCheck = await fetch('/api/can-auto-update');
+                const autoUpdateCheck = await fetch('/api/can-auto-update', {
+                    headers: AppState.accessToken ? { 'X-Access-Token': AppState.accessToken } : {}
+                });
                 const autoUpdateResult = await autoUpdateCheck.json();
                 canAutoUpdate = autoUpdateResult.success && autoUpdateResult.can_auto_update;
+                console.log('自动更新检查结果:', autoUpdateResult);
             } catch (e) {
                 console.log('无法检查自动更新支持:', e);
             }
@@ -859,9 +864,12 @@ async function showUpdateModal(updateInfo) {
                     
                     // 启动下载
                     try {
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (AppState.accessToken) headers['X-Access-Token'] = AppState.accessToken;
+                        
                         const downloadResult = await fetch('/api/download-update', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: headers,
                             body: JSON.stringify({ url: downloadUrl, filename: filename })
                         });
                         const downloadData = await downloadResult.json();
@@ -873,7 +881,9 @@ async function showUpdateModal(updateInfo) {
                         // 轮询下载进度
                         const pollProgress = async () => {
                             try {
-                                const statusRes = await fetch('/api/update-status');
+                                const statusRes = await fetch('/api/update-status', {
+                                    headers: AppState.accessToken ? { 'X-Access-Token': AppState.accessToken } : {}
+                                });
                                 const status = await statusRes.json();
                                 
                                 const progressBar = document.getElementById('updateProgressBar');
@@ -899,7 +909,10 @@ async function showUpdateModal(updateInfo) {
                                         installBtn.textContent = '正在准备更新...';
                                         
                                         try {
-                                            const applyRes = await fetch('/api/apply-update', { method: 'POST' });
+                                            const applyRes = await fetch('/api/apply-update', { 
+                                                method: 'POST',
+                                                headers: AppState.accessToken ? { 'X-Access-Token': AppState.accessToken } : {}
+                                            });
                                             const applyResult = await applyRes.json();
                                             
                                             if (applyResult.success) {
