@@ -60,8 +60,10 @@ class Logger {
         this.container.appendChild(entry);
         
         // 自动滚动到底部
-        const logContainer = this.container.parentElement;
-        logContainer.scrollTop = logContainer.scrollHeight;
+        const logSection = document.getElementById('logContainer');
+        if (logSection) {
+            logSection.scrollTop = logSection.scrollHeight;
+        }
         
         // 限制日志数量
         const entries = this.container.querySelectorAll('.log-entry');
@@ -196,6 +198,8 @@ class APIClient {
                 logger.log('✅ 下载任务已启动');
                 AppState.setDownloading(true);
                 this.startStatusPolling();
+                // 自动切换到进度标签页
+                switchTab('progress');
                 return true;
             } else {
                 logger.log(`❌ ${result.message}`);
@@ -263,6 +267,9 @@ class APIClient {
         progressFill.style.width = progress + '%';
         progressPercent.textContent = progress + '%';
         
+        // 更新进度标签徽章
+        updateProgressBadge(progress);
+        
         // 更新消息队列（显示所有消息，不遗漏）
         if (status.messages && status.messages.length > 0) {
             for (const msg of status.messages) {
@@ -280,6 +287,7 @@ class APIClient {
             document.getElementById('statusText').textContent = '下载中...';
         } else if (progress === 100) {
             document.getElementById('statusText').textContent = '✅ 已完成';
+            updateProgressBadge(100); // 清除徽章
         } else {
             document.getElementById('statusText').textContent = '准备就绪';
         }
@@ -400,9 +408,45 @@ class APIClient {
 
 const api = new APIClient();
 
+/* ===================== 标签页系统 ===================== */
+
+function initTabSystem() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            switchTab(btn.dataset.tab);
+        });
+    });
+}
+
+function switchTab(tabName) {
+    // 更新按钮状态
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+    
+    // 更新内容面板
+    document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === `tab-${tabName}`);
+    });
+}
+
+function updateProgressBadge(progress) {
+    const badge = document.getElementById('progressBadge');
+    if (AppState.isDownloading && progress < 100) {
+        badge.textContent = `${progress}%`;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
 /* ===================== UI 事件处理 ===================== */
 
 function initializeUI() {
+    // 初始化标签页系统
+    initTabSystem();
+    
     // 初始化保存路径
     api.getSavePath().then(path => {
         if (path) {
@@ -423,7 +467,8 @@ function initializeUI() {
     document.getElementById('browseBtn').addEventListener('click', handleBrowse);
     
     // 版本信息
-    document.getElementById('version').textContent = '1.0.0';
+    const versionEl = document.getElementById('version');
+    if (versionEl) versionEl.textContent = '1.0.0';
     
     // 初始化章节选择弹窗事件
     initChapterModalEvents();
@@ -469,14 +514,14 @@ async function handleSearch() {
     
     const searchBtn = document.getElementById('searchBtn');
     searchBtn.disabled = true;
-    searchBtn.textContent = '🔄 搜索中...';
+    searchBtn.textContent = '搜索中...';
     
     logger.log(`🔍 正在搜索: ${keyword}`);
     
     const result = await api.searchBooks(keyword, 0);
     
     searchBtn.disabled = false;
-    searchBtn.textContent = '🔍 搜索';
+    searchBtn.textContent = '搜索';
     
     if (result && result.books) {
         displaySearchResults(result.books, false);
@@ -517,11 +562,11 @@ async function loadMoreResults() {
 }
 
 function displaySearchResults(books, append = false) {
-    const resultsContainer = document.getElementById('searchResults');
+    const headerContainer = document.getElementById('searchHeader');
     const listContainer = document.getElementById('searchResultList');
     const countSpan = document.getElementById('searchResultCount');
     
-    resultsContainer.style.display = 'block';
+    headerContainer.style.display = 'flex';
     
     if (!append) {
         listContainer.innerHTML = '';
@@ -535,6 +580,7 @@ function displaySearchResults(books, append = false) {
             </div>
         `;
         countSpan.textContent = '找到 0 本书籍';
+        headerContainer.style.display = 'none';
         return;
     }
     
@@ -572,14 +618,15 @@ function selectBook(bookId, bookName) {
     document.getElementById('bookId').value = bookId;
     logger.log(`📖 已选择: ${bookName} (ID: ${bookId})`);
     
-    // 滚动到下载设置区域
-    document.getElementById('bookId').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // 自动切换到下载标签页
+    switchTab('download');
 }
 
 function clearSearchResults() {
-    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('searchHeader').style.display = 'none';
     document.getElementById('searchResultList').innerHTML = '';
     document.getElementById('searchKeyword').value = '';
+    document.getElementById('loadMoreContainer').style.display = 'none';
     searchOffset = 0;
     currentSearchKeyword = '';
 }

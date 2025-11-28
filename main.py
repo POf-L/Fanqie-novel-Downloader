@@ -160,9 +160,9 @@ def main():
     for module, name in required_packages.items():
         try:
             __import__(module)
-            print(f"✓ {name}")
+            print(f"[OK] {name}")
         except ImportError:
-            print(f"✗ {name}")
+            print(f"[X] {name}")
             missing_packages.append(name)
     
     if missing_packages:

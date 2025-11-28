@@ -107,6 +107,11 @@ def set_update_status(**kwargs):
 
 def update_download_worker(url, save_path, filename):
     """更新下载工作线程"""
+    print(f'[DEBUG] update_download_worker started')
+    print(f'[DEBUG]   url: {url}')
+    print(f'[DEBUG]   save_path: {save_path}')
+    print(f'[DEBUG]   filename: {filename}')
+    
     try:
         set_update_status(
             is_downloading=True, 
@@ -120,14 +125,18 @@ def update_download_worker(url, save_path, filename):
         
         import requests
         full_path = os.path.join(save_path, filename)
+        print(f'[DEBUG]   full_path: {full_path}')
         
         # 支持断点续传（简单的检查文件是否存在）
         # 这里为了安全起见，如果是更新包，最好是重新下载，避免文件损坏
         
+        print(f'[DEBUG] Sending GET request...')
         response = requests.get(url, stream=True, timeout=30)
+        print(f'[DEBUG] Response status: {response.status_code}')
         response.raise_for_status()
         
         total_size = int(response.headers.get('content-length', 0))
+        print(f'[DEBUG] Total size: {total_size} bytes')
         set_update_status(total_size=total_size, message='开始下载...')
         
         downloaded = 0
@@ -148,6 +157,11 @@ def update_download_worker(url, save_path, filename):
                     )
         
         if get_update_status()['is_downloading']:
+            print(f'[DEBUG] Download completed successfully!')
+            print(f'[DEBUG] File saved to: {full_path}')
+            print(f'[DEBUG] File exists: {os.path.exists(full_path)}')
+            if os.path.exists(full_path):
+                print(f'[DEBUG] File size: {os.path.getsize(full_path)} bytes')
             set_update_status(
                 is_downloading=False, 
                 completed=True, 
@@ -156,10 +170,15 @@ def update_download_worker(url, save_path, filename):
             )
         else:
             # 被取消
+            print(f'[DEBUG] Download was cancelled')
             if os.path.exists(full_path):
                 os.remove(full_path)
                 
     except Exception as e:
+        import traceback
+        print(f'[DEBUG] Download failed with exception:')
+        print(f'[DEBUG]   {type(e).__name__}: {str(e)}')
+        traceback.print_exc()
         set_update_status(
             is_downloading=False, 
             error=str(e), 
@@ -887,12 +906,18 @@ def api_can_auto_update():
 @app.route('/api/apply-update', methods=['POST'])
 def api_apply_update():
     """应用已下载的更新（支持 Windows/Linux/macOS）"""
+    print('[DEBUG] api_apply_update called')
     try:
         from updater import apply_update, can_auto_update
         import sys
         
+        print(f'[DEBUG] sys.frozen: {getattr(sys, "frozen", False)}')
+        print(f'[DEBUG] sys.executable: {sys.executable}')
+        
         # 检查是否支持自动更新
-        if not can_auto_update():
+        can_update = can_auto_update()
+        print(f'[DEBUG] can_auto_update: {can_update}')
+        if not can_update:
             return jsonify({
                 'success': False, 
                 'message': '当前环境不支持自动更新，请手动替换程序文件'
@@ -900,6 +925,7 @@ def api_apply_update():
         
         # 获取下载的更新文件信息
         status = get_update_status()
+        print(f'[DEBUG] update_status: {status}')
         if not status.get('completed'):
             return jsonify({
                 'success': False, 
@@ -908,6 +934,8 @@ def api_apply_update():
         
         save_path = status.get('save_path', '')
         filename = status.get('filename', '')
+        print(f'[DEBUG] save_path: {save_path}')
+        print(f'[DEBUG] filename: {filename}')
         
         if not save_path or not filename:
             return jsonify({
@@ -916,6 +944,8 @@ def api_apply_update():
             }), 400
         
         new_file_path = os.path.join(save_path, filename)
+        print(f'[DEBUG] new_file_path: {new_file_path}')
+        print(f'[DEBUG] file exists: {os.path.exists(new_file_path)}')
         
         if not os.path.exists(new_file_path):
             return jsonify({
@@ -923,7 +953,10 @@ def api_apply_update():
                 'message': f'更新文件不存在: {new_file_path}'
             }), 400
         
+        print(f'[DEBUG] file size: {os.path.getsize(new_file_path)} bytes')
+        
         # 应用更新（自动检测平台）
+        print('[DEBUG] Calling apply_update...')
         if apply_update(new_file_path):
             # 更新成功启动，准备退出程序
             def delayed_exit():

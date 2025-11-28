@@ -13,97 +13,106 @@
         <header class="app-header">
             <div class="app-logo">🍅</div>
             <h1 class="app-title">番茄小说下载器</h1>
-            <p class="app-subtitle">极简 · 高效 · 多格式</p>
         </header>
 
-        <!-- 搜索卡片 -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-icon">🔍</span>
-                <span class="card-title">搜索书籍</span>
+        <!-- 主卡片 -->
+        <div class="card main-card">
+            <!-- 标签页导航 -->
+            <div class="tab-nav">
+                <button class="tab-btn active" data-tab="search">
+                    <span class="tab-icon">🔍</span>
+                    <span class="tab-label">搜索</span>
+                </button>
+                <button class="tab-btn" data-tab="download">
+                    <span class="tab-icon">⬇️</span>
+                    <span class="tab-label">下载</span>
+                </button>
+                <button class="tab-btn" data-tab="progress">
+                    <span class="tab-icon">📊</span>
+                    <span class="tab-label">进度</span>
+                    <span class="tab-badge" id="progressBadge" style="display: none;"></span>
+                </button>
             </div>
-            <div class="card-body">
-                <div class="input-group">
-                    <input type="text" id="searchKeyword" class="form-input" placeholder="输入书名或作者名...">
-                    <button class="btn btn-primary" id="searchBtn">搜索</button>
-                </div>
-                
-                <!-- 搜索结果 -->
-                <div id="searchResults" style="display: none; margin-top: 16px;">
-                    <div class="search-header">
-                        <span class="search-count" id="searchResultCount">找到 0 本书籍</span>
-                        <button class="btn btn-sm btn-secondary" id="clearSearchBtn">清除</button>
-                    </div>
-                    <div id="searchResultList" class="search-list"></div>
-                    <div id="loadMoreContainer" style="text-align: center; margin-top: 12px; display: none;">
-                        <button class="btn btn-secondary btn-sm" id="loadMoreBtn">加载更多</button>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- 下载设置卡片 -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-icon">⚙️</span>
-                <span class="card-title">下载设置</span>
-            </div>
-            <div class="card-body">
-                <div class="form-group">
-                    <label class="form-label">书籍 ID / URL</label>
-                    <input type="text" id="bookId" class="form-input" placeholder="输入书籍ID或URL，或使用搜索功能">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">保存路径</label>
+            <!-- 标签页内容 -->
+            <div class="tab-content">
+                <!-- 搜索标签页 -->
+                <div class="tab-pane active" id="tab-search">
                     <div class="input-group">
-                        <input type="text" id="savePath" class="form-input" placeholder="选择保存目录" readonly>
-                        <button class="btn btn-secondary" id="browseBtn">浏览</button>
+                        <input type="text" id="searchKeyword" class="form-input" placeholder="输入书名或作者名...">
+                        <button class="btn btn-primary" id="searchBtn">搜索</button>
                     </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">文件格式</label>
-                    <div class="format-selector">
-                        <div class="format-option">
-                            <input type="radio" name="format" value="txt" id="formatTxt" checked>
-                            <label for="formatTxt">TXT 文本</label>
+                    
+                    <!-- 搜索结果 -->
+                    <div id="searchResults" class="search-results-container">
+                        <div class="search-header" id="searchHeader" style="display: none;">
+                            <span class="search-count" id="searchResultCount">找到 0 本书籍</span>
+                            <button class="btn btn-sm btn-secondary" id="clearSearchBtn">清除</button>
                         </div>
-                        <div class="format-option">
-                            <input type="radio" name="format" value="epub" id="formatEpub">
-                            <label for="formatEpub">EPUB 电子书</label>
+                        <div id="searchResultList" class="search-list"></div>
+                        <div id="loadMoreContainer" style="text-align: center; margin-top: 12px; display: none;">
+                            <button class="btn btn-secondary btn-sm" id="loadMoreBtn">加载更多</button>
                         </div>
                     </div>
                 </div>
 
-                <div class="btn-group">
-                    <button class="btn btn-primary" id="downloadBtn" style="flex: 2;">开始下载</button>
-                    <button class="btn btn-danger" id="cancelBtn" style="flex: 2; display: none;">取消下载</button>
-                    <button class="btn btn-secondary" id="clearBtn">清除</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 进度卡片 -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-icon">📊</span>
-                <span class="card-title">下载进度</span>
-                <span style="margin-left: auto; font-size: 13px; color: var(--text-muted);" id="bookName">-</span>
-            </div>
-            <div class="card-body">
-                <div class="progress-section">
-                    <div class="progress-header">
-                        <span class="progress-status" id="statusText">准备就绪</span>
-                        <span class="progress-percent" id="progressPercent">0%</span>
+                <!-- 下载标签页 -->
+                <div class="tab-pane" id="tab-download">
+                    <div class="form-group">
+                        <label class="form-label">书籍 ID / URL</label>
+                        <input type="text" id="bookId" class="form-input" placeholder="输入书籍ID或URL">
                     </div>
-                    <div class="progress-track">
-                        <div class="progress-bar" id="progressFill" style="width: 0%;"></div>
+
+                    <div class="form-row">
+                        <div class="form-group form-group-flex">
+                            <label class="form-label">保存路径</label>
+                            <div class="input-group">
+                                <input type="text" id="savePath" class="form-input" placeholder="选择目录" readonly>
+                                <button class="btn btn-secondary" id="browseBtn">浏览</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">格式</label>
+                            <div class="format-selector">
+                                <div class="format-option">
+                                    <input type="radio" name="format" value="txt" id="formatTxt" checked>
+                                    <label for="formatTxt">TXT</label>
+                                </div>
+                                <div class="format-option">
+                                    <input type="radio" name="format" value="epub" id="formatEpub">
+                                    <label for="formatEpub">EPUB</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="btn btn-primary btn-lg" id="downloadBtn">开始下载</button>
+                        <button class="btn btn-danger btn-lg" id="cancelBtn" style="display: none;">取消下载</button>
+                        <button class="btn btn-secondary" id="clearBtn">清除</button>
                     </div>
                 </div>
 
-                <div class="log-section" id="logContent">
-                    <div class="log-entry">等待操作...</div>
+                <!-- 进度标签页 -->
+                <div class="tab-pane" id="tab-progress">
+                    <div class="progress-card">
+                        <div class="progress-book-name" id="bookName">-</div>
+                        <div class="progress-section">
+                            <div class="progress-header">
+                                <span class="progress-status" id="statusText">准备就绪</span>
+                                <span class="progress-percent" id="progressPercent">0%</span>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-bar" id="progressFill" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="log-section" id="logContainer">
+                        <div id="logContent">
+                            <div class="log-entry">等待操作...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

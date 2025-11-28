@@ -108,14 +108,19 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
     assets = latest_info.get('assets', [])
     parsed_assets = []
     
+    print(f'[DEBUG] parse_release_assets: platform={platform}, total_assets={len(assets)}')
+    
     for asset in assets:
         name = asset.get('name', '')
         size = asset.get('size', 0)
         download_url = asset.get('browser_download_url', '')
         
+        print(f'[DEBUG] Checking asset: name={name}, size={size}')
+        
         # 只处理指定平台的文件
         if platform == 'windows':
             if not name.endswith('.exe'):
+                print(f'[DEBUG]   -> Skipped: not .exe')
                 continue
             
             # 分类 Windows 版本
@@ -123,14 +128,17 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
                 asset_type = 'standalone'
                 description = '完整版 - 内置 WebView2 运行时,开箱即用'
                 recommended = True
+                print(f'[DEBUG]   -> Matched: standalone')
             elif 'debug' in name.lower():
                 asset_type = 'debug'
                 description = '调试版 - 包含调试信息和控制台窗口'
                 recommended = False
+                print(f'[DEBUG]   -> Matched: debug')
             else:
                 asset_type = 'standard'
                 description = '标准版 - 需要系统已安装 WebView2'
                 recommended = False
+                print(f'[DEBUG]   -> Matched: standard')
         
         elif platform == 'linux':
             if not ('linux' in name.lower() and not name.endswith('.exe')):
@@ -161,6 +169,10 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
     
     # 排序: 推荐的排在前面,然后按类型排序
     parsed_assets.sort(key=lambda x: (not x['recommended'], x['type']))
+    
+    print(f'[DEBUG] Final parsed_assets count: {len(parsed_assets)}')
+    for i, a in enumerate(parsed_assets):
+        print(f'[DEBUG]   [{i}] {a["name"]} -> type={a["type"]}, recommended={a["recommended"]}')
     
     return parsed_assets
 
@@ -268,19 +280,30 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     import subprocess
     import tempfile
     
+    print(f'[DEBUG] apply_windows_update called')
+    print(f'[DEBUG]   new_exe_path: {new_exe_path}')
+    print(f'[DEBUG]   current_exe_path: {current_exe_path}')
+    print(f'[DEBUG]   sys.frozen: {getattr(sys, "frozen", False)}')
+    print(f'[DEBUG]   sys.executable: {sys.executable}')
+    
     # 检查是否为打包后的 exe
     if not getattr(sys, 'frozen', False):
+        print('[DEBUG] Not a frozen executable, cannot auto-update')
         print('自动更新仅支持打包后的程序')
         return False
     
     # 获取当前程序路径
     if current_exe_path is None:
         current_exe_path = sys.executable
+    print(f'[DEBUG] Final current_exe_path: {current_exe_path}')
     
     # 检查新版本文件是否存在
     if not os.path.exists(new_exe_path):
+        print(f'[DEBUG] New file does not exist!')
         print(f'新版本文件不存在: {new_exe_path}')
         return False
+    
+    print(f'[DEBUG] New file size: {os.path.getsize(new_exe_path)} bytes')
     
     # 创建更新批处理脚本
     bat_content = f'''@echo off
