@@ -631,8 +631,8 @@ async function showUpdateModal(updateInfo) {
                 const downloadUrl = selectedRadio.value;
                 const filename = selectedRadio.dataset.filename;
                 
-                if (canAutoUpdate && filename.endsWith('.exe')) {
-                    // Windows 自动更新流程
+                if (canAutoUpdate) {
+                    // 自动更新流程 (支持 Windows/Linux/macOS)
                     downloadUpdateBtn.disabled = true;
                     downloadUpdateBtn.textContent = '正在下载...';
                     

@@ -619,9 +619,9 @@ def api_can_auto_update():
 
 @app.route('/api/apply-update', methods=['POST'])
 def api_apply_update():
-    """应用已下载的更新（仅 Windows）"""
+    """应用已下载的更新（支持 Windows/Linux/macOS）"""
     try:
-        from updater import apply_windows_update, can_auto_update
+        from updater import apply_update, can_auto_update
         import sys
         
         # 检查是否支持自动更新
@@ -648,16 +648,16 @@ def api_apply_update():
                 'message': '更新文件信息不完整'
             }), 400
         
-        new_exe_path = os.path.join(save_path, filename)
+        new_file_path = os.path.join(save_path, filename)
         
-        if not os.path.exists(new_exe_path):
+        if not os.path.exists(new_file_path):
             return jsonify({
                 'success': False, 
-                'message': f'更新文件不存在: {new_exe_path}'
+                'message': f'更新文件不存在: {new_file_path}'
             }), 400
         
-        # 应用更新
-        if apply_windows_update(new_exe_path):
+        # 应用更新（自动检测平台）
+        if apply_update(new_file_path):
             # 更新成功启动，准备退出程序
             def delayed_exit():
                 import time

@@ -268,14 +268,9 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     import subprocess
     import tempfile
     
-    # 检查是否为 Windows 平台
-    if sys.platform != 'win32':
-        print('自动更新仅支持 Windows 平台')
-        return False
-    
     # 检查是否为打包后的 exe
     if not getattr(sys, 'frozen', False):
-        print('自动更新仅支持打包后的 exe 程序')
+        print('自动更新仅支持打包后的程序')
         return False
     
     # 获取当前程序路径
@@ -370,6 +365,168 @@ exit /b 0
         return False
 
 
+def apply_unix_update(new_binary_path: str, current_binary_path: str = None) -> bool:
+    """
+    在 Linux/macOS 上应用更新：创建 shell 脚本来替换当前程序并重启
+    
+    Args:
+        new_binary_path: 新版本二进制文件路径
+        current_binary_path: 当前程序路径，如果为 None 则自动检测
+    
+    Returns:
+        是否成功启动更新过程
+    """
+    import sys
+    import os
+    import subprocess
+    import tempfile
+    import stat
+    
+    # 检查是否为打包后的程序
+    if not getattr(sys, 'frozen', False):
+        print('自动更新仅支持打包后的程序')
+        return False
+    
+    # 获取当前程序路径
+    if current_binary_path is None:
+        current_binary_path = sys.executable
+    
+    # 检查新版本文件是否存在
+    if not os.path.exists(new_binary_path):
+        print(f'新版本文件不存在: {new_binary_path}')
+        return False
+    
+    # 获取当前进程 PID
+    pid = os.getpid()
+    
+    # 创建更新 shell 脚本
+    shell_content = f'''#!/bin/bash
+echo "===================================="
+echo "番茄小说下载器 - 自动更新"
+echo "===================================="
+echo ""
+echo "正在等待程序退出..."
+
+# 等待原进程退出
+while kill -0 {pid} 2>/dev/null; do
+    sleep 1
+done
+
+echo "程序已退出，开始更新..."
+echo ""
+
+# 备份旧版本
+BACKUP_PATH="{current_binary_path}.backup"
+if [ -f "{current_binary_path}" ]; then
+    echo "备份旧版本..."
+    cp "{current_binary_path}" "$BACKUP_PATH"
+    if [ $? -ne 0 ]; then
+        echo "备份失败，更新终止"
+        read -p "按回车键退出..."
+        exit 1
+    fi
+fi
+
+# 替换新版本
+echo "安装新版本..."
+cp "{new_binary_path}" "{current_binary_path}"
+if [ $? -ne 0 ]; then
+    echo "更新失败，正在恢复旧版本..."
+    cp "$BACKUP_PATH" "{current_binary_path}"
+    read -p "按回车键退出..."
+    exit 1
+fi
+
+# 设置执行权限
+chmod +x "{current_binary_path}"
+
+# 清理
+echo "清理临时文件..."
+rm -f "{new_binary_path}" 2>/dev/null
+rm -f "$BACKUP_PATH" 2>/dev/null
+
+echo ""
+echo "✓ 更新完成！正在启动新版本..."
+echo ""
+sleep 2
+
+# 启动新版本
+nohup "{current_binary_path}" >/dev/null 2>&1 &
+
+# 删除自身
+rm -f "$0" 2>/dev/null
+exit 0
+'''
+    
+    # 写入 shell 脚本
+    try:
+        script_path = os.path.join(tempfile.gettempdir(), 'fanqie_update.sh')
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write(shell_content)
+        
+        # 设置执行权限
+        os.chmod(script_path, os.stat(script_path).st_mode | stat.S_IEXEC)
+        
+        # 启动脚本（在新终端中运行）
+        if sys.platform == 'darwin':
+            # macOS: 使用 osascript 打开终端
+            subprocess.Popen([
+                'osascript', '-e',
+                f'tell application "Terminal" to do script "{script_path}"'
+            ])
+        else:
+            # Linux: 尝试各种终端模拟器
+            terminals = [
+                ['gnome-terminal', '--', 'bash', script_path],
+                ['konsole', '-e', 'bash', script_path],
+                ['xfce4-terminal', '-e', f'bash {script_path}'],
+                ['xterm', '-e', 'bash', script_path],
+                ['termux-open', script_path],  # Termux
+            ]
+            
+            launched = False
+            for term_cmd in terminals:
+                try:
+                    subprocess.Popen(term_cmd, start_new_session=True)
+                    launched = True
+                    break
+                except (FileNotFoundError, OSError):
+                    continue
+            
+            if not launched:
+                # 如果没有找到终端，直接后台运行
+                subprocess.Popen(['bash', script_path], start_new_session=True)
+        
+        print(f'更新脚本已启动，程序即将退出...')
+        return True
+        
+    except Exception as e:
+        print(f'创建更新脚本失败: {e}')
+        return False
+
+
+def apply_update(new_file_path: str, current_path: str = None) -> bool:
+    """
+    应用更新 - 自动检测平台并调用对应的更新函数
+    
+    Args:
+        new_file_path: 新版本文件路径
+        current_path: 当前程序路径，如果为 None 则自动检测
+    
+    Returns:
+        是否成功启动更新过程
+    """
+    import sys
+    
+    if sys.platform == 'win32':
+        return apply_windows_update(new_file_path, current_path)
+    elif sys.platform in ('linux', 'darwin'):
+        return apply_unix_update(new_file_path, current_path)
+    else:
+        print(f'不支持的平台: {sys.platform}')
+        return False
+
+
 def get_update_exe_path(save_path: str, filename: str) -> str:
     """获取下载的更新文件完整路径"""
     import os
@@ -379,8 +536,9 @@ def get_update_exe_path(save_path: str, filename: str) -> str:
 def can_auto_update() -> bool:
     """检查当前环境是否支持自动更新"""
     import sys
-    # 只有 Windows 平台的打包 exe 才支持自动更新
-    return sys.platform == 'win32' and getattr(sys, 'frozen', False)
+    # Windows、Linux、macOS 打包后的程序都支持自动更新
+    supported_platforms = ('win32', 'linux', 'darwin')
+    return sys.platform in supported_platforms and getattr(sys, 'frozen', False)
 
 
 if __name__ == '__main__':
