@@ -324,9 +324,20 @@ def process_chapter_content(content):
     return content
 
 
-def load_status(save_path):
-    """加载下载状态"""
-    status_file = os.path.join(save_path, CONFIG.get("status_file", ".download_status.json"))
+def _get_status_file_path(book_id: str) -> str:
+    """获取下载状态文件路径（保存在临时目录，不污染小说目录）"""
+    import tempfile
+    import hashlib
+    # 使用 book_id 的哈希作为文件名，避免冲突
+    status_dir = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader')
+    os.makedirs(status_dir, exist_ok=True)
+    filename = f".download_status_{book_id}.json"
+    return os.path.join(status_dir, filename)
+
+
+def load_status(book_id: str):
+    """加载下载状态（从临时目录读取）"""
+    status_file = _get_status_file_path(book_id)
     if os.path.exists(status_file):
         try:
             with open(status_file, 'r', encoding='utf-8') as f:
@@ -338,15 +349,25 @@ def load_status(save_path):
     return set()
 
 
-def save_status(save_path, downloaded_ids):
-    """保存下载状态"""
-    status_file = os.path.join(save_path, CONFIG.get("status_file", ".download_status.json"))
+def save_status(book_id: str, downloaded_ids):
+    """保存下载状态（保存到临时目录）"""
+    status_file = _get_status_file_path(book_id)
     try:
         with open(status_file, 'w', encoding='utf-8') as f:
             json.dump(list(downloaded_ids), f, ensure_ascii=False, indent=2)
     except Exception as e:
         with print_lock:
             print(f"保存下载状态失败: {str(e)}")
+
+
+def clear_status(book_id: str):
+    """清除下载状态（下载完成后调用）"""
+    status_file = _get_status_file_path(book_id)
+    try:
+        if os.path.exists(status_file):
+            os.remove(status_file)
+    except:
+        pass
 
 
 def download_cover(cover_url, headers):
@@ -574,7 +595,7 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
                 except Exception as e:
                     log_message(f"章节筛选出错: {e}")
             
-            downloaded_ids = load_status(save_path)
+            downloaded_ids = load_status(book_id)
             chapters_to_download = [ch for ch in chapters if ch["id"] not in downloaded_ids]
             
             if not chapters_to_download:
@@ -612,7 +633,7 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
                         except Exception:
                             pass
             
-            save_status(save_path, downloaded_ids)
+            save_status(book_id, downloaded_ids)
         
         if gui_callback:
             gui_callback(85, "正在生成文件...")
@@ -624,6 +645,9 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
             output_file = create_epub(name, author_name, description, cover_url, sorted_chapters, save_path)
         else:
             output_file = create_txt(name, author_name, description, sorted_chapters, save_path)
+        
+        # 下载完成后清除临时状态文件
+        clear_status(book_id)
         
         log_message(f"下载完成! 文件: {output_file}", 100)
         return True

@@ -30,9 +30,41 @@ def set_access_token(token):
     global ACCESS_TOKEN
     ACCESS_TOKEN = token
 
-# 配置文件路径 - 保存到系统临时目录
+# 配置文件路径 - 保存到系统临时目录（跨平台兼容）
 TEMP_DIR = tempfile.gettempdir()
 CONFIG_FILE = os.path.join(TEMP_DIR, 'fanqie_novel_downloader_config.json')
+
+def get_default_download_path():
+    """获取默认下载路径（跨平台兼容）"""
+    import sys
+    # 优先使用用户下载目录
+    home = os.path.expanduser('~')
+    if sys.platform == 'win32':
+        # Windows: 尝试使用 Downloads 文件夹
+        downloads = os.path.join(home, 'Downloads')
+    elif sys.platform == 'darwin':
+        # macOS
+        downloads = os.path.join(home, 'Downloads')
+    else:
+        # Linux / Termux / 其他 Unix
+        downloads = os.path.join(home, 'Downloads')
+        # 如果 Downloads 不存在，尝试使用 XDG 用户目录
+        if not os.path.exists(downloads):
+            xdg_download = os.environ.get('XDG_DOWNLOAD_DIR')
+            if xdg_download and os.path.exists(xdg_download):
+                downloads = xdg_download
+            else:
+                # 回退到用户主目录
+                downloads = home
+    
+    # 确保目录存在
+    if not os.path.exists(downloads):
+        try:
+            os.makedirs(downloads, exist_ok=True)
+        except:
+            downloads = home
+    
+    return downloads
 
 # 全局变量
 download_queue = queue.Queue()
@@ -378,7 +410,7 @@ def api_download():
         return jsonify({'success': False, 'message': '已有下载任务在进行'}), 400
     
     book_id = data.get('book_id', '').strip()
-    save_path = data.get('save_path', os.path.expanduser('~\\Downloads')).strip()
+    save_path = data.get('save_path', get_default_download_path()).strip()
     file_format = data.get('file_format', 'txt')
     start_chapter = data.get('start_chapter')
     end_chapter = data.get('end_chapter')
@@ -440,14 +472,14 @@ def api_config_save_path():
             if os.path.exists(CONFIG_FILE):
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                    return jsonify({'path': config.get('save_path', os.path.expanduser('~\\Downloads'))})
+                    return jsonify({'path': config.get('save_path', get_default_download_path())})
         except:
             pass
-        return jsonify({'path': os.path.expanduser('~\\Downloads')})
+        return jsonify({'path': get_default_download_path()})
     
     else:
         data = request.get_json()
-        path = data.get('path', os.path.expanduser('~\\Downloads'))
+        path = data.get('path', get_default_download_path())
         
         try:
             if os.path.exists(CONFIG_FILE):
@@ -476,11 +508,11 @@ def api_select_folder():
         root.withdraw()
         root.attributes('-topmost', True)
         
-        current_path = request.get_json().get('current_path', os.path.expanduser('~\\Downloads'))
+        current_path = request.get_json().get('current_path', get_default_download_path())
         
         folder_path = filedialog.askdirectory(
             title='选择小说保存目录',
-            initialdir=current_path if os.path.exists(current_path) else os.path.expanduser('~\\Downloads')
+            initialdir=current_path if os.path.exists(current_path) else get_default_download_path()
         )
         
         root.destroy()
@@ -575,7 +607,7 @@ def api_download_update():
         return jsonify({'success': False, 'message': '参数错误'}), 400
         
     # 使用默认下载路径或配置路径
-    save_path = os.path.expanduser('~\\Downloads')
+    save_path = get_default_download_path()
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -588,7 +620,7 @@ def api_download_update():
         try:
             os.makedirs(save_path)
         except:
-            save_path = os.path.expanduser('~\\Downloads')
+            save_path = get_default_download_path()
 
     # 启动下载线程
     t = threading.Thread(
