@@ -335,39 +335,58 @@ def api_search():
             # 解析搜索结果
             search_data = result.get('data', {})
             books = []
+            has_more = False
             
-            # 处理搜索结果数据结构
-            if isinstance(search_data, dict):
-                # 可能的数据结构: {data: {book_list: [...]}} 或 {data: [...]}
-                book_list = search_data.get('book_list', []) or search_data.get('data', [])
-                if isinstance(book_list, list):
-                    for book in book_list:
-                        if isinstance(book, dict):
-                            books.append({
-                                'book_id': str(book.get('book_id', '')),
-                                'book_name': book.get('book_name', '未知书名'),
-                                'author': book.get('author', '未知作者'),
-                                'abstract': book.get('abstract', '暂无简介'),
-                                'cover_url': book.get('thumb_url', '') or book.get('cover', ''),
-                                'word_count': book.get('word_count', 0),
-                                'chapter_count': book.get('serial_count', 0) or book.get('chapter_count', 0),
-                                'status': book.get('creation_status', '') or book.get('status', ''),
-                                'category': book.get('category', '') or book.get('genre', '')
-                            })
-            elif isinstance(search_data, list):
-                for book in search_data:
-                    if isinstance(book, dict):
-                        books.append({
-                            'book_id': str(book.get('book_id', '')),
-                            'book_name': book.get('book_name', '未知书名'),
-                            'author': book.get('author', '未知作者'),
-                            'abstract': book.get('abstract', '暂无简介'),
-                            'cover_url': book.get('thumb_url', '') or book.get('cover', ''),
-                            'word_count': book.get('word_count', 0),
-                            'chapter_count': book.get('serial_count', 0) or book.get('chapter_count', 0),
-                            'status': book.get('creation_status', '') or book.get('status', ''),
-                            'category': book.get('category', '') or book.get('genre', '')
-                        })
+            # 新 API 数据结构: data.search_tabs[].data[].book_data[]
+            # 需要找到 tab_type=3 (书籍) 的 tab
+            search_tabs = search_data.get('search_tabs', [])
+            for tab in search_tabs:
+                if tab.get('tab_type') == 3:  # 书籍 tab
+                    has_more = tab.get('has_more', False)
+                    tab_data = tab.get('data', [])
+                    if isinstance(tab_data, list):
+                        for item in tab_data:
+                            # 每个 item 包含 book_data 数组
+                            book_data_list = item.get('book_data', [])
+                            for book in book_data_list:
+                                if isinstance(book, dict):
+                                    # 解析字数 (可能是字符串)
+                                    word_count = book.get('word_number', 0) or book.get('word_count', 0)
+                                    if isinstance(word_count, str):
+                                        try:
+                                            word_count = int(word_count)
+                                        except:
+                                            word_count = 0
+                                    
+                                    # 解析章节数
+                                    chapter_count = book.get('serial_count', 0) or book.get('chapter_count', 0)
+                                    if isinstance(chapter_count, str):
+                                        try:
+                                            chapter_count = int(chapter_count)
+                                        except:
+                                            chapter_count = 0
+                                    
+                                    # 解析状态 (1=连载中, 2=完结)
+                                    status_code = book.get('creation_status', '')
+                                    if status_code == '1':
+                                        status = '连载中'
+                                    elif status_code == '2':
+                                        status = '完结'
+                                    else:
+                                        status = status_code or book.get('status', '')
+                                    
+                                    books.append({
+                                        'book_id': str(book.get('book_id', '')),
+                                        'book_name': book.get('book_name', '未知书名'),
+                                        'author': book.get('author', '未知作者'),
+                                        'abstract': book.get('abstract', '') or book.get('book_abstract_v2', '暂无简介'),
+                                        'cover_url': book.get('thumb_url', '') or book.get('cover', ''),
+                                        'word_count': word_count,
+                                        'chapter_count': chapter_count,
+                                        'status': status,
+                                        'category': book.get('category', '') or book.get('genre', '')
+                                    })
+                    break  # 找到书籍 tab 后退出
             
             return jsonify({
                 'success': True,
@@ -375,7 +394,7 @@ def api_search():
                     'books': books,
                     'total': len(books),
                     'offset': offset,
-                    'has_more': len(books) >= 10  # 假设每页10条
+                    'has_more': has_more
                 }
             })
         else:
