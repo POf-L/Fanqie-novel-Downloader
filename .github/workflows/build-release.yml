@@ -253,11 +253,11 @@ jobs:
             --add-data "templates${SEP}templates" \
             --hidden-import=flask \
             --hidden-import=flask_cors \
-            --hidden-import=pywebview \
+            --hidden-import=webview \
             --hidden-import=PIL \
             --hidden-import=requests \
             --hidden-import=aiohttp \
-            --hidden-import=beautifulsoup4 \
+            --hidden-import=bs4 \
             --hidden-import=ebooklib \
             --hidden-import=fake_useragent \
             --hidden-import=config \
