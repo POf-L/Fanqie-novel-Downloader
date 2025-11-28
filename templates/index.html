@@ -19,6 +19,37 @@
 
         <!-- 主内容 -->
         <main class="main-content">
+            <!-- 搜索卡片 -->
+            <div class="card">
+                <h2 class="card-title">🔍 搜索书籍</h2>
+                <div class="card-content">
+                    <div class="form-group">
+                        <div class="input-with-button">
+                            <input 
+                                type="text" 
+                                id="searchKeyword" 
+                                placeholder="输入书名或作者名搜索..."
+                                class="input-field"
+                            >
+                            <button class="btn btn-primary" id="searchBtn">🔍 搜索</button>
+                        </div>
+                    </div>
+                    <!-- 搜索结果 -->
+                    <div id="searchResults" style="display: none;">
+                        <div class="search-results-header">
+                            <span id="searchResultCount">找到 0 本书籍</span>
+                            <button class="btn btn-sm btn-secondary" id="clearSearchBtn">清除结果</button>
+                        </div>
+                        <div id="searchResultList" class="search-result-list">
+                            <!-- 搜索结果将在这里动态生成 -->
+                        </div>
+                        <div id="loadMoreContainer" style="text-align: center; margin-top: 10px; display: none;">
+                            <button class="btn btn-secondary" id="loadMoreBtn">加载更多</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 下载设置卡片 -->
             <div class="card">
                 <h2 class="card-title">💾 下载设置</h2>
@@ -29,7 +60,7 @@
                         <input 
                             type="text" 
                             id="bookId" 
-                            placeholder="请输入书籍ID或Fanqie小说URL，如：https://fanqienovel.com/page/7199473033239596087"
+                            placeholder="请输入书籍ID或Fanqie小说URL，或使用上方搜索功能"
                             class="input-field"
                         >
                     </div>

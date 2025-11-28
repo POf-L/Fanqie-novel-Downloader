@@ -316,6 +316,83 @@ def api_status():
     """获取下载状态"""
     return jsonify(get_status())
 
+@app.route('/api/search', methods=['POST'])
+def api_search():
+    """搜索书籍"""
+    data = request.get_json()
+    keyword = data.get('keyword', '').strip()
+    offset = data.get('offset', 0)
+    
+    if not keyword:
+        return jsonify({'success': False, 'message': '请输入搜索关键词'}), 400
+    
+    if not api_manager:
+        return jsonify({'success': False, 'message': 'API未初始化'}), 500
+    
+    try:
+        result = api_manager.search_books(keyword, offset)
+        if result and result.get('data'):
+            # 解析搜索结果
+            search_data = result.get('data', {})
+            books = []
+            
+            # 处理搜索结果数据结构
+            if isinstance(search_data, dict):
+                # 可能的数据结构: {data: {book_list: [...]}} 或 {data: [...]}
+                book_list = search_data.get('book_list', []) or search_data.get('data', [])
+                if isinstance(book_list, list):
+                    for book in book_list:
+                        if isinstance(book, dict):
+                            books.append({
+                                'book_id': str(book.get('book_id', '')),
+                                'book_name': book.get('book_name', '未知书名'),
+                                'author': book.get('author', '未知作者'),
+                                'abstract': book.get('abstract', '暂无简介'),
+                                'cover_url': book.get('thumb_url', '') or book.get('cover', ''),
+                                'word_count': book.get('word_count', 0),
+                                'chapter_count': book.get('serial_count', 0) or book.get('chapter_count', 0),
+                                'status': book.get('creation_status', '') or book.get('status', ''),
+                                'category': book.get('category', '') or book.get('genre', '')
+                            })
+            elif isinstance(search_data, list):
+                for book in search_data:
+                    if isinstance(book, dict):
+                        books.append({
+                            'book_id': str(book.get('book_id', '')),
+                            'book_name': book.get('book_name', '未知书名'),
+                            'author': book.get('author', '未知作者'),
+                            'abstract': book.get('abstract', '暂无简介'),
+                            'cover_url': book.get('thumb_url', '') or book.get('cover', ''),
+                            'word_count': book.get('word_count', 0),
+                            'chapter_count': book.get('serial_count', 0) or book.get('chapter_count', 0),
+                            'status': book.get('creation_status', '') or book.get('status', ''),
+                            'category': book.get('category', '') or book.get('genre', '')
+                        })
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'books': books,
+                    'total': len(books),
+                    'offset': offset,
+                    'has_more': len(books) >= 10  # 假设每页10条
+                }
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'books': [],
+                    'total': 0,
+                    'offset': offset,
+                    'has_more': False
+                }
+            })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'搜索失败: {str(e)}'}), 500
+
 @app.route('/api/book-info', methods=['POST'])
 def api_book_info():
     """获取书籍详情和章节列表"""
@@ -462,6 +539,135 @@ def api_cancel():
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 400
     return jsonify({'success': False}), 400
+
+# ===================== 批量下载状态 =====================
+batch_download_status = {
+    'is_downloading': False,
+    'current_index': 0,
+    'total_count': 0,
+    'current_book': '',
+    'results': [],
+    'message': ''
+}
+batch_lock = threading.Lock()
+
+def get_batch_status():
+    """获取批量下载状态"""
+    with batch_lock:
+        return batch_download_status.copy()
+
+def update_batch_status(**kwargs):
+    """更新批量下载状态"""
+    with batch_lock:
+        for key, value in kwargs.items():
+            if key in batch_download_status:
+                batch_download_status[key] = value
+
+def batch_download_worker(book_ids, save_path, file_format):
+    """批量下载工作线程"""
+    from novel_downloader import batch_downloader
+    
+    def progress_callback(current, total, book_name, status, message):
+        update_batch_status(
+            current_index=current,
+            total_count=total,
+            current_book=book_name,
+            message=f'[{current}/{total}] {book_name}: {message}'
+        )
+    
+    try:
+        update_batch_status(
+            is_downloading=True,
+            current_index=0,
+            total_count=len(book_ids),
+            results=[],
+            message='开始批量下载...'
+        )
+        
+        result = batch_downloader.run_batch(
+            book_ids, save_path, file_format,
+            progress_callback=progress_callback,
+            delay_between_books=2.0
+        )
+        
+        update_batch_status(
+            is_downloading=False,
+            results=result.get('results', []),
+            message=f"✅ 批量下载完成: {result['message']}"
+        )
+        
+    except Exception as e:
+        update_batch_status(
+            is_downloading=False,
+            message=f'❌ 批量下载失败: {str(e)}'
+        )
+
+@app.route('/api/batch-download', methods=['POST'])
+def api_batch_download():
+    """开始批量下载"""
+    data = request.get_json()
+    
+    if get_batch_status()['is_downloading']:
+        return jsonify({'success': False, 'message': '已有批量下载任务在进行'}), 400
+    
+    book_ids = data.get('book_ids', [])
+    save_path = data.get('save_path', get_default_download_path()).strip()
+    file_format = data.get('file_format', 'txt')
+    
+    if not book_ids:
+        return jsonify({'success': False, 'message': '请提供书籍ID列表'}), 400
+    
+    # 清理和验证book_ids
+    cleaned_ids = []
+    for bid in book_ids:
+        bid = str(bid).strip()
+        # 从URL提取ID
+        if 'fanqienovel.com' in bid:
+            match = re.search(r'/page/(\d+)', bid)
+            if match:
+                bid = match.group(1)
+        if bid.isdigit():
+            cleaned_ids.append(bid)
+    
+    if not cleaned_ids:
+        return jsonify({'success': False, 'message': '没有有效的书籍ID'}), 400
+    
+    # 确保保存目录存在
+    os.makedirs(save_path, exist_ok=True)
+    
+    # 启动批量下载线程
+    t = threading.Thread(
+        target=batch_download_worker,
+        args=(cleaned_ids, save_path, file_format),
+        daemon=True
+    )
+    t.start()
+    
+    return jsonify({
+        'success': True,
+        'message': f'开始批量下载 {len(cleaned_ids)} 本书籍',
+        'count': len(cleaned_ids)
+    })
+
+@app.route('/api/batch-status', methods=['GET'])
+def api_batch_status():
+    """获取批量下载状态"""
+    return jsonify(get_batch_status())
+
+@app.route('/api/batch-cancel', methods=['POST'])
+def api_batch_cancel():
+    """取消批量下载"""
+    from novel_downloader import batch_downloader
+    
+    try:
+        batch_downloader.cancel()
+        update_batch_status(
+            is_downloading=False,
+            message='⏹ 批量下载已取消'
+        )
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/config/save-path', methods=['GET', 'POST'])
 def api_config_save_path():

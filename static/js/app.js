@@ -153,6 +153,26 @@ class APIClient {
         }
     }
     
+    // ========== 搜索 API ==========
+    async searchBooks(keyword, offset = 0) {
+        try {
+            const result = await this.request('/api/search', {
+                method: 'POST',
+                body: JSON.stringify({ keyword, offset })
+            });
+            
+            if (result.success) {
+                return result.data;
+            } else {
+                logger.log(`❌ ${result.message}`);
+                return null;
+            }
+        } catch (error) {
+            logger.log(`❌ 搜索失败: ${error.message}`);
+            return null;
+        }
+    }
+    
     async startDownload(bookId, savePath, fileFormat, startChapter, endChapter, selectedChapters) {
         try {
             const body = {
@@ -297,6 +317,42 @@ class APIClient {
         }
     }
     
+    // ========== 批量下载 API ==========
+    async batchDownload(bookIds, savePath, fileFormat = 'txt') {
+        try {
+            const result = await this.request('/api/batch-download', {
+                method: 'POST',
+                body: JSON.stringify({
+                    book_ids: bookIds,
+                    save_path: savePath,
+                    file_format: fileFormat
+                })
+            });
+            return result;
+        } catch (error) {
+            console.error('批量下载失败:', error);
+            return { success: false, message: error.message };
+        }
+    }
+    
+    async getBatchStatus() {
+        try {
+            const result = await this.request('/api/batch-status');
+            return result;
+        } catch (error) {
+            return null;
+        }
+    }
+    
+    async cancelBatch() {
+        try {
+            const result = await this.request('/api/batch-cancel', { method: 'POST' });
+            return result.success;
+        } catch (error) {
+            return false;
+        }
+    }
+    
     async checkUpdate() {
         try {
             const result = await this.request('/api/check-update');
@@ -384,6 +440,146 @@ function initChapterModalEvents() {
     document.getElementById('selectAllBtn').addEventListener('click', () => toggleAllChapters(true));
     document.getElementById('selectNoneBtn').addEventListener('click', () => toggleAllChapters(false));
     document.getElementById('selectInvertBtn').addEventListener('click', invertChapterSelection);
+    
+    // 搜索相关事件
+    document.getElementById('searchBtn').addEventListener('click', handleSearch);
+    document.getElementById('searchKeyword').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleSearch();
+    });
+    document.getElementById('clearSearchBtn').addEventListener('click', clearSearchResults);
+    document.getElementById('loadMoreBtn').addEventListener('click', loadMoreResults);
+}
+
+// ========== 搜索功能 ==========
+let searchOffset = 0;
+let currentSearchKeyword = '';
+
+async function handleSearch() {
+    const keyword = document.getElementById('searchKeyword').value.trim();
+    if (!keyword) {
+        alert('请输入搜索关键词');
+        return;
+    }
+    
+    // 重置搜索状态
+    searchOffset = 0;
+    currentSearchKeyword = keyword;
+    
+    const searchBtn = document.getElementById('searchBtn');
+    searchBtn.disabled = true;
+    searchBtn.textContent = '🔄 搜索中...';
+    
+    logger.log(`🔍 正在搜索: ${keyword}`);
+    
+    const result = await api.searchBooks(keyword, 0);
+    
+    searchBtn.disabled = false;
+    searchBtn.textContent = '🔍 搜索';
+    
+    if (result && result.books) {
+        displaySearchResults(result.books, false);
+        searchOffset = result.books.length;
+        
+        // 显示/隐藏加载更多按钮
+        const loadMoreContainer = document.getElementById('loadMoreContainer');
+        loadMoreContainer.style.display = result.has_more ? 'block' : 'none';
+        
+        logger.log(`✅ 找到 ${result.books.length} 本书籍`);
+    } else {
+        displaySearchResults([], false);
+        logger.log('❌ 未找到相关书籍');
+    }
+}
+
+async function loadMoreResults() {
+    if (!currentSearchKeyword) return;
+    
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.textContent = '加载中...';
+    
+    const result = await api.searchBooks(currentSearchKeyword, searchOffset);
+    
+    loadMoreBtn.disabled = false;
+    loadMoreBtn.textContent = '加载更多';
+    
+    if (result && result.books && result.books.length > 0) {
+        displaySearchResults(result.books, true);
+        searchOffset += result.books.length;
+        
+        const loadMoreContainer = document.getElementById('loadMoreContainer');
+        loadMoreContainer.style.display = result.has_more ? 'block' : 'none';
+    } else {
+        document.getElementById('loadMoreContainer').style.display = 'none';
+    }
+}
+
+function displaySearchResults(books, append = false) {
+    const resultsContainer = document.getElementById('searchResults');
+    const listContainer = document.getElementById('searchResultList');
+    const countSpan = document.getElementById('searchResultCount');
+    
+    resultsContainer.style.display = 'block';
+    
+    if (!append) {
+        listContainer.innerHTML = '';
+    }
+    
+    if (books.length === 0 && !append) {
+        listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">未找到相关书籍</div>';
+        countSpan.textContent = '找到 0 本书籍';
+        return;
+    }
+    
+    books.forEach(book => {
+        const item = document.createElement('div');
+        item.className = 'search-result-item';
+        
+        const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + '万字' : '未知';
+        const chapterCount = book.chapter_count ? book.chapter_count + '章' : '';
+        const status = book.status || '';
+        
+        item.innerHTML = `
+            <div class="book-cover">
+                ${book.cover_url ? `<img src="${book.cover_url}" alt="${book.book_name}" onerror="this.style.display='none'">` : '📚'}
+            </div>
+            <div class="book-info">
+                <div class="book-title">${book.book_name}</div>
+                <div class="book-author">作者: ${book.author}</div>
+                <div class="book-meta">
+                    <span>${wordCount}</span>
+                    ${chapterCount ? `<span>${chapterCount}</span>` : ''}
+                    ${status ? `<span>${status}</span>` : ''}
+                </div>
+                <div class="book-abstract">${book.abstract ? book.abstract.substring(0, 100) + '...' : '暂无简介'}</div>
+            </div>
+            <div class="book-actions">
+                <button class="btn btn-sm btn-primary" onclick="selectBook('${book.book_id}', '${book.book_name.replace(/'/g, "\\'")}')">选择</button>
+            </div>
+        `;
+        
+        listContainer.appendChild(item);
+    });
+    
+    // 更新计数
+    const totalCount = listContainer.querySelectorAll('.search-result-item').length;
+    countSpan.textContent = `找到 ${totalCount} 本书籍`;
+}
+
+function selectBook(bookId, bookName) {
+    document.getElementById('bookId').value = bookId;
+    logger.log(`📖 已选择: ${bookName} (ID: ${bookId})`);
+    
+    // 滚动到下载设置区域
+    document.getElementById('bookId').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function clearSearchResults() {
+    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('searchResultList').innerHTML = '';
+    document.getElementById('searchKeyword').value = '';
+    searchOffset = 0;
+    currentSearchKeyword = '';
 }
 
 async function handleSelectChapters() {

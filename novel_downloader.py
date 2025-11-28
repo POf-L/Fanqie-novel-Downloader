@@ -370,6 +370,113 @@ def clear_status(book_id: str):
         pass
 
 
+def analyze_download_completeness(chapter_results: dict, expected_chapters: list = None, log_func=None) -> dict:
+    """
+    分析下载完整性
+    
+    Args:
+        chapter_results: 已下载的章节结果 {index: {'title': ..., 'content': ...}}
+        expected_chapters: 期望的章节列表 [{'id': ..., 'title': ..., 'index': ...}]
+        log_func: 日志输出函数
+    
+    Returns:
+        分析结果字典:
+        - total_expected: 期望总章节数
+        - total_downloaded: 已下载章节数
+        - missing_indices: 缺失的章节索引列表
+        - order_correct: 顺序是否正确
+        - completeness_percent: 完整度百分比
+    """
+    def log(msg, progress=-1):
+        if log_func:
+            log_func(msg, progress)
+        else:
+            print(msg)
+    
+    result = {
+        'total_expected': 0,
+        'total_downloaded': len(chapter_results),
+        'missing_indices': [],
+        'order_correct': True,
+        'completeness_percent': 100.0
+    }
+    
+    if not chapter_results:
+        log("⚠️ 没有下载到任何章节")
+        result['completeness_percent'] = 0
+        return result
+    
+    # 获取已下载的章节索引
+    downloaded_indices = set(chapter_results.keys())
+    
+    # 如果有期望的章节列表，进行完整性比对
+    if expected_chapters:
+        expected_indices = set(ch['index'] for ch in expected_chapters)
+        result['total_expected'] = len(expected_indices)
+        
+        # 查找缺失的章节
+        missing_indices = expected_indices - downloaded_indices
+        result['missing_indices'] = sorted(list(missing_indices))
+        
+        if missing_indices:
+            missing_count = len(missing_indices)
+            log(f"📋 完整性检查: 期望 {len(expected_indices)} 章，已下载 {len(downloaded_indices)} 章，缺失 {missing_count} 章")
+            
+            # 显示部分缺失章节信息
+            if missing_count <= 10:
+                missing_titles = []
+                for ch in expected_chapters:
+                    if ch['index'] in missing_indices:
+                        missing_titles.append(f"第{ch['index']+1}章: {ch['title']}")
+                log(f"   缺失章节: {', '.join(missing_titles[:5])}{'...' if len(missing_titles) > 5 else ''}")
+        else:
+            log(f"✅ 完整性检查通过: 共 {len(expected_indices)} 章全部下载")
+    else:
+        # 没有期望列表，使用已下载内容分析
+        result['total_expected'] = len(chapter_results)
+        
+        # 检查索引是否连续
+        sorted_indices = sorted(downloaded_indices)
+        if sorted_indices:
+            min_idx, max_idx = sorted_indices[0], sorted_indices[-1]
+            expected_range = set(range(min_idx, max_idx + 1))
+            missing_in_range = expected_range - downloaded_indices
+            
+            if missing_in_range:
+                result['missing_indices'] = sorted(list(missing_in_range))
+                log(f"⚠️ 检测到章节索引不连续，可能缺失: {sorted(missing_in_range)[:10]}{'...' if len(missing_in_range) > 10 else ''}")
+    
+    # 验证章节顺序（检查标题中的章节号是否递增）
+    sorted_results = sorted(chapter_results.items(), key=lambda x: x[0])
+    order_issues = []
+    
+    for i in range(1, len(sorted_results)):
+        prev_idx, prev_data = sorted_results[i-1]
+        curr_idx, curr_data = sorted_results[i]
+        
+        # 检查索引是否连续
+        if curr_idx != prev_idx + 1:
+            order_issues.append({
+                'type': 'gap',
+                'from_index': prev_idx,
+                'to_index': curr_idx,
+                'gap': curr_idx - prev_idx - 1
+            })
+    
+    if order_issues:
+        result['order_correct'] = False
+        total_gaps = sum(issue['gap'] for issue in order_issues)
+        log(f"⚠️ 章节顺序检查: 发现 {len(order_issues)} 处不连续，共缺少 {total_gaps} 个位置")
+    else:
+        log(f"✅ 章节顺序检查通过")
+    
+    # 计算完整度
+    if result['total_expected'] > 0:
+        result['completeness_percent'] = (result['total_downloaded'] / result['total_expected']) * 100
+    
+    return result
+
+
 def download_cover(cover_url, headers):
     """下载封面图片"""
     if not cover_url:
@@ -635,8 +742,88 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
             
             save_status(book_id, downloaded_ids)
         
+        # ==================== 下载完整性分析 ====================
         if gui_callback:
-            gui_callback(85, "正在生成文件...")
+            gui_callback(85, "正在分析下载完整性...")
+        else:
+            log_message("正在分析下载完整性...", 85)
+        
+        # 分析结果
+        analysis_result = analyze_download_completeness(
+            chapter_results, 
+            chapters if not use_full_download else None,
+            log_message
+        )
+        
+        # 如果有缺失章节，尝试补充下载
+        if analysis_result['missing_indices'] and not use_full_download:
+            missing_count = len(analysis_result['missing_indices'])
+            log_message(f"⚠️ 发现 {missing_count} 个缺失章节，正在补充下载...", 87)
+            
+            # 获取缺失章节的信息
+            missing_chapters = [ch for ch in chapters if ch['index'] in analysis_result['missing_indices']]
+            
+            # 补充下载缺失章节（最多重试3次）
+            for retry in range(3):
+                if not missing_chapters:
+                    break
+                    
+                log_message(f"补充下载第 {retry + 1} 次尝试，剩余 {len(missing_chapters)} 章", 88)
+                still_missing = []
+                
+                for ch in missing_chapters:
+                    try:
+                        data = api.get_chapter_content(ch["id"])
+                        if data and data.get('content'):
+                            processed = process_chapter_content(data.get('content', ''))
+                            chapter_results[ch['index']] = {
+                                'title': ch['title'],
+                                'content': processed
+                            }
+                            downloaded_ids.add(ch['id'])
+                        else:
+                            still_missing.append(ch)
+                    except Exception:
+                        still_missing.append(ch)
+                    time.sleep(0.5)  # 避免请求过快
+                
+                missing_chapters = still_missing
+                if not missing_chapters:
+                    log_message("✅ 所有缺失章节补充完成", 90)
+                    break
+            
+            # 更新状态
+            save_status(book_id, downloaded_ids)
+            
+            # 最终检查
+            if missing_chapters:
+                missing_indices = [ch['index'] + 1 for ch in missing_chapters]
+                log_message(f"⚠️ 仍有 {len(missing_chapters)} 章无法下载: {missing_indices[:10]}{'...' if len(missing_indices) > 10 else ''}", 90)
+        
+        # 验证章节顺序
+        if gui_callback:
+            gui_callback(92, "正在验证章节顺序...")
+        
+        sorted_indices = sorted(chapter_results.keys())
+        order_issues = []
+        for i, idx in enumerate(sorted_indices):
+            if i > 0 and idx != sorted_indices[i-1] + 1:
+                order_issues.append((sorted_indices[i-1], idx))
+        
+        if order_issues:
+            log_message(f"⚠️ 检测到章节序号不连续: {order_issues[:5]}{'...' if len(order_issues) > 5 else ''}", 93)
+        else:
+            log_message("✅ 章节顺序验证通过", 93)
+        
+        # 最终统计
+        total_expected = len(chapters) if not use_full_download else len(chapter_results)
+        total_downloaded = len(chapter_results)
+        completeness = (total_downloaded / total_expected * 100) if total_expected > 0 else 100
+        
+        log_message(f"📊 下载统计: {total_downloaded}/{total_expected} 章 ({completeness:.1f}%)", 95)
+        
+        if gui_callback:
+            gui_callback(95, "正在生成文件...")
         
         sorted_chapters = [chapter_results[idx] for idx in sorted(chapter_results.keys()) if idx in chapter_results]
 
@@ -649,7 +836,12 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
         # 下载完成后清除临时状态文件
         clear_status(book_id)
         
-        log_message(f"下载完成! 文件: {output_file}", 100)
+        # 最终结果
+        if completeness >= 100:
+            log_message(f"✅ 下载完成! 文件: {output_file}", 100)
+        else:
+            log_message(f"⚠️ 下载完成(部分章节缺失)! 文件: {output_file}", 100)
+        
         return True
         
     except Exception as e:
@@ -699,10 +891,153 @@ class NovelDownloader:
 
 downloader_instance = NovelDownloader()
 
+
+class BatchDownloader:
+    """批量下载器"""
+    
+    def __init__(self):
+        self.is_cancelled = False
+        self.results = []  # 下载结果列表
+        self.current_index = 0
+        self.total_count = 0
+    
+    def cancel(self):
+        """取消批量下载"""
+        self.is_cancelled = True
+    
+    def reset(self):
+        """重置状态"""
+        self.is_cancelled = False
+        self.results = []
+        self.current_index = 0
+        self.total_count = 0
+    
+    def run_batch(self, book_ids: list, save_path: str, file_format: str = 'txt', 
+                  progress_callback=None, delay_between_books: float = 2.0):
+        """
+        批量下载多本书籍
+        
+        Args:
+            book_ids: 书籍ID列表
+            save_path: 保存路径
+            file_format: 文件格式 ('txt' 或 'epub')
+            progress_callback: 进度回调函数 (current, total, book_name, status, message)
+            delay_between_books: 每本书之间的延迟（秒）
+        
+        Returns:
+            dict: 批量下载结果
+        """
+        self.reset()
+        self.total_count = len(book_ids)
+        
+        if not book_ids:
+            return {'success': False, 'message': '没有要下载的书籍', 'results': []}
+        
+        api = get_api_manager()
+        if api is None:
+            return {'success': False, 'message': 'API 初始化失败', 'results': []}
+        
+        def log(msg):
+            print(msg)
+        
+        log(f"📚 开始批量下载，共 {self.total_count} 本书籍")
+        log("=" * 50)
+        
+        for idx, book_id in enumerate(book_ids):
+            if self.is_cancelled:
+                log("⚠️ 批量下载已取消")
+                break
+            
+            self.current_index = idx + 1
+            book_id = str(book_id).strip()
+            
+            # 获取书籍信息
+            book_name = f"书籍_{book_id}"
+            try:
+                book_detail = api.get_book_detail(book_id)
+                if book_detail:
+                    book_name = book_detail.get('book_name', book_name)
+            except:
+                pass
+            
+            log(f"\n[{self.current_index}/{self.total_count}] 开始下载: 《{book_name}》")
+            
+            if progress_callback:
+                progress_callback(self.current_index, self.total_count, book_name, 'downloading', f'正在下载第 {self.current_index} 本...')
+            
+            # 执行下载
+            result = {
+                'book_id': book_id,
+                'book_name': book_name,
+                'success': False,
+                'message': ''
+            }
+            
+            try:
+                # 创建单本书的进度回调
+                def single_book_callback(progress, message):
+                    if progress_callback:
+                        overall_progress = ((self.current_index - 1) / self.total_count * 100) + (progress / self.total_count)
+                        progress_callback(self.current_index, self.total_count, book_name, 'downloading', message)
+                
+                success = Run(book_id, save_path, file_format, gui_callback=single_book_callback)
+                
+                if success:
+                    result['success'] = True
+                    result['message'] = '下载成功'
+                    log(f"✅ 《{book_name}》下载完成")
+                else:
+                    result['message'] = '下载失败'
+                    log(f"❌ 《{book_name}》下载失败")
+                    
+            except Exception as e:
+                result['message'] = str(e)
+                log(f"❌ 《{book_name}》下载异常: {str(e)}")
+            
+            self.results.append(result)
+            
+            if progress_callback:
+                status = 'success' if result['success'] else 'failed'
+                progress_callback(self.current_index, self.total_count, book_name, status, result['message'])
+            
+            # 延迟，避免请求过快
+            if idx < len(book_ids) - 1 and not self.is_cancelled:
+                time.sleep(delay_between_books)
+        
+        # 统计结果
+        success_count = sum(1 for r in self.results if r['success'])
+        failed_count = len(self.results) - success_count
+        
+        log("\n" + "=" * 50)
+        log(f"📊 批量下载完成统计:")
+        log(f"   成功: {success_count} 本")
+        log(f"   失败: {failed_count} 本")
+        log(f"   总计: {len(self.results)} 本")
+        
+        if failed_count > 0:
+            log("\n❌ 失败列表:")
+            for r in self.results:
+                if not r['success']:
+                    log(f"   - 《{r['book_name']}》: {r['message']}")
+        
+        return {
+            'success': failed_count == 0,
+            'message': f'完成 {success_count}/{len(self.results)} 本',
+            'total': len(self.results),
+            'success_count': success_count,
+            'failed_count': failed_count,
+            'results': self.results
+        }
+
+
+batch_downloader = BatchDownloader()
+
+
 def signal_handler(sig, frame):
     """信号处理"""
     print('\n正在取消下载...')
     downloader_instance.cancel_download()
+    batch_downloader.cancel()
     sys.exit(0)
 
 
@@ -714,14 +1049,39 @@ if __name__ == "__main__":
     
     print("番茄小说下载器")
     print("="*50)
-    book_id = input("请输入书籍ID: ").strip()
+    print("1. 单本下载")
+    print("2. 批量下载")
+    mode = input("选择模式 (1/2, 默认: 1): ").strip() or "1"
+    
     save_path = input("请输入保存路径(默认: ./novels): ").strip() or "./novels"
     file_format = input("选择格式 (txt/epub, 默认: txt): ").strip() or "txt"
-    
     os.makedirs(save_path, exist_ok=True)
     
-    success = Run(book_id, save_path, file_format)
-    if success:
-        print("下载完成!")
+    if mode == "2":
+        # 批量下载模式
+        print("\n请输入书籍ID列表（每行一个，输入空行结束）:")
+        book_ids = []
+        while True:
+            line = input().strip()
+            if not line:
+                break
+            # 支持逗号/空格/换行分隔
+            for bid in re.split(r'[,\s]+', line):
+                bid = bid.strip()
+                if bid:
+                    book_ids.append(bid)
+        
+        if book_ids:
+            print(f"\n共 {len(book_ids)} 本书籍待下载")
+            result = batch_downloader.run_batch(book_ids, save_path, file_format)
+            print(f"\n批量下载结束: {result['message']}")
+        else:
+            print("没有输入书籍ID")
     else:
-        print("下载失败!")
+        # 单本下载模式
+        book_id = input("请输入书籍ID: ").strip()
+        success = Run(book_id, save_path, file_format)
+        if success:
+            print("下载完成!")
+        else:
+            print("下载失败!")
