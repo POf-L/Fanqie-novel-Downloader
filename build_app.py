@@ -217,6 +217,8 @@ def get_hidden_imports():
     # 确保配置模块被正确打包
     hidden_imports.extend([
         'config',
+        'web_app',
+        'novel_downloader',
     ])
 
     # 去重并排序

@@ -355,6 +355,7 @@ jobs:
               --hidden-import=packaging \
               --hidden-import=packaging.version \
               --collect-data fake_useragent \
+              --collect-submodules PIL \
               novel_downloader.py
             
             # 在容器内完成重命名，避免权限问题
