@@ -394,6 +394,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Get commit message
+        id: get_commit_msg
+        run: |
+          echo "msg<<EOF" >> $GITHUB_OUTPUT
+          git show -s --format='%B' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -448,7 +455,7 @@ jobs:
             ${{ steps.check_builds.outputs.status }}
             
             ### 提交信息
-            ${{ github.event.head_commit.message }}
+            ${{ steps.get_commit_msg.outputs.msg }}
             
             ### 构建信息
             - **构建时间**: ${{ needs.prepare-release.outputs.build_time }}
