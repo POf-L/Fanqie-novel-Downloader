@@ -74,7 +74,8 @@ current_download_status = {
     'message': '',
     'book_name': '',
     'total_chapters': 0,
-    'downloaded_chapters': 0
+    'downloaded_chapters': 0,
+    'messages': []  # 消息队列，存储所有待传递的消息
 }
 status_lock = threading.Lock()
 
@@ -188,7 +189,11 @@ def init_modules():
 def get_status():
     """获取当前下载状态"""
     with status_lock:
-        return current_download_status.copy()
+        status = current_download_status.copy()
+        # 获取并清空消息队列
+        status['messages'] = current_download_status['messages'].copy()
+        current_download_status['messages'] = []
+        return status
 
 def update_status(progress=None, message=None, **kwargs):
     """更新下载状态"""
@@ -197,6 +202,11 @@ def update_status(progress=None, message=None, **kwargs):
             current_download_status['progress'] = progress
         if message is not None:
             current_download_status['message'] = message
+            # 将消息添加到队列（用于前端显示完整日志）
+            current_download_status['messages'].append(message)
+            # 限制队列长度，防止内存溢出
+            if len(current_download_status['messages']) > 100:
+                current_download_status['messages'] = current_download_status['messages'][-50:]
         for key, value in kwargs.items():
             if key in current_download_status:
                 current_download_status[key] = value

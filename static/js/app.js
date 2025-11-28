@@ -263,9 +263,11 @@ class APIClient {
         progressFill.style.width = progress + '%';
         progressPercent.textContent = progress + '%';
         
-        // 更新消息
-        if (status.message) {
-            logger.log(status.message);
+        // 更新消息队列（显示所有消息，不遗漏）
+        if (status.messages && status.messages.length > 0) {
+            for (const msg of status.messages) {
+                logger.log(msg);
+            }
         }
         
         // 更新书籍名称
@@ -526,35 +528,35 @@ function displaySearchResults(books, append = false) {
     }
     
     if (books.length === 0 && !append) {
-        listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">未找到相关书籍</div>';
+        listContainer.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">📚</div>
+                <div class="empty-state-text">未找到相关书籍</div>
+            </div>
+        `;
         countSpan.textContent = '找到 0 本书籍';
         return;
     }
     
     books.forEach(book => {
         const item = document.createElement('div');
-        item.className = 'search-result-item';
+        item.className = 'search-item';
+        item.onclick = () => selectBook(book.book_id, book.book_name);
         
-        const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + '万字' : '未知';
+        const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + '万字' : '';
         const chapterCount = book.chapter_count ? book.chapter_count + '章' : '';
         const status = book.status || '';
+        const statusClass = status === '完结' ? 'complete' : 'ongoing';
         
         item.innerHTML = `
-            <div class="book-cover">
-                ${book.cover_url ? `<img src="${book.cover_url}" alt="${book.book_name}" onerror="this.style.display='none'">` : '📚'}
-            </div>
-            <div class="book-info">
-                <div class="book-title">${book.book_name}</div>
-                <div class="book-author">作者: ${book.author}</div>
-                <div class="book-meta">
-                    <span>${wordCount}</span>
-                    ${chapterCount ? `<span>${chapterCount}</span>` : ''}
-                    ${status ? `<span>${status}</span>` : ''}
+            <img class="search-cover" src="${book.cover_url || ''}" alt="" onerror="this.style.display='none'">
+            <div class="search-info">
+                <div class="search-title">
+                    ${book.book_name}
+                    ${status ? `<span class="status-badge ${statusClass}">${status}</span>` : ''}
                 </div>
-                <div class="book-abstract">${book.abstract ? book.abstract.substring(0, 100) + '...' : '暂无简介'}</div>
-            </div>
-            <div class="book-actions">
-                <button class="btn btn-sm btn-primary" onclick="selectBook('${book.book_id}', '${book.book_name.replace(/'/g, "\\'")}')">选择</button>
+                <div class="search-meta">${book.author} · ${wordCount}${chapterCount ? ' · ' + chapterCount : ''}</div>
+                <div class="search-desc">${book.abstract || '暂无简介'}</div>
             </div>
         `;
         
@@ -562,7 +564,7 @@ function displaySearchResults(books, append = false) {
     });
     
     // 更新计数
-    const totalCount = listContainer.querySelectorAll('.search-result-item').length;
+    const totalCount = listContainer.querySelectorAll('.search-item').length;
     countSpan.textContent = `找到 ${totalCount} 本书籍`;
 }
 

@@ -1,0 +1,559 @@
+/* ===================== 现代极简设计系统 ===================== */
+
+:root {
+    /* 主色调 */
+    --primary: #ff6b6b;
+    --primary-hover: #ee5a5a;
+    --primary-light: rgba(255, 107, 107, 0.1);
+    
+    /* 中性色 */
+    --bg: #f8f9fc;
+    --surface: #ffffff;
+    --border: #e8eaed;
+    --border-light: #f1f3f4;
+    
+    /* 文字色 */
+    --text-primary: #1a1a2e;
+    --text-secondary: #5f6368;
+    --text-muted: #9aa0a6;
+    
+    /* 功能色 */
+    --success: #34c759;
+    --warning: #ff9f0a;
+    --danger: #ff3b30;
+    
+    /* 尺寸 */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    
+    /* 阴影 */
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+    
+    /* 动画 */
+    --transition: all 0.2s ease;
+}
+
+/* ===================== 基础重置 ===================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* ===================== 布局容器 ===================== */
+
+.app-container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 16px;
+    min-height: 100vh;
+}
+
+/* ===================== 头部 ===================== */
+
+.app-header {
+    text-align: center;
+    margin-bottom: 32px;
+    padding: 24px 0;
+}
+
+.app-logo {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.app-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+}
+
+.app-subtitle {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+/* ===================== 卡片组件 ===================== */
+
+.card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-light);
+    margin-bottom: 16px;
+    overflow: hidden;
+    transition: var(--transition);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.card-icon {
+    font-size: 20px;
+}
+
+.card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.card-body {
+    padding: 20px;
+}
+
+/* ===================== 表单元素 ===================== */
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.form-input {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 15px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-primary);
+    transition: var(--transition);
+    outline: none;
+}
+
+.form-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.form-input::placeholder {
+    color: var(--text-muted);
+}
+
+.form-input:disabled {
+    background: var(--bg);
+    cursor: not-allowed;
+}
+
+/* 输入框组 */
+.input-group {
+    display: flex;
+    gap: 8px;
+}
+
+.input-group .form-input {
+    flex: 1;
+}
+
+/* ===================== 按钮组件 ===================== */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: var(--bg);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: var(--border-light);
+    border-color: var(--border);
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.btn-sm {
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+.btn-block {
+    width: 100%;
+}
+
+.btn-icon {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: var(--radius-md);
+}
+
+/* 按钮组 */
+.btn-group {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+/* ===================== 格式选择 ===================== */
+
+.format-selector {
+    display: flex;
+    gap: 8px;
+}
+
+.format-option {
+    flex: 1;
+    position: relative;
+}
+
+.format-option input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.format-option label {
+    display: block;
+    padding: 12px 16px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg);
+    border: 2px solid transparent;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.format-option input:checked + label {
+    background: var(--primary-light);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.format-option label:hover {
+    background: var(--border-light);
+}
+
+/* ===================== 进度条 ===================== */
+
+.progress-section {
+    margin-bottom: 16px;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.progress-status {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.progress-percent {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.progress-track {
+    height: 8px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #ff8787);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* ===================== 日志区域 ===================== */
+
+.log-section {
+    background: var(--bg);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.log-section::-webkit-scrollbar {
+    width: 6px;
+}
+
+.log-section::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.log-section::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.log-entry {
+    font-size: 12px;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    color: var(--text-secondary);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+/* ===================== 搜索结果 ===================== */
+
+.search-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.search-count {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.search-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.search-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.search-item:hover {
+    background: var(--border-light);
+    transform: translateX(4px);
+}
+
+.search-cover {
+    width: 48px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    background: var(--border-light);
+}
+
+.search-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.search-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.search-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.search-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* ===================== 状态标签 ===================== */
+
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 4px;
+    margin-left: 8px;
+}
+
+.status-badge.ongoing {
+    background: rgba(255, 159, 10, 0.15);
+    color: var(--warning);
+}
+
+.status-badge.complete {
+    background: rgba(52, 199, 89, 0.15);
+    color: var(--success);
+}
+
+/* ===================== 页脚 ===================== */
+
+.app-footer {
+    text-align: center;
+    padding: 24px 0;
+    margin-top: 16px;
+}
+
+.app-footer p {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.app-footer a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.app-footer a:hover {
+    text-decoration: underline;
+}
+
+/* ===================== 加载状态 ===================== */
+
+.loading {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ===================== 空状态 ===================== */
+
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+}
+
+.empty-state-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.empty-state-text {
+    font-size: 14px;
+}
+
+/* ===================== 响应式设计 ===================== */
+
+@media (max-width: 480px) {
+    .app-container {
+        padding: 16px 12px;
+    }
+    
+    .app-title {
+        font-size: 24px;
+    }
+    
+    .card-body {
+        padding: 16px;
+    }
+    
+    .btn-group {
+        flex-direction: column;
+    }
+    
+    .format-selector {
+        flex-direction: column;
+    }
+}
+
+/* ===================== 深色模式支持 ===================== */
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --border: #30363d;
+        --border-light: #21262d;
+        --text-primary: #f0f6fc;
+        --text-secondary: #8b949e;
+        --text-muted: #6e7681;
+    }
+}
