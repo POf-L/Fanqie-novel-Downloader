@@ -17,12 +17,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 生成版本号的job
-  version:
+  # 生成版本号并创建 Release
+  prepare-release:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
       build_time: ${{ steps.version.outputs.BUILD_TIME }}
+      tag_name: ${{ steps.version.outputs.TAG_NAME }}
+      release_id: ${{ steps.create_release.outputs.id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,13 +38,74 @@ jobs:
         run: |
           VERSION=$(date -u +'%Y.%m.%d.%H%M')+$(echo ${{ github.sha }} | cut -c1-7)
           BUILD_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+          else
+            TAG_NAME="v$VERSION"
+          fi
+          
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_OUTPUT
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "Generated version: $VERSION"
-          echo "Build time: $BUILD_TIME"
+          echo "Tag name: $TAG_NAME"
+
+      - name: Create Release (with building status)
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.TAG_NAME }}
+          name: TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}
+          body: |
+            ## 📦 Release ${{ steps.version.outputs.TAG_NAME }}
+            
+            ### ⏳ 构建状态
+            
+            > **🔄 正在构建中...** 部分文件可能尚未上传完成，请稍候刷新页面。
+            
+            | 平台 | 状态 |
+            |------|------|
+            | Windows (x64) | 🔄 构建中 |
+            | Windows Standalone | 🔄 构建中 |
+            | Windows Debug | 🔄 构建中 |
+            | Linux (x64) | 🔄 构建中 |
+            | Linux Debug | 🔄 构建中 |
+            | macOS (x64) | 🔄 构建中 |
+            | macOS Debug | 🔄 构建中 |
+            | Termux (ARM64) | 🔄 构建中 |
+            
+            ### 构建信息
+            - **构建时间**: ${{ steps.version.outputs.BUILD_TIME }}
+            - **提交哈希**: `${{ github.sha }}`
+            - **分支**: ${{ github.ref_name }}
+            
+            ---
+            *文件上传完成后，此页面将自动更新*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 仅生成版本号 (用于 PR)
+  version-only:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+      build_time: ${{ steps.version.outputs.BUILD_TIME }}
+    steps:
+      - name: Generate version
+        id: version
+        run: |
+          VERSION=$(date -u +'%Y.%m.%d.%H%M')+$(echo ${{ github.sha }} | cut -c1-7)
+          BUILD_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_OUTPUT
 
   build:
-    needs: version
+    needs: [prepare-release]
+    if: always() && (needs.prepare-release.result == 'success' || github.event_name == 'pull_request')
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +115,7 @@ jobs:
             variant: release
             executable: TomatoNovelDownloader
             ext: .exe
+            release_name: TomatoNovelDownloader.exe
             artifact_name: TomatoNovelDownloader-windows-x64
             build_flags: '--windowed'
           # Windows 调试版
@@ -57,6 +123,7 @@ jobs:
             variant: debug
             executable: TomatoNovelDownloader-debug
             ext: .exe
+            release_name: TomatoNovelDownloader-debug.exe
             artifact_name: TomatoNovelDownloader-debug-windows-x64
             build_flags: '--console'
           # Windows Standalone (内置 WebView2)
@@ -64,6 +131,7 @@ jobs:
             variant: release-standalone
             executable: TomatoNovelDownloader-Standalone
             ext: .exe
+            release_name: TomatoNovelDownloader-Standalone.exe
             artifact_name: TomatoNovelDownloader-standalone-windows-x64
             build_flags: '--windowed --add-data "WebView2;WebView2"'
           # Linux 发布版
@@ -71,6 +139,7 @@ jobs:
             variant: release
             executable: TomatoNovelDownloader
             ext: ''
+            release_name: TomatoNovelDownloader-linux
             artifact_name: TomatoNovelDownloader-linux-x64
             build_flags: '--windowed'
           # Linux 调试版
@@ -78,6 +147,7 @@ jobs:
             variant: debug
             executable: TomatoNovelDownloader-debug
             ext: ''
+            release_name: TomatoNovelDownloader-debug-linux
             artifact_name: TomatoNovelDownloader-debug-linux-x64
             build_flags: '--console'
           # macOS 发布版
@@ -85,6 +155,7 @@ jobs:
             variant: release
             executable: TomatoNovelDownloader
             ext: ''
+            release_name: TomatoNovelDownloader-macos
             artifact_name: TomatoNovelDownloader-macos-x64
             build_flags: '--windowed'
           # macOS 调试版
@@ -92,6 +163,7 @@ jobs:
             variant: debug
             executable: TomatoNovelDownloader-debug
             ext: ''
+            release_name: TomatoNovelDownloader-debug-macos
             artifact_name: TomatoNovelDownloader-debug-macos-x64
             build_flags: '--console'
 
@@ -124,8 +196,8 @@ jobs:
 
       - name: Update version.py
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          BUILD_TIME="${{ needs.version.outputs.build_time }}"
+          VERSION="${{ needs.prepare-release.outputs.version || github.sha }}"
+          BUILD_TIME="${{ needs.prepare-release.outputs.build_time || 'N/A' }}"
           echo "Using version: $VERSION"
           echo "Using build time: $BUILD_TIME"
           
@@ -223,9 +295,26 @@ jobs:
           path: dist/${{ matrix.executable }}${{ matrix.ext }}
           if-no-files-found: error
 
+      - name: Rename for release
+        if: needs.prepare-release.outputs.tag_name != ''
+        run: |
+          cp "dist/${{ matrix.executable }}${{ matrix.ext }}" "dist/${{ matrix.release_name }}"
+        shell: bash
+
+      - name: Upload to Release
+        if: needs.prepare-release.outputs.tag_name != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          files: dist/${{ matrix.release_name }}
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # Termux ARM64 命令行版本构建
   build-termux:
-    needs: version
+    needs: [prepare-release]
+    if: always() && (needs.prepare-release.result == 'success' || github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     name: Termux ARM64 CLI
 
@@ -242,8 +331,8 @@ jobs:
 
       - name: Update version.py
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          BUILD_TIME="${{ needs.version.outputs.build_time }}"
+          VERSION="${{ needs.prepare-release.outputs.version || github.sha }}"
+          BUILD_TIME="${{ needs.prepare-release.outputs.build_time || 'N/A' }}"
           
           echo "# -*- coding: utf-8 -*-" > version.py
           echo '"""' >> version.py
@@ -314,116 +403,96 @@ jobs:
           path: dist/TomatoNovelDownloader-termux
           if-no-files-found: error
 
-  release:
-    name: Create Release
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [version, build, build-termux]
+      - name: Rename for release
+        run: |
+          cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
+
+      - name: Upload to Release
+        if: needs.prepare-release.outputs.tag_name != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          files: dist/TomatoNovelDownloader-termux-arm64
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 所有构建完成后更新 Release 信息
+  finalize-release:
+    name: Finalize Release
+    if: always() && github.event_name != 'pull_request' && needs.prepare-release.result == 'success'
+    needs: [prepare-release, build, build-termux]
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Prepare release files
+      - name: Check build results
+        id: check_builds
         run: |
-          mkdir -p release
+          echo "Build job result: ${{ needs.build.result }}"
+          echo "Termux job result: ${{ needs.build-termux.result }}"
           
-          # 复制Windows文件（保持原名）
-          if [ -d "artifacts/TomatoNovelDownloader-windows-x64" ]; then
-            cp artifacts/TomatoNovelDownloader-windows-x64/TomatoNovelDownloader.exe release/
-          fi
-          if [ -d "artifacts/TomatoNovelDownloader-debug-windows-x64" ]; then
-            cp artifacts/TomatoNovelDownloader-debug-windows-x64/TomatoNovelDownloader-debug.exe release/
-          fi
-          if [ -d "artifacts/TomatoNovelDownloader-standalone-windows-x64" ]; then
-            cp artifacts/TomatoNovelDownloader-standalone-windows-x64/TomatoNovelDownloader-Standalone.exe release/
-          fi
-          
-          # 复制Linux文件（重命名以包含平台信息）
-          if [ -d "artifacts/TomatoNovelDownloader-linux-x64" ]; then
-            cp artifacts/TomatoNovelDownloader-linux-x64/TomatoNovelDownloader release/TomatoNovelDownloader-linux
-          fi
-          if [ -d "artifacts/TomatoNovelDownloader-debug-linux-x64" ]; then
-            cp artifacts/TomatoNovelDownloader-debug-linux-x64/TomatoNovelDownloader-debug release/TomatoNovelDownloader-debug-linux
-          fi
-          
-          # 复制macOS文件（重命名以包含平台信息）
-          if [ -d "artifacts/TomatoNovelDownloader-macos-x64" ]; then
-            cp artifacts/TomatoNovelDownloader-macos-x64/TomatoNovelDownloader release/TomatoNovelDownloader-macos
-          fi
-          if [ -d "artifacts/TomatoNovelDownloader-debug-macos-x64" ]; then
-            cp artifacts/TomatoNovelDownloader-debug-macos-x64/TomatoNovelDownloader-debug release/TomatoNovelDownloader-debug-macos
-          fi
-          
-          # 复制Termux ARM64文件
-          if [ -d "artifacts/TomatoNovelDownloader-termux-arm64" ]; then
-            cp artifacts/TomatoNovelDownloader-termux-arm64/TomatoNovelDownloader-termux release/TomatoNovelDownloader-termux-arm64
-          fi
-          
-          echo "📦 Release files prepared:"
-          ls -lh release/
-        shell: bash
-
-      - name: Determine release version
-        id: release_version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            # 使用标签名称（去掉 refs/tags/ 前缀）
-            VERSION="${{ github.ref_name }}"
-            echo "使用标签版本: $VERSION"
+          # 统计成功/失败的构建
+          BUILD_STATUS=""
+          if [ "${{ needs.build.result }}" == "success" ]; then
+            BUILD_STATUS="✅ 主构建完成"
           else
-            # 使用自动生成的版本号
-            VERSION="v${{ needs.version.outputs.version }}"
-            echo "使用自动版本: $VERSION"
+            BUILD_STATUS="⚠️ 主构建部分失败"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-        shell: bash
+          
+          if [ "${{ needs.build-termux.result }}" == "success" ]; then
+            BUILD_STATUS="$BUILD_STATUS | ✅ Termux 构建完成"
+          else
+            BUILD_STATUS="$BUILD_STATUS | ⚠️ Termux 构建失败"
+          fi
+          
+          echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
 
-      - name: Create release
+      - name: Update Release Notes
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.release_version.outputs.version }}
-          name: TomatoNovelDownloader ${{ steps.release_version.outputs.version }}
-          generate_release_notes: true
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          name: TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
           body: |
-            ## 📦 Release ${{ steps.release_version.outputs.version }}
+            ## 📦 Release ${{ needs.prepare-release.outputs.tag_name }}
+            
+            ### ✅ 构建完成
+            
+            ${{ steps.check_builds.outputs.status }}
             
             ### 提交信息
             ${{ github.event.head_commit.message }}
             
             ### 构建信息
-            - **构建时间**: ${{ needs.version.outputs.build_time }}
+            - **构建时间**: ${{ needs.prepare-release.outputs.build_time }}
             - **提交哈希**: `${{ github.sha }}`
             - **分支**: ${{ github.ref_name }}
             
             ### 📂 下载文件说明
             
             #### 🎯 发布版本 (推荐)
-            - 💻 **Windows (x64)**: `TomatoNovelDownloader.exe` (需系统已安装 WebView2)
-            - 📦 **Windows (内置 WebView2)**: `TomatoNovelDownloader-Standalone.exe` (独立运行，无需配置)
-            - 🐧 **Linux (x64)**: `TomatoNovelDownloader-linux`
-            - 🍎 **macOS (x64)**: `TomatoNovelDownloader-macos`
-            
-            > 发布版无控制台窗口，用户体验更好
+            | 平台 | 文件名 | 说明 |
+            |------|--------|------|
+            | 💻 Windows (x64) | `TomatoNovelDownloader.exe` | 需系统已安装 WebView2 |
+            | 📦 Windows 完整版 | `TomatoNovelDownloader-Standalone.exe` | 内置 WebView2，开箱即用 |
+            | 🐧 Linux (x64) | `TomatoNovelDownloader-linux` | 需安装 GTK3/WebKit |
+            | 🍎 macOS (x64) | `TomatoNovelDownloader-macos` | Intel Mac |
             
             #### 🔧 调试版本 (开发/调试用)
-            - 💻 **Windows (x64)**: `TomatoNovelDownloader-debug.exe`
-            - 🐧 **Linux (x64)**: `TomatoNovelDownloader-debug-linux`
-            - 🍎 **macOS (x64)**: `TomatoNovelDownloader-debug-macos`
+            | 平台 | 文件名 |
+            |------|--------|
+            | 💻 Windows | `TomatoNovelDownloader-debug.exe` |
+            | 🐧 Linux | `TomatoNovelDownloader-debug-linux` |
+            | 🍎 macOS | `TomatoNovelDownloader-debug-macos` |
             
             #### 📱 Termux 命令行版本 (Android)
-            - 🤖 **Termux (ARM64)**: `TomatoNovelDownloader-termux-arm64`
+            | 平台 | 文件名 | 说明 |
+            |------|--------|------|
+            | 🤖 ARM64 | `TomatoNovelDownloader-termux-arm64` | 纯命令行，无 GUI 依赖 |
             
-            > Termux 版本为纯命令行交互式版本，无 GUI 依赖，适合在 Android 手机上通过 Termux 使用
-            
-          files: release/*
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
