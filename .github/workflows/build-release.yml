@@ -307,6 +307,7 @@ jobs:
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
   # Termux ARM64 命令行版本构建
   build-termux:
@@ -425,6 +426,7 @@ jobs:
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
   # 所有构建完成后更新 Release 信息
   finalize-release:
