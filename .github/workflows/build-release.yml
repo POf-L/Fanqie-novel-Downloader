@@ -51,28 +51,38 @@ jobs:
           echo "Generated version: $VERSION"
           echo "Tag name: $TAG_NAME"
 
-      - name: Create Release (prerelease mode)
+      - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.TAG_NAME }}
-          name: "🔄 [构建中] TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}"
+          name: "TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}"
           body: |
-            ## 🚀 新版本 ${{ steps.version.outputs.TAG_NAME }} 正在构建...
+            ## 🚀 TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}
             
-            > **⚠️ 温馨提示**
-            >
-            > Github Actions 正在后台为您编译各平台版本。
-            > **无需等待构建完全结束**，一旦您所需的版本出现在下方的 `Assets` 列表中，即可立即下载使用。
+            ### 🔄 构建状态
+            
+            | 平台 | 状态 |
+            | :--- | :--- |
+            | 💻 Windows | ⏳ 编译中... |
+            | 📦 Windows Standalone | ⏳ 编译中... |
+            | 🐧 Linux | ⏳ 编译中... |
+            | 🍎 macOS | ⏳ 编译中... |
+            | 🤖 Termux ARM64 | ⏳ 编译中... |
+            
+            > **💡 提示**: 无需等待全部完成，文件出现在 Assets 即可下载使用。
+            
+            ---
             
             ### 📋 构建信息
             | 项目 | 详情 |
             | :--- | :--- |
-            | 🕒 **构建时间** | ${{ steps.version.outputs.BUILD_TIME }} |
+            | 🕒 **开始时间** | ${{ steps.version.outputs.BUILD_TIME }} |
             | 🌿 **分支/Tag** | `${{ github.ref_name }}` |
             | 🔗 **Commit** | `${{ github.sha }}` |
           draft: false
-          prerelease: true
+          prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -460,17 +470,28 @@ jobs:
           echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
           echo "all_success=$ALL_SUCCESS" >> $GITHUB_OUTPUT
 
-      - name: Publish Release (all builds successful)
+      - name: Update Release (all builds successful)
         if: steps.check_builds.outputs.all_success == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
-          make_latest: true
           body: |
             ## 🎉 TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
             
             > ${{ steps.get_commit_msg.outputs.msg }}
+            
+            ---
+            
+            ### 🔄 构建状态
+            
+            | 平台 | 状态 |
+            | :--- | :--- |
+            | 💻 Windows | ✅ 完成 |
+            | 📦 Windows Standalone | ✅ 完成 |
+            | 🐧 Linux | ✅ 完成 |
+            | 🍎 macOS | ✅ 完成 |
+            | 🤖 Termux ARM64 | ✅ 完成 |
             
             ---
             
@@ -484,37 +505,47 @@ jobs:
             | **🍎 macOS** | `...macos` | Intel 芯片 (x64) |
             | **🤖 Termux** | `...termux-arm64` | Android Termux 命令行版 |
             
-            ### 📊 构建报告
+            ---
             
-            ${{ steps.check_builds.outputs.status }}
-            
-            > **构建时间**: ${{ needs.prepare-release.outputs.build_time }} | **Commit**: `${{ github.sha }}`
+            ### 📋 构建信息
+            | 项目 | 详情 |
+            | :--- | :--- |
+            | 🕒 **构建时间** | ${{ needs.prepare-release.outputs.build_time }} |
+            | 🔗 **Commit** | `${{ github.sha }}` |
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Keep as Prerelease (some builds failed)
+      - name: Update Release (some builds failed)
         if: steps.check_builds.outputs.all_success != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          name: "⚠️ [部分失败] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}"
-          make_latest: false
+          name: "⚠️ TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}"
           body: |
-            ## ⚠️ 构建未完全成功 (${{ needs.prepare-release.outputs.tag_name }})
+            ## ⚠️ TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
             
-            > 检测到部分平台构建失败，但这不影响其他已上传文件的使用。
+            > 部分平台构建失败，但已完成的版本可正常使用。
             
-            ### 🏗️ 状态报告
+            ### 🔄 构建状态
+            
             ${{ steps.check_builds.outputs.status }}
             
             ---
             
-            ### ℹ️ 元数据
-            - 🕒 **时间**: ${{ needs.prepare-release.outputs.build_time }}
-            - 🔗 **Commit**: `${{ github.sha }}`
+            ### 📥 可用下载
+            
+            请从下方 Assets 中选择已完成编译的版本下载。
+            
+            ---
+            
+            ### 📋 构建信息
+            | 项目 | 详情 |
+            | :--- | :--- |
+            | 🕒 **构建时间** | ${{ needs.prepare-release.outputs.build_time }} |
+            | 🔗 **Commit** | `${{ github.sha }}` |
           draft: false
-          prerelease: true
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
