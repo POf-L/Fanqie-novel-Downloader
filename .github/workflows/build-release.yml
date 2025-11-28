@@ -275,7 +275,13 @@ jobs:
       - name: Rename for release
         if: needs.prepare-release.outputs.tag_name != ''
         run: |
-          cp "dist/${{ matrix.executable }}${{ matrix.ext }}" "dist/${{ matrix.release_name }}"
+          SRC="dist/${{ matrix.executable }}${{ matrix.ext }}"
+          DST="dist/${{ matrix.release_name }}"
+          if [ "$SRC" != "$DST" ]; then
+            cp "$SRC" "$DST"
+          else
+            echo "Source and destination are the same, skipping copy"
+          fi
         shell: bash
 
       - name: Random delay to avoid upload conflicts
