@@ -301,8 +301,28 @@ jobs:
           cp "dist/${{ matrix.executable }}${{ matrix.ext }}" "dist/${{ matrix.release_name }}"
         shell: bash
 
-      - name: Upload to Release
+      - name: Random delay to avoid upload conflicts
         if: needs.prepare-release.outputs.tag_name != ''
+        run: |
+          DELAY=$((RANDOM % 10 + 1))
+          echo "Waiting ${DELAY}s to avoid concurrent upload conflicts..."
+          sleep $DELAY
+        shell: bash
+
+      - name: Upload to Release
+        id: upload_release
+        if: needs.prepare-release.outputs.tag_name != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          files: dist/${{ matrix.release_name }}
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Retry Upload to Release (on failure)
+        if: needs.prepare-release.outputs.tag_name != '' && steps.upload_release.outcome == 'failure'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
@@ -408,7 +428,19 @@ jobs:
           cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
 
       - name: Upload to Release
+        id: upload_termux
         if: needs.prepare-release.outputs.tag_name != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          files: dist/TomatoNovelDownloader-termux-arm64
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Retry Upload to Release (on failure)
+        if: needs.prepare-release.outputs.tag_name != '' && steps.upload_termux.outcome == 'failure'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
