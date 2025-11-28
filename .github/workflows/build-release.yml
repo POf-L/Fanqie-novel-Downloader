@@ -309,6 +309,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
+      - name: Build completed
+        run: echo "✅ Build and artifact upload completed for ${{ matrix.variant }}"
+
   # Termux ARM64 命令行版本构建
   build-termux:
     needs: [prepare-release]
@@ -427,6 +430,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
+
+      - name: Termux build completed
+        run: echo "✅ Termux ARM64 build completed"
 
   # 所有构建完成后更新 Release 信息
   finalize-release:
