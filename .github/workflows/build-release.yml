@@ -51,39 +51,25 @@ jobs:
           echo "Generated version: $VERSION"
           echo "Tag name: $TAG_NAME"
 
-      - name: Create Release (with building status)
+      - name: Create Release (prerelease mode)
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.TAG_NAME }}
-          name: TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}
+          name: "🔄 [构建中] TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}"
           body: |
             ## 📦 Release ${{ steps.version.outputs.TAG_NAME }}
             
             ### ⏳ 构建状态
             
-            > **🔄 正在构建中...** 部分文件可能尚未上传完成，请稍候刷新页面。
-            
-            | 平台 | 状态 |
-            |------|------|
-            | Windows (x64) | 🔄 构建中 |
-            | Windows Standalone | 🔄 构建中 |
-            | Windows Debug | 🔄 构建中 |
-            | Linux (x64) | 🔄 构建中 |
-            | Linux Debug | 🔄 构建中 |
-            | macOS (x64) | 🔄 构建中 |
-            | macOS Debug | 🔄 构建中 |
-            | Termux (ARM64) | 🔄 构建中 |
+            > **🔄 正在构建中...** 文件上传后即可下载，全部完成后软件将收到更新通知。
             
             ### 构建信息
             - **构建时间**: ${{ steps.version.outputs.BUILD_TIME }}
             - **提交哈希**: `${{ github.sha }}`
             - **分支**: ${{ github.ref_name }}
-            
-            ---
-            *文件上传完成后，此页面将自动更新*
           draft: false
-          prerelease: false
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -253,11 +239,18 @@ jobs:
 
       - name: Build application (${{ matrix.variant }})
         run: |
+          # Determine separator for add-data based on OS
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            SEP=";"
+          else
+            SEP=":"
+          fi
+          
           python -m PyInstaller --onefile \
             --name=${{ matrix.executable }} \
             ${{ matrix.build_flags }} \
-            --add-data "static:static" \
-            --add-data "templates:templates" \
+            --add-data "static${SEP}static" \
+            --add-data "templates${SEP}templates" \
             --hidden-import=flask \
             --hidden-import=flask_cors \
             --hidden-import=pywebview \
@@ -466,23 +459,29 @@ jobs:
           echo "Build job result: ${{ needs.build.result }}"
           echo "Termux job result: ${{ needs.build-termux.result }}"
           
-          # 统计成功/失败的构建
+          # 判断是否全部成功
+          ALL_SUCCESS="true"
           BUILD_STATUS=""
+          
           if [ "${{ needs.build.result }}" == "success" ]; then
             BUILD_STATUS="✅ 主构建完成"
           else
             BUILD_STATUS="⚠️ 主构建部分失败"
+            ALL_SUCCESS="false"
           fi
           
           if [ "${{ needs.build-termux.result }}" == "success" ]; then
             BUILD_STATUS="$BUILD_STATUS | ✅ Termux 构建完成"
           else
             BUILD_STATUS="$BUILD_STATUS | ⚠️ Termux 构建失败"
+            ALL_SUCCESS="false"
           fi
           
           echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
+          echo "all_success=$ALL_SUCCESS" >> $GITHUB_OUTPUT
 
-      - name: Update Release Notes
+      - name: Publish Release (all builds successful)
+        if: steps.check_builds.outputs.all_success == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
@@ -526,5 +525,26 @@ jobs:
             
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Keep as Prerelease (some builds failed)
+        if: steps.check_builds.outputs.all_success != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          name: "⚠️ [部分失败] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}"
+          body: |
+            ## ⚠️ 构建未完全成功
+            
+            ${{ steps.check_builds.outputs.status }}
+            
+            已上传的文件可正常下载，但软件不会收到更新通知。
+            
+            ### 构建信息
+            - **构建时间**: ${{ needs.prepare-release.outputs.build_time }}
+            - **提交哈希**: `${{ github.sha }}`
+          draft: false
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
