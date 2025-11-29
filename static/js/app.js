@@ -863,6 +863,18 @@ async function showUpdateModal(updateInfo) {
     const closeUpdateBtn = document.getElementById('closeUpdateBtn');
     const updateModalClose = document.getElementById('updateModalClose');
     
+    // 重置UI显示状态
+    if (updateDescription.parentNode) updateDescription.parentNode.style.display = 'block';
+    versionSelector.style.display = 'none';
+    downloadUpdateBtn.disabled = false;
+    downloadUpdateBtn.textContent = '立即下载';
+    
+    const modalFooter = document.querySelector('.modal-footer');
+    if (modalFooter) modalFooter.style.display = 'flex';
+    
+    const progressContainer = document.getElementById('updateProgressContainer');
+    if (progressContainer) progressContainer.style.display = 'none';
+    
     currentVersion.textContent = updateInfo.current_version;
     latestVersion.textContent = updateInfo.latest_version;
     
@@ -944,25 +956,34 @@ async function showUpdateModal(updateInfo) {
                     downloadUpdateBtn.disabled = true;
                     downloadUpdateBtn.textContent = '正在下载...';
                     
+                    // 隐藏不需要的元素以腾出空间
+                    updateDescription.parentNode.style.display = 'none'; // 隐藏更新说明区域
+                    versionSelector.style.display = 'none'; // 隐藏版本选择
+                    
                     // 创建或显示进度条
                     let progressContainer = document.getElementById('updateProgressContainer');
                     if (!progressContainer) {
                         progressContainer = document.createElement('div');
                         progressContainer.id = 'updateProgressContainer';
                         progressContainer.innerHTML = `
-                            <div style="margin-top: 15px; padding: 10px; background: #f5f5f5; border-radius: 8px;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                                    <span id="updateProgressText">准备下载...</span>
-                                    <span id="updateProgressPercent">0%</span>
+                            <div style="margin-top: 16px; padding: 12px; background: #0f0f23; border: 2px solid #00ff00; box-shadow: 4px 4px 0 #000000;">
+                                <h4 style="margin: 0 0 12px 0; color: #00ff00; text-align: center; font-family: 'Press Start 2P', monospace; font-size: 10px;">> DOWNLOADING_UPDATE...</h4>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-family: 'Press Start 2P', monospace; font-size: 9px;">
+                                    <span id="updateProgressText" style="color: #00cc00;">CONNECTING...</span>
+                                    <span id="updateProgressPercent" style="color: #00ff00;">0%</span>
                                 </div>
-                                <div style="background: #ddd; border-radius: 4px; height: 8px; overflow: hidden;">
-                                    <div id="updateProgressBar" style="background: #4CAF50; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                                <div style="background: #1a1a2e; border: 2px solid #006600; height: 16px; position: relative; padding: 2px;">
+                                    <div id="updateProgressBar" style="background: #00ff00; height: 100%; width: 0%; transition: width 0.2s steps(4);"></div>
+                                </div>
+                                <div style="margin-top: 12px; font-size: 10px; color: #008800; text-align: center; font-family: 'Press Start 2P', monospace; line-height: 1.5;">
+                                    * DO NOT CLOSE *
                                 </div>
                             </div>
-                            <button id="installUpdateBtn" style="display: none; margin-top: 10px; width: 100%; padding: 12px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
-                                ✨ 立即安装更新
+                            <button id="installUpdateBtn" style="display: none; margin-top: 16px; width: 100%; padding: 14px; background: #00ff00; color: #000000; border: 2px solid #006600; cursor: pointer; font-size: 12px; font-family: 'Press Start 2P', monospace; box-shadow: 4px 4px 0 #000000;">
+                                [ INSTALL & RESTART ]
                             </button>
                         `;
+                        // 插入到版本选择器原来的位置（现在隐藏了）
                         versionSelector.parentNode.insertBefore(progressContainer, versionSelector.nextSibling);
                     }
                     progressContainer.style.display = 'block';
@@ -1003,9 +1024,12 @@ async function showUpdateModal(updateInfo) {
                                     setTimeout(pollProgress, 500);
                                 } else if (status.completed) {
                                     progressBar.style.width = '100%';
-                                    progressText.textContent = '√ 下载完成';
+                                    progressText.textContent = '√ DOWNLOAD COMPLETE';
                                     progressPercent.textContent = '100%';
-                                    downloadUpdateBtn.textContent = '下载完成';
+                                    
+                                    // 隐藏底部按钮区域，避免干扰
+                                    const modalFooter = document.querySelector('.modal-footer');
+                                    if (modalFooter) modalFooter.style.display = 'none';
                                     
                                     // 显示安装按钮
                                     installBtn.style.display = 'block';
