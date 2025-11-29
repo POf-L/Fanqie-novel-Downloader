@@ -611,7 +611,7 @@ function initializeUI() {
             localStorage.setItem('app_style', isScp ? 'scp' : '8bit');
             
             // 添加切换音效或视觉反馈（可选）
-            logger.log(isScp ? '> ACCESSING SCP DATABASE...' : '> REVERTING TO 8-BIT SYSTEMS...');
+            logger.log(isScp ? i18n.t('log_scp_access') : i18n.t('log_scp_revert'));
         });
     }
     

@@ -254,10 +254,10 @@ def download_worker():
             end_chapter = task.get('end_chapter', None)
             selected_chapters = task.get('selected_chapters', None)
             
-            update_status(is_downloading=True, progress=0, message='初始化...')
+            update_status(is_downloading=True, progress=0, message=t('web_init'))
             
             if not api:
-                update_status(message='API未初始化', progress=0, is_downloading=False)
+                update_status(message=t('web_api_not_init'), progress=0, is_downloading=False)
                 continue
             
             try:
@@ -273,7 +273,7 @@ def download_worker():
                     api_manager._tls = threading.local()
                 
                 # 获取书籍信息
-                update_status(message='正在连接服务器获取书籍信息...')
+                update_status(message=t('web_connecting_book'))
                 
                 # 增加超时重试机制
                 book_detail = None
@@ -284,33 +284,33 @@ def download_worker():
                     time.sleep(1)
                 
                 if not book_detail:
-                    update_status(message='获取书籍信息失败，请检查网络或书籍ID', is_downloading=False)
+                    update_status(message=t('web_book_info_fail_check'), is_downloading=False)
                     continue
                 
                 book_name = book_detail.get('book_name', book_id)
-                update_status(book_name=book_name, message=f'准备下载《{book_name}》...')
+                update_status(book_name=book_name, message=t('web_preparing_download', book_name))
                 
                 # 执行下载
-                update_status(message='启动下载引擎...')
+                update_status(message=t('web_starting_engine'))
                 success = api.run_download(book_id, save_path, file_format, start_chapter, end_chapter, selected_chapters, progress_callback)
                 
                 if success:
-                    update_status(progress=100, message=f'✅ 下载完成！已保存至 {save_path}', is_downloading=False)
+                    update_status(progress=100, message=t('web_download_success_path', save_path), is_downloading=False)
                 else:
-                    update_status(message='下载过程中断或失败', progress=0, is_downloading=False)
+                    update_status(message=t('web_download_interrupted'), progress=0, is_downloading=False)
                     
             except Exception as e:
                 import traceback
                 traceback.print_exc()
                 error_str = str(e)
-                update_status(message=f'❌ 下载异常: {error_str}', progress=0, is_downloading=False)
+                update_status(message=t('web_download_exception', error_str), progress=0, is_downloading=False)
                 print(f"下载异常: {error_str}")
         
         except queue.Empty:
             continue
         except Exception as e:
             error_str = str(e)
-            update_status(message=f'❌ 错误: {error_str}', progress=0, is_downloading=False)
+            update_status(message=t('web_worker_error', error_str), progress=0, is_downloading=False)
             print(f"工作线程异常: {error_str}")
 
 # 启动后台下载线程
@@ -347,8 +347,8 @@ def index():
 def api_init():
     """初始化模块"""
     if init_modules():
-        return jsonify({'success': True, 'message': '模块加载完成'})
-    return jsonify({'success': False, 'message': '模块加载失败'}), 500
+        return jsonify({'success': True, 'message': t('web_module_loaded')})
+    return jsonify({'success': False, 'message': t('web_module_fail_msg')}), 500
 
 @app.route('/api/version', methods=['GET'])
 def api_version():
@@ -602,7 +602,7 @@ def api_cancel():
     if downloader_instance:
         try:
             downloader_instance.cancel_download()
-            update_status(is_downloading=False, progress=0, message='⏹ 下载已取消')
+            update_status(is_downloading=False, progress=0, message=t('web_batch_cancelled_msg'))
             return jsonify({'success': True})
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 400
@@ -676,14 +676,14 @@ def api_batch_download():
     data = request.get_json()
     
     if get_batch_status()['is_downloading']:
-        return jsonify({'success': False, 'message': '已有批量下载任务在进行'}), 400
+        return jsonify({'success': False, 'message': t('web_batch_running')}), 400
     
     book_ids = data.get('book_ids', [])
     save_path = data.get('save_path', get_default_download_path()).strip()
     file_format = data.get('file_format', 'txt')
     
     if not book_ids:
-        return jsonify({'success': False, 'message': '请提供书籍ID列表'}), 400
+        return jsonify({'success': False, 'message': t('web_provide_ids')}), 400
     
     # 清理和验证book_ids
     cleaned_ids = []
@@ -698,7 +698,7 @@ def api_batch_download():
             cleaned_ids.append(bid)
     
     if not cleaned_ids:
-        return jsonify({'success': False, 'message': '没有有效的书籍ID'}), 400
+        return jsonify({'success': False, 'message': t('web_no_valid_ids')}), 400
     
     # 确保保存目录存在
     os.makedirs(save_path, exist_ok=True)
@@ -713,7 +713,7 @@ def api_batch_download():
     
     return jsonify({
         'success': True,
-        'message': f'开始批量下载 {len(cleaned_ids)} 本书籍',
+        'message': t('web_batch_start_count', len(cleaned_ids)),
         'count': len(cleaned_ids)
     })
 
@@ -731,7 +731,7 @@ def api_batch_cancel():
         batch_downloader.cancel()
         update_batch_status(
             is_downloading=False,
-            message='⏹ 批量下载已取消'
+            message=t('web_batch_cancelled_msg')
         )
         return jsonify({'success': True})
     except Exception as e:
@@ -825,10 +825,10 @@ def api_select_folder():
             except Exception as e:
                 return jsonify({'success': False, 'message': str(e)}), 500
         else:
-            return jsonify({'success': False, 'message': '未选择文件夹'})
+            return jsonify({'success': False, 'message': t('web_folder_unselected')})
             
     except Exception as e:
-        return jsonify({'success': False, 'message': f'文件夹选择失败: {str(e)}'}), 500
+        return jsonify({'success': False, 'message': t('web_folder_select_fail', str(e))}), 500
 
 @app.route('/api/check-update', methods=['GET'])
 def api_check_update():
@@ -851,7 +851,7 @@ def api_check_update():
                 'has_update': False
             })
     except Exception as e:
-        return jsonify({'success': False, 'message': f'检查更新失败: {str(e)}'}), 500
+        return jsonify({'success': False, 'message': t('web_check_update_fail', str(e))}), 500
 
 @app.route('/api/get-update-assets', methods=['GET'])
 def api_get_update_assets():

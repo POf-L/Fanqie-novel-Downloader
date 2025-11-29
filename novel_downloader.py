@@ -230,7 +230,7 @@ class APIManager:
             return None
         except Exception as e:
             with print_lock:
-                print(f"获取整书内容异常: {str(e)}")
+                print(t("dl_full_content_error", str(e)))
             return None
 
 def parse_novel_text(text: str) -> List[Dict]:
@@ -403,7 +403,7 @@ def analyze_download_completeness(chapter_results: dict, expected_chapters: list
     }
     
     if not chapter_results:
-        log("⚠️ 没有下载到任何章节")
+        log(t("dl_analyze_no_chapters"))
         result['completeness_percent'] = 0
         return result
     
@@ -421,17 +421,17 @@ def analyze_download_completeness(chapter_results: dict, expected_chapters: list
         
         if missing_indices:
             missing_count = len(missing_indices)
-            log(f"📋 完整性检查: 期望 {len(expected_indices)} 章，已下载 {len(downloaded_indices)} 章，缺失 {missing_count} 章")
+            log(t("dl_analyze_summary", len(expected_indices), len(downloaded_indices), missing_count))
             
             # 显示部分缺失章节信息
             if missing_count <= 10:
                 missing_titles = []
                 for ch in expected_chapters:
                     if ch['index'] in missing_indices:
-                        missing_titles.append(f"第{ch['index']+1}章: {ch['title']}")
-                log(f"   缺失章节: {', '.join(missing_titles[:5])}{'...' if len(missing_titles) > 5 else ''}")
+                        missing_titles.append(f"{t('dl_chapter_title', ch['index']+1)}: {ch['title']}")
+                log(t("dl_analyze_missing", ', '.join(missing_titles[:5])))
         else:
-            log(f"✅ 完整性检查通过: 共 {len(expected_indices)} 章全部下载")
+            log(t("dl_analyze_pass", len(expected_indices)))
     else:
         # 没有期望列表，使用已下载内容分析
         result['total_expected'] = len(chapter_results)
@@ -445,7 +445,7 @@ def analyze_download_completeness(chapter_results: dict, expected_chapters: list
             
             if missing_in_range:
                 result['missing_indices'] = sorted(list(missing_in_range))
-                log(f"⚠️ 检测到章节索引不连续，可能缺失: {sorted(missing_in_range)[:10]}{'...' if len(missing_in_range) > 10 else ''}")
+                log(t("dl_analyze_gap", sorted(missing_in_range)[:10]))
     
     # 验证章节顺序（检查标题中的章节号是否递增）
     sorted_results = sorted(chapter_results.items(), key=lambda x: x[0])
@@ -467,9 +467,9 @@ def analyze_download_completeness(chapter_results: dict, expected_chapters: list
     if order_issues:
         result['order_correct'] = False
         total_gaps = sum(issue['gap'] for issue in order_issues)
-        log(f"⚠️ 章节顺序检查: 发现 {len(order_issues)} 处不连续，共缺少 {total_gaps} 个位置")
+        log(t("dl_analyze_order_fail", len(order_issues), total_gaps))
     else:
-        log(f"✅ 章节顺序检查通过")
+        log(t("dl_analyze_order_pass"))
     
     # 计算完整度
     if result['total_expected'] > 0:
@@ -543,14 +543,14 @@ def create_epub(name, author_name, description, cover_url, chapters, save_path):
     
     if description:
         intro_html += '<hr/>'
-        intro_html += '<h3>简介</h3>'
+        intro_html += f'<h3>{t("dl_intro_title")}</h3>'
         # 处理简介的换行
         desc_lines = description.split('\n')
         for line in desc_lines:
             if line.strip():
                 intro_html += f'<p>{line.strip()}</p>'
                 
-    intro_chapter = epub.EpubHtml(title='书籍详情', file_name='intro.xhtml', lang='zh-CN')
+    intro_chapter = epub.EpubHtml(title=t('dl_book_detail_title'), file_name='intro.xhtml', lang='zh-CN')
     intro_chapter.content = intro_html
     book.add_item(intro_chapter)
     
@@ -599,9 +599,9 @@ def create_txt(name, author_name, description, chapters, save_path):
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.write(f"{name}\n")
         if author_name:
-            f.write(f"作者: {author_name}\n")
+            f.write(f"{t('label_author')}{author_name}\n")
         if description:
-            f.write(f"\n简介:\n{description}\n")
+            f.write(f"\n{t('dl_intro_title')}:\n{description}\n")
         f.write("\n" + "="*50 + "\n\n")
         
         for ch_data in chapters:
@@ -627,34 +627,34 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
             print(message)
     
     try:
-        log_message("正在获取书籍信息...", 5)
+        log_message(t("dl_fetching_info"), 5)
         book_detail = api.get_book_detail(book_id)
         if not book_detail:
-            log_message("获取书籍信息失败")
+            log_message(t("dl_fetch_info_fail"))
             return False
         
         name = book_detail.get("book_name", f"未知小说_{book_id}")
-        author_name = book_detail.get("author", "未知作者")
+        author_name = book_detail.get("author", t("dl_unknown_author"))
         description = book_detail.get("abstract", "")
         cover_url = book_detail.get("thumb_url", "")
         
-        log_message(f"书名: {name}, 作者: {author_name}", 10)
+        log_message(t("dl_book_info_log", name, author_name), 10)
         
         chapter_results = {}
         use_full_download = False
         
         # 尝试极速下载模式 (仅当没有指定范围且没有选择特定章节时)
         if start_chapter is None and end_chapter is None and not selected_chapters:
-            log_message("正在尝试极速下载模式 (整书下载)...", 15)
+            log_message(t("dl_try_speed_mode"), 15)
             full_text = api.get_full_content(book_id)
             if full_text:
-                log_message("整书内容获取成功，正在解析...", 30)
+                log_message(t("dl_speed_mode_success"), 30)
                 chapters_parsed = parse_novel_text(full_text)
                 
                 if chapters_parsed:
-                    log_message(f"解析成功，共 {len(chapters_parsed)} 章", 50)
+                    log_message(t("dl_speed_mode_parsed", len(chapters_parsed)), 50)
                     # 处理章节内容
-                    with tqdm(total=len(chapters_parsed), desc="处理章节", disable=gui_callback is not None) as pbar:
+                    with tqdm(total=len(chapters_parsed), desc=t("dl_processing_chapters"), disable=gui_callback is not None) as pbar:
                         for i, ch in enumerate(chapters_parsed):
                             processed = process_chapter_content(ch['content'])
                             chapter_results[ch['index']] = {
@@ -664,18 +664,18 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
                             if pbar: pbar.update(1)
                     
                     use_full_download = True
-                    log_message("章节处理完成", 80)
+                    log_message(t("dl_process_complete"), 80)
                 else:
-                    log_message("解析失败或未找到章节，切换回普通模式")
+                    log_message(t("dl_speed_mode_fail_parse"))
             else:
-                log_message("极速下载失败，切换回普通模式")
+                log_message(t("dl_speed_mode_fail"))
 
         # 如果没有使用极速模式，则走普通模式
         if not use_full_download:
             log_message("正在获取章节列表...", 15)
             chapters_data = api.get_chapter_list(book_id)
             if not chapters_data:
-                log_message("获取章节列表失败")
+                log_message(t("dl_fetch_list_fail"))
                 return False
             
             chapters = []
@@ -705,38 +705,38 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
                         chapters.append({"id": str(item_id), "title": title, "index": idx})
             
             if not chapters:
-                log_message("未找到章节")
+                log_message(t("dl_no_chapters_found"))
                 return False
             
             total_chapters = len(chapters)
-            log_message(f"共找到 {total_chapters} 章", 20)
+            log_message(t("dl_found_chapters", total_chapters), 20)
             
             if start_chapter is not None or end_chapter is not None:
                 start_idx = (start_chapter - 1) if start_chapter else 0
                 end_idx = end_chapter if end_chapter else total_chapters
                 chapters = chapters[start_idx:end_idx]
-                log_message(f"下载章节范围: {start_idx+1} 到 {end_idx}")
+                log_message(t("dl_range_log", start_idx+1, end_idx))
             
             if selected_chapters:
                 try:
                     selected_indices = set(int(x) for x in selected_chapters)
                     chapters = [ch for ch in chapters if ch['index'] in selected_indices]
-                    log_message(f"已选择 {len(chapters)} 个特定章节")
+                    log_message(t("dl_selected_log", len(chapters)))
                 except Exception as e:
-                    log_message(f"章节筛选出错: {e}")
+                    log_message(t("dl_filter_error", e))
             
             downloaded_ids = load_status(book_id)
             chapters_to_download = [ch for ch in chapters if ch["id"] not in downloaded_ids]
             
             if not chapters_to_download:
-                log_message("所有章节已下载")
+                log_message(t("dl_all_downloaded"))
             else:
-                log_message(f"开始下载 {len(chapters_to_download)} 章...", 25)
+                log_message(t("dl_start_download_log", len(chapters_to_download)), 25)
             
             completed = 0
             total_tasks = len(chapters_to_download)
             
-            with tqdm(total=total_tasks, desc="下载进度", disable=gui_callback is not None) as pbar:
+            with tqdm(total=total_tasks, desc=t("dl_progress_desc"), disable=gui_callback is not None) as pbar:
                 with ThreadPoolExecutor(max_workers=CONFIG.get("max_workers", 5)) as executor:
                     future_to_chapter = {
                         executor.submit(api.get_chapter_content, ch["id"]): ch
@@ -759,7 +759,7 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
                                     pbar.update(1)
                                 if gui_callback:
                                     progress = int((completed / total_tasks) * 60) + 25
-                                    gui_callback(progress, f"已下载: {completed}/{total_tasks}")
+                                    gui_callback(progress, t("dl_progress_log", completed, total_tasks))
                         except Exception:
                             pass
             
@@ -767,9 +767,9 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
         
         # ==================== 下载完整性分析 ====================
         if gui_callback:
-            gui_callback(85, "正在分析下载完整性...")
+            gui_callback(85, t("dl_analyzing_completeness"))
         else:
-            log_message("正在分析下载完整性...", 85)
+            log_message(t("dl_analyzing_completeness"), 85)
         
         # 分析结果
         analysis_result = analyze_download_completeness(
@@ -781,7 +781,7 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
         # 如果有缺失章节，尝试补充下载
         if analysis_result['missing_indices'] and not use_full_download:
             missing_count = len(analysis_result['missing_indices'])
-            log_message(f"⚠️ 发现 {missing_count} 个缺失章节，正在补充下载...", 87)
+            log_message(t("dl_missing_retry", missing_count), 87)
             
             # 获取缺失章节的信息
             missing_chapters = [ch for ch in chapters if ch['index'] in analysis_result['missing_indices']]
@@ -791,7 +791,7 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
                 if not missing_chapters:
                     break
                     
-                log_message(f"补充下载第 {retry + 1} 次尝试，剩余 {len(missing_chapters)} 章", 88)
+                log_message(t("dl_retry_log", retry + 1, len(missing_chapters)), 88)
                 still_missing = []
                 
                 for ch in missing_chapters:
@@ -812,7 +812,7 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
                 
                 missing_chapters = still_missing
                 if not missing_chapters:
-                    log_message("✅ 所有缺失章节补充完成", 90)
+                    log_message(t("dl_retry_success"), 90)
                     break
             
             # 更新状态
@@ -821,11 +821,11 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
             # 最终检查
             if missing_chapters:
                 missing_indices = [ch['index'] + 1 for ch in missing_chapters]
-                log_message(f"⚠️ 仍有 {len(missing_chapters)} 章无法下载: {missing_indices[:10]}{'...' if len(missing_indices) > 10 else ''}", 90)
+                log_message(t("dl_retry_fail", len(missing_chapters), missing_indices[:10]), 90)
         
         # 验证章节顺序
         if gui_callback:
-            gui_callback(92, "正在验证章节顺序...")
+            gui_callback(92, t("dl_verifying_order"))
         
         sorted_indices = sorted(chapter_results.keys())
         order_issues = []

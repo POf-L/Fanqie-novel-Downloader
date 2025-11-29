@@ -200,20 +200,7 @@ def format_update_message(latest_info: Dict) -> str:
         if len(latest_info.get('body', '')) > 300:
             body += '...'
     
-    message = f"""
-🎉 发现新版本可用！
-
-📦 最新版本: {version}
-📝 版本名称: {name}
-
-📄 更新说明:
-{body if body else '(无更新说明)'}
-
-🔗 下载地址:
-{url}
-
-建议更新到最新版本以获得更好的体验和新功能！
-""".strip()
+    message = t("up_auto_update_msg", version, name, body if body else '(无更新说明)', url)
     
     return message
 
@@ -444,14 +431,14 @@ exit /b 0
         )
         
         print(f'[DEBUG] Update script started with PID: {process.pid}')
-        print(f'更新脚本已启动，程序即将退出...')
+        print(t("up_script_started"))
         return True
         
     except Exception as e:
         import traceback
         print(f'[DEBUG] Failed to create/start update script:')
         traceback.print_exc()
-        print(f'创建更新脚本失败: {e}')
+        print(t("up_create_script_fail", e))
         return False
 
 
@@ -474,7 +461,7 @@ def apply_unix_update(new_binary_path: str, current_binary_path: str = None) -> 
     
     # 检查是否为打包后的程序
     if not getattr(sys, 'frozen', False):
-        print('自动更新仅支持打包后的程序')
+        print(t("up_not_frozen_linux"))
         return False
     
     # 获取当前程序路径
@@ -483,7 +470,7 @@ def apply_unix_update(new_binary_path: str, current_binary_path: str = None) -> 
     
     # 检查新版本文件是否存在
     if not os.path.exists(new_binary_path):
-        print(f'新版本文件不存在: {new_binary_path}')
+        print(t("up_new_missing_linux", new_binary_path))
         return False
     
     # 获取当前进程 PID
@@ -587,11 +574,11 @@ exit 0
                 # 如果没有找到终端，直接后台运行
                 subprocess.Popen(['bash', script_path], start_new_session=True)
         
-        print(f'更新脚本已启动，程序即将退出...')
+        print(t("up_script_started"))
         return True
         
     except Exception as e:
-        print(f'创建更新脚本失败: {e}')
+        print(t("up_create_script_fail", e))
         return False
 
 
@@ -613,7 +600,7 @@ def apply_update(new_file_path: str, current_path: str = None) -> bool:
     elif sys.platform in ('linux', 'darwin'):
         return apply_unix_update(new_file_path, current_path)
     else:
-        print(f'不支持的平台: {sys.platform}')
+        print(t("up_platform_unsupported", sys.platform))
         return False
 
 
