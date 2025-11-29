@@ -258,6 +258,7 @@ jobs:
             --hidden-import=ebooklib \
             --hidden-import=fake_useragent \
             --hidden-import=config \
+            --hidden-import=version \
             --hidden-import=updater \
             --hidden-import=packaging \
             --hidden-import=packaging.version \
@@ -373,6 +374,7 @@ jobs:
               --hidden-import=tqdm \
               --hidden-import=bs4 \
               --hidden-import=config \
+              --hidden-import=version \
               --hidden-import=packaging \
               --hidden-import=packaging.version \
               --collect-data fake_useragent \

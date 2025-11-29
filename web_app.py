@@ -15,6 +15,9 @@ from flask_cors import CORS
 import logging
 import re
 
+# 预先导入版本信息（确保在模块加载时就获取正确版本）
+from config import __version__ as APP_VERSION
+
 # 禁用Flask默认日志
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
@@ -343,11 +346,7 @@ def api_init():
 @app.route('/api/version', methods=['GET'])
 def api_version():
     """获取当前版本号"""
-    try:
-        from config import __version__
-        return jsonify({'success': True, 'version': __version__})
-    except Exception as e:
-        return jsonify({'success': False, 'version': 'unknown', 'message': str(e)}), 500
+    return jsonify({'success': True, 'version': APP_VERSION})
 
 @app.route('/api/status', methods=['GET'])
 def api_status():
