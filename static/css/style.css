@@ -1,44 +1,59 @@
-/* ===================== Apple 风格设计系统 ===================== */
+/* ===================== 复古书卷风格设计系统 ===================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Ma+Shan+Zheng&display=swap');
 
 :root {
-    /* 主色调 - 番茄红 */
-    --primary: #ff6363;
-    --primary-hover: #ff4f4f;
-    --primary-light: rgba(255, 99, 99, 0.12);
-    --primary-gradient: linear-gradient(135deg, #ff6363 0%, #ff8080 100%);
+    /* 主色调 - 古典红/朱砂 */
+    --primary: #8B2323;
+    --primary-hover: #A52A2A;
+    --primary-light: rgba(139, 35, 35, 0.15);
+    --primary-gradient: linear-gradient(135deg, #8B2323 0%, #B22222 50%, #8B0000 100%);
     
-    /* 中性色 - Apple 风格 */
-    --bg: #f5f5f7;
-    --surface: #ffffff;
-    --surface-secondary: #fafafa;
-    --border: #d2d2d7;
-    --border-light: #e8e8ed;
+    /* 羊皮纸色系 */
+    --parchment: #F4E4BC;
+    --parchment-dark: #E8D4A8;
+    --parchment-light: #FDF5E6;
+    --bg: linear-gradient(135deg, #D4C4A8 0%, #E8D4B8 50%, #D4C4A8 100%);
+    --surface: #F5E6C8;
+    --surface-secondary: #EDE0C8;
     
-    /* 文字色 */
-    --text-primary: #1d1d1f;
-    --text-secondary: #424245;
-    --text-muted: #86868b;
+    /* 古典边框 */
+    --border: #8B7355;
+    --border-light: #A08060;
+    --border-dark: #5C4033;
     
-    /* 功能色 */
-    --success: #30d158;
-    --warning: #ff9f0a;
-    --danger: #ff453a;
-    --info: #0a84ff;
+    /* 墨色文字 */
+    --text-primary: #2F1810;
+    --text-secondary: #4A3728;
+    --text-muted: #6B5344;
+    --ink: #1A0F0A;
+    
+    /* 功能色 - 古典版 */
+    --success: #2E5A1C;
+    --warning: #B8860B;
+    --danger: #8B0000;
+    --info: #1E3A5F;
+    
+    /* 金色装饰 */
+    --gold: #B8860B;
+    --gold-light: #DAA520;
+    --gold-dark: #8B6914;
     
     /* 尺寸 */
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 18px;
-    --radius-xl: 22px;
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
     
-    /* 阴影 - Apple 风格 */
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-    --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
-    --shadow-lg: 0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+    /* 阴影 - 古典感 */
+    --shadow-sm: 2px 2px 4px rgba(44, 24, 16, 0.2), -1px -1px 2px rgba(255, 250, 240, 0.3);
+    --shadow-md: 4px 4px 12px rgba(44, 24, 16, 0.25), -2px -2px 6px rgba(255, 250, 240, 0.2);
+    --shadow-lg: 8px 8px 24px rgba(44, 24, 16, 0.3), -4px -4px 12px rgba(255, 250, 240, 0.15);
+    --shadow-inset: inset 2px 2px 6px rgba(44, 24, 16, 0.15), inset -2px -2px 6px rgba(255, 250, 240, 0.4);
     
     /* 动画 */
-    --transition: all 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
-    --transition-fast: all 0.15s ease;
+    --transition: all 0.3s ease;
+    --transition-fast: all 0.2s ease;
 }
 
 /* ===================== 基础重置 ===================== */
@@ -60,33 +75,36 @@ body {
 /* ===================== 布局容器 ===================== */
 
 .app-container {
-    max-width: 480px;
+    max-width: 520px;
     margin: 0 auto;
-    padding: 24px 20px;
+    padding: 20px;
     min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    box-sizing: border-box;
 }
 
 /* ===================== 头部 ===================== */
 
 .app-header {
     text-align: center;
-    margin-bottom: 20px;
-    padding: 16px 0;
+    margin-bottom: 16px;
+    padding: 8px 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 14px;
+    gap: 12px;
+    flex-shrink: 0;
 }
 
 .app-logo {
-    font-size: 42px;
+    font-size: 36px;
     filter: drop-shadow(0 2px 4px rgba(255, 99, 99, 0.3));
 }
 
 .app-title {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.3px;
@@ -98,10 +116,11 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    margin-bottom: 0;
+    margin-bottom: 12px;
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
+    min-height: 0;
 }
 
 .tab-nav {
@@ -180,13 +199,27 @@ body {
     display: none;
     flex: 1;
     flex-direction: column;
-    padding: 24px;
+    padding: 20px;
     overflow-y: auto;
-    gap: 20px;
+    gap: 16px;
 }
 
 .tab-pane.active {
     display: flex;
+}
+
+/* 搜索页特殊处理 */
+#tab-search {
+    gap: 12px;
+}
+
+#tab-search .input-group {
+    flex-shrink: 0;
+}
+
+#tab-search .search-results-container {
+    flex: 1;
+    min-height: 200px;
 }
 
 /* ===================== 卡片组件 ===================== */
@@ -542,9 +575,8 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     overflow-y: auto;
-    max-height: 380px;
     padding-right: 4px;
 }
 
@@ -635,8 +667,8 @@ body {
 
 .app-footer {
     text-align: center;
-    padding: 24px 0;
-    margin-top: 16px;
+    padding: 8px 0;
+    flex-shrink: 0;
 }
 
 .app-footer p {
@@ -747,34 +779,85 @@ body {
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg: #000000;
-        --surface: #1c1c1e;
-        --surface-secondary: #2c2c2e;
-        --border: #38383a;
-        --border-light: #3a3a3c;
-        --text-primary: #f5f5f7;
-        --text-secondary: #a1a1a6;
-        --text-muted: #8e8e93;
+        --bg: #1a1a1a;
+        --surface: #2d2d2d;
+        --surface-secondary: #3d3d3d;
+        --border: #4a4a4a;
+        --border-light: #404040;
+        --text-primary: #ffffff;
+        --text-secondary: #b0b0b0;
+        --text-muted: #888888;
         
-        --primary: #ff6363;
-        --primary-hover: #ff7b7b;
-        --primary-light: rgba(255, 99, 99, 0.2);
-        --primary-gradient: linear-gradient(135deg, #ff6363 0%, #ff8080 100%);
+        --primary: #ff6b6b;
+        --primary-hover: #ff8080;
+        --primary-light: rgba(255, 107, 107, 0.25);
+        --primary-gradient: linear-gradient(135deg, #ff6b6b 0%, #ff8888 100%);
         
-        --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-        --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
-        --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
+        --shadow-sm: 0 2px 8px rgba(0,0,0,0.4);
+        --shadow-md: 0 4px 20px rgba(0,0,0,0.5);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
+    }
+    
+    body {
+        background: var(--bg);
     }
     
     .main-card {
         border: 1px solid var(--border);
+        background: var(--surface);
     }
     
     .tab-nav {
         background: var(--surface-secondary);
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .tab-btn {
+        color: var(--text-muted);
     }
     
     .tab-btn.active {
         background: var(--surface);
+        color: var(--text-primary);
+    }
+    
+    .tab-content {
+        background: var(--surface);
+    }
+    
+    .form-input {
+        background: var(--surface-secondary);
+        border-color: var(--border);
+        color: var(--text-primary);
+    }
+    
+    .form-input:focus {
+        border-color: var(--primary);
+    }
+    
+    .search-item {
+        background: var(--surface-secondary);
+        border-color: var(--border);
+    }
+    
+    .search-item:hover {
+        background: var(--border-light);
+        border-color: var(--primary);
+    }
+    
+    .progress-card {
+        background: var(--surface-secondary);
+        border-color: var(--border);
+    }
+    
+    .log-section {
+        background: var(--surface-secondary);
+        border-color: var(--border);
+    }
+    
+    .btn-secondary {
+        background: var(--surface-secondary);
+        border-color: var(--border);
+        color: var(--text-secondary);
     }
 }

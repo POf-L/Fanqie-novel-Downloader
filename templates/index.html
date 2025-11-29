@@ -8,98 +8,128 @@
     <link rel="stylesheet" href="/static/css/modal.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- 头部 -->
-        <header class="app-header">
-            <div class="app-logo">🍅</div>
-            <h1 class="app-title">番茄小说下载器</h1>
+    <div class="dashboard-container">
+        <!-- 顶部栏 -->
+        <header class="dashboard-header">
+            <div class="brand">
+                <div class="app-logo">🍅</div>
+                <h1 class="app-title">番茄小说下载器</h1>
+            </div>
+            <div class="header-actions">
+                <a href="https://github.com/POf-L/Fanqie-novel-Downloader" target="_blank" class="github-link">
+                    <svg height="24" viewBox="0 0 16 16" width="24" class="github-icon"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+                    GitHub
+                </a>
+                <span class="version-tag">v<span id="version">1.0.0</span></span>
+            </div>
         </header>
 
-        <!-- 主卡片 -->
-        <div class="card main-card">
-            <!-- 标签页导航 -->
-            <div class="tab-nav">
-                <button class="tab-btn active" data-tab="search">
-                    <span class="tab-icon">🔍</span>
-                    <span class="tab-label">搜索</span>
-                </button>
-                <button class="tab-btn" data-tab="download">
-                    <span class="tab-icon">⬇️</span>
-                    <span class="tab-label">下载</span>
-                </button>
-                <button class="tab-btn" data-tab="progress">
-                    <span class="tab-icon">📊</span>
-                    <span class="tab-label">进度</span>
-                    <span class="tab-badge" id="progressBadge" style="display: none;"></span>
-                </button>
-            </div>
-
-            <!-- 标签页内容 -->
-            <div class="tab-content">
-                <!-- 搜索标签页 -->
-                <div class="tab-pane active" id="tab-search">
-                    <div class="input-group">
-                        <input type="text" id="searchKeyword" class="form-input" placeholder="输入书名或作者名...">
-                        <button class="btn btn-primary" id="searchBtn">搜索</button>
-                    </div>
-                    
-                    <!-- 搜索结果 -->
-                    <div id="searchResults" class="search-results-container">
-                        <div class="search-header" id="searchHeader" style="display: none;">
-                            <span class="search-count" id="searchResultCount">找到 0 本书籍</span>
-                            <button class="btn btn-sm btn-secondary" id="clearSearchBtn">清除</button>
-                        </div>
-                        <div id="searchResultList" class="search-list"></div>
-                        <div id="loadMoreContainer" style="text-align: center; margin-top: 12px; display: none;">
-                            <button class="btn btn-secondary btn-sm" id="loadMoreBtn">加载更多</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 下载标签页 -->
-                <div class="tab-pane" id="tab-download">
-                    <div class="form-group">
-                        <label class="form-label">书籍 ID / URL</label>
-                        <input type="text" id="bookId" class="form-input" placeholder="输入书籍ID或URL">
+        <div class="dashboard-grid">
+            <!-- 左侧主内容区 -->
+            <main class="dashboard-main">
+                <div class="card content-card">
+                    <!-- 导航标签 -->
+                    <div class="tab-nav">
+                        <button class="tab-btn active" data-tab="search">
+                            <span class="tab-icon">🔍</span>
+                            <span class="tab-label">搜索书籍</span>
+                        </button>
+                        <button class="tab-btn" data-tab="download">
+                            <span class="tab-icon">⬇️</span>
+                            <span class="tab-label">手动下载</span>
+                        </button>
                     </div>
 
-                    <div class="form-row">
-                        <div class="form-group form-group-flex">
-                            <label class="form-label">保存路径</label>
-                            <div class="input-group">
-                                <input type="text" id="savePath" class="form-input" placeholder="选择目录" readonly>
-                                <button class="btn btn-secondary" id="browseBtn">浏览</button>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">格式</label>
-                            <div class="format-selector">
-                                <div class="format-option">
-                                    <input type="radio" name="format" value="txt" id="formatTxt" checked>
-                                    <label for="formatTxt">TXT</label>
+                    <!-- 内容区域 -->
+                    <div class="tab-content">
+                        <!-- 搜索面板 -->
+                        <div class="tab-pane active" id="tab-search">
+                            <div class="search-bar-container">
+                                <div class="input-group lg">
+                                    <input type="text" id="searchKeyword" class="form-input" placeholder="输入书名或作者名搜索...">
+                                    <button class="btn btn-primary" id="searchBtn">搜索</button>
                                 </div>
-                                <div class="format-option">
-                                    <input type="radio" name="format" value="epub" id="formatEpub">
-                                    <label for="formatEpub">EPUB</label>
+                            </div>
+                            
+                            <!-- 搜索结果 -->
+                            <div id="searchResults" class="search-results-area">
+                                <div class="search-header" id="searchHeader" style="display: none;">
+                                    <span class="search-count" id="searchResultCount">找到 0 本书籍</span>
+                                    <button class="btn btn-sm btn-text" id="clearSearchBtn">清除结果</button>
+                                </div>
+                                <div id="searchResultList" class="search-grid"></div>
+                                <div id="loadMoreContainer" class="load-more-container" style="display: none;">
+                                    <button class="btn btn-secondary" id="loadMoreBtn">加载更多</button>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="btn-group">
-                        <button class="btn btn-primary btn-lg" id="downloadBtn">开始下载</button>
-                        <button class="btn btn-danger btn-lg" id="cancelBtn" style="display: none;">取消下载</button>
-                        <button class="btn btn-secondary" id="clearBtn">清除</button>
+                        <!-- 下载面板 -->
+                        <div class="tab-pane" id="tab-download">
+                            <div class="download-form-container">
+                                <div class="form-header">
+                                    <h3>手动下载配置</h3>
+                                    <p class="text-muted">输入书籍 ID 或链接进行下载</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">书籍 ID / URL</label>
+                                    <input type="text" id="bookId" class="form-input lg" placeholder="例如：12345678 或 https://fanqienovel.com/...">
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group flex-grow">
+                                        <label class="form-label">保存路径</label>
+                                        <div class="input-group">
+                                            <input type="text" id="savePath" class="form-input" placeholder="选择保存目录" readonly>
+                                            <button class="btn btn-secondary" id="browseBtn">浏览...</button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">文件格式</label>
+                                        <div class="format-selector">
+                                            <label class="format-option-card">
+                                                <input type="radio" name="format" value="txt" id="formatTxt" checked>
+                                                <span class="format-name">TXT</span>
+                                            </label>
+                                            <label class="format-option-card">
+                                                <input type="radio" name="format" value="epub" id="formatEpub">
+                                                <span class="format-name">EPUB</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-actions">
+                                    <button class="btn btn-primary btn-xl" id="downloadBtn">
+                                        <span class="icon">🚀</span> 开始下载
+                                    </button>
+                                    <button class="btn btn-danger btn-xl" id="cancelBtn" style="display: none;">
+                                        <span class="icon">⏹</span> 取消下载
+                                    </button>
+                                    <button class="btn btn-secondary" id="clearBtn">重置</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
+            </main>
 
-                <!-- 进度标签页 -->
-                <div class="tab-pane" id="tab-progress">
-                    <div class="progress-card">
-                        <div class="progress-book-name" id="bookName">-</div>
+            <!-- 右侧侧边栏 -->
+            <aside class="dashboard-sidebar">
+                <!-- 状态卡片 -->
+                <div class="card status-card">
+                    <div class="card-header">
+                        <h3>当前任务</h3>
+                        <span class="status-badge" id="statusText">准备就绪</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="book-preview">
+                            <div class="book-name" id="bookName">暂无任务</div>
+                        </div>
                         <div class="progress-section">
-                            <div class="progress-header">
-                                <span class="progress-status" id="statusText">准备就绪</span>
+                            <div class="progress-info">
+                                <span>下载进度</span>
                                 <span class="progress-percent" id="progressPercent">0%</span>
                             </div>
                             <div class="progress-track">
@@ -107,48 +137,53 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="log-section" id="logContainer">
+                <!-- 日志卡片 -->
+                <div class="card log-card">
+                    <div class="card-header">
+                        <h3>运行日志</h3>
+                    </div>
+                    <div class="log-container" id="logContainer">
                         <div id="logContent">
-                            <div class="log-entry">等待操作...</div>
+                            <div class="log-entry text-muted">系统已启动，等待操作...</div>
                         </div>
                     </div>
                 </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- 隐藏的元素，保持兼容性 -->
+    <div id="tab-progress" style="display: none;"></div>
+    <span id="progressBadge" style="display: none;"></span>
+
+    <!-- 章节选择弹窗 -->
+    <div class="modal" id="chapterModal" style="display: none;">
+        <div class="modal-content" style="max-width: 720px; width: 90%;">
+            <div class="modal-header">
+                <h3 style="margin: 0; font-size: 16px;">📑 选择章节</h3>
+                <button class="modal-close" id="chapterModalClose">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px;">
+                <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+                    <button class="btn btn-sm btn-secondary" id="selectAllBtn">全选</button>
+                    <button class="btn btn-sm btn-secondary" id="selectNoneBtn">全不选</button>
+                    <button class="btn btn-sm btn-secondary" id="selectInvertBtn">反选</button>
+                    <span id="selectedCount" style="margin-left: auto; font-size: 13px; color: var(--text-muted);">已选: 0 章</span>
+                </div>
+                <div class="chapter-list" id="chapterList" style="max-height: 400px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📖</div>
+                        <div class="empty-state-text">请先获取章节列表</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelChaptersBtn">取消</button>
+                <button class="btn btn-primary" id="confirmChaptersBtn">确定</button>
             </div>
         </div>
-
-        <!-- 章节选择弹窗 -->
-        <div class="modal" id="chapterModal" style="display: none;">
-            <div class="modal-content" style="max-width: 720px; width: 90%;">
-                <div class="modal-header">
-                    <h3 style="margin: 0; font-size: 16px;">📑 选择章节</h3>
-                    <button class="modal-close" id="chapterModalClose">&times;</button>
-                </div>
-                <div class="modal-body" style="padding: 16px;">
-                    <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
-                        <button class="btn btn-sm btn-secondary" id="selectAllBtn">全选</button>
-                        <button class="btn btn-sm btn-secondary" id="selectNoneBtn">全不选</button>
-                        <button class="btn btn-sm btn-secondary" id="selectInvertBtn">反选</button>
-                        <span id="selectedCount" style="margin-left: auto; font-size: 13px; color: var(--text-muted);">已选: 0 章</span>
-                    </div>
-                    <div class="chapter-list" id="chapterList" style="max-height: 400px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;">
-                        <div class="empty-state">
-                            <div class="empty-state-icon">📖</div>
-                            <div class="empty-state-text">请先获取章节列表</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" id="cancelChaptersBtn">取消</button>
-                    <button class="btn btn-primary" id="confirmChaptersBtn">确定</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 页脚 -->
-        <footer class="app-footer">
-            <p>v<span id="version">1.0.0</span> · <a href="https://github.com/POf-L/Fanqie-novel-Downloader" target="_blank">GitHub</a></p>
-        </footer>
     </div>
 
     <!-- 更新提示弹窗 -->
@@ -166,7 +201,6 @@
                         <strong>更新说明：</strong>
                         <div id="updateDescription"></div>
                     </div>
-                    <!-- 版本选择器 -->
                     <div id="versionSelector" style="display: none; margin-top: 20px;"></div>
                 </div>
             </div>
