@@ -611,7 +611,7 @@ function initializeUI() {
             localStorage.setItem('app_style', isScp ? 'scp' : '8bit');
             
             // 添加切换音效或视觉反馈（可选）
-            logger.log(isScp ? i18n.t('log_scp_access') : i18n.t('log_scp_revert'));
+            logger.logKey(isScp ? 'log_scp_access' : 'log_scp_revert');
         });
     }
     
@@ -673,10 +673,10 @@ async function handleSearch() {
         const loadMoreContainer = document.getElementById('loadMoreContainer');
         loadMoreContainer.style.display = result.has_more ? 'block' : 'none';
         
-        logger.log(`${i18n.t('search_count_prefix')}${result.books.length}${i18n.t('search_count_suffix')}`);
+        logger.logKey('log_search_success', result.books.length);
     } else {
         displaySearchResults([], false);
-        logger.log('X ' + i18n.t('search_no_results'));
+        logger.logKey('log_search_no_results_x');
     }
 }
 

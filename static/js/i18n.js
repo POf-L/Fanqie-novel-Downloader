@@ -170,6 +170,8 @@ const translations = {
         "log_cancel_selection": "√ 已取消章节选择 (默认下载全部)",
         "log_scp_access": "> 正在访问 SCP 数据库...",
         "log_scp_revert": "> 正在恢复 8-BIT 系统...",
+        "log_search_success": "找到 {0} 本书籍",
+        "log_search_no_results_x": "X 未找到相关书籍",
         
         // Common Backend Messages Mappings (Frontend translation)
         "backend_msg_download_complete": "下载完成",
@@ -346,6 +348,8 @@ const translations = {
         "log_cancel_selection": "√ Selection cancelled (Download all by default)",
         "log_scp_access": "> ACCESSING SCP DATABASE...",
         "log_scp_revert": "> REVERTING TO 8-BIT SYSTEMS...",
+        "log_search_success": "Found {0} books",
+        "log_search_no_results_x": "X No books found",
         
         // Common Backend Messages Mappings
         "backend_msg_download_complete": "Download Completed",
