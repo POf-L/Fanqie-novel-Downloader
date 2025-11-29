@@ -395,14 +395,18 @@ def api_search():
                                         except:
                                             chapter_count = 0
                                     
-                                    # 解析状态 (1=连载中, 2=完结)
+                                    # 解析状态 (0=已完结, 1=连载中, 2=完结)
                                     status_code = book.get('creation_status', '')
-                                    if status_code == '1':
+                                    # 转换为字符串进行比较
+                                    status_code_str = str(status_code) if status_code is not None else ''
+                                    if status_code_str == '0':
+                                        status = '已完结'
+                                    elif status_code_str == '1':
                                         status = '连载中'
-                                    elif status_code == '2':
+                                    elif status_code_str == '2':
                                         status = '完结'
                                     else:
-                                        status = status_code or book.get('status', '')
+                                        status = ''
                                     
                                     books.append({
                                         'book_id': str(book.get('book_id', '')),

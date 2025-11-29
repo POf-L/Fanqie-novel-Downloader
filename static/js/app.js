@@ -592,7 +592,7 @@ function displaySearchResults(books, append = false) {
         const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + '万字' : '';
         const chapterCount = book.chapter_count ? book.chapter_count + '章' : '';
         const status = book.status || '';
-        const statusClass = status === '完结' ? 'complete' : 'ongoing';
+        const statusClass = (status === '完结' || status === '已完结') ? 'complete' : 'ongoing';
         
         item.innerHTML = `
             <img class="search-cover" src="${book.cover_url || ''}" alt="" onerror="this.style.display='none'">
