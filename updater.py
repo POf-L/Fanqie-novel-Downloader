@@ -406,12 +406,23 @@ ping -n 4 127.0.0.1 >nul
 :: Start new version using multiple methods for reliability
 cd /d "{exe_dir}"
 
-:: Method 1: Direct start with working directory
-start "Fanqie Novel Downloader" /D "{exe_dir}" "{current_exe_path}"
+echo Starting application...
+:: Method 1: Direct start with exe name (most reliable after cd)
+start "" "{exe_name}"
+
 if errorlevel 1 (
-    echo First start method failed, trying alternative...
-    :: Method 2: Use cmd /c
-    cmd /c start "" "{current_exe_path}"
+    echo Method 1 failed, trying absolute path...
+    :: Method 2: Absolute path
+    start "" "{current_exe_path}"
+)
+
+if errorlevel 1 (
+    echo.
+    echo ERROR: Failed to restart application automatically.
+    echo Please start the application manually:
+    echo {current_exe_path}
+    echo.
+    pause
 )
 
 echo New version started.
