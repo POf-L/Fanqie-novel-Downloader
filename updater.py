@@ -308,6 +308,9 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     # 获取当前进程 PID
     pid = os.getpid()
     
+    # 获取可执行文件名
+    exe_name = os.path.basename(current_exe_path)
+
     # 创建更新批处理脚本（直接嵌入 PID 避免参数传递问题）
     # 注意：使用英文提示避免 CMD 编码问题
     bat_content = f'''@echo off
@@ -321,61 +324,57 @@ echo Waiting for application to exit (PID: {pid})...
 :: Give it 3 seconds to exit gracefully
 timeout /t 3 /nobreak >nul
 
-:: Check and force kill if still running
-tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
-if not errorlevel 1 (
-    echo Application stuck, force killing...
-    taskkill /F /T /PID {pid} >nul 2>&1
-    timeout /t 1 /nobreak >nul
+:: Force kill by PID
+taskkill /F /PID {pid} >nul 2>&1
+
+:: Force kill by Image Name (in case of restarts or zombies)
+taskkill /F /IM "{exe_name}" >nul 2>&1
+
+:: Wait a bit for file handles to release
+timeout /t 2 /nobreak >nul
+
+echo Starting update process...
+echo.
+
+:: Strategy: Move-and-Replace
+:: Windows allows renaming running/locked executables, but not overwriting them.
+
+:: 1. Move current exe to .old
+echo Moving old version to backup...
+del /F /Q "{current_exe_path}.old" >nul 2>&1
+move /Y "{current_exe_path}" "{current_exe_path}.old" >nul
+if errorlevel 1 (
+    echo Failed to move old version. The file might be heavily locked.
+    echo Trying to force kill again...
+    taskkill /F /IM "{exe_name}" >nul 2>&1
+    timeout /t 2 /nobreak >nul
+    move /Y "{current_exe_path}" "{current_exe_path}.old" >nul
+    if errorlevel 1 (
+        echo Still unable to update. Please restart your computer.
+        pause
+        exit /b 1
+    )
 )
 
-:: Final check
-tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
-if not errorlevel 1 (
-    echo Failed to kill application! Aborting update.
-    echo Please manually close the application and try again.
+:: 2. Copy new exe to original location
+echo Installing new version...
+copy /Y "{new_exe_path}" "{current_exe_path}" >nul
+if errorlevel 1 (
+    echo Copy failed! Restoring old version...
+    move /Y "{current_exe_path}.old" "{current_exe_path}" >nul
     pause
     exit /b 1
 )
 
-echo Application exited. Starting update...
-echo.
-
-:: Backup old version
-set "BACKUP_PATH={current_exe_path}.backup"
-if exist "{current_exe_path}" (
-    echo Backing up old version...
-    copy /Y "{current_exe_path}" "%BACKUP_PATH%" >nul
-    if errorlevel 1 (
-        echo Backup failed! Aborting update.
-        pause
-        exit /b 1
-    )
-)
-
-:: Replace with new version
-echo Installing new version...
-:retry_copy
-copy /Y "{new_exe_path}" "{current_exe_path}" >nul
-if errorlevel 1 (
-    echo Copy failed, retrying in 1 second...
-    timeout /t 1 /nobreak >nul
-    copy /Y "{new_exe_path}" "{current_exe_path}" >nul
-    if errorlevel 1 (
-        echo Update failed! Restoring old version...
-        copy /Y "%BACKUP_PATH%" "{current_exe_path}" >nul
-        pause
-        exit /b 1
-    )
-)
-
-:: Cleanup
-echo Cleaning up temporary files...
+:: 3. Cleanup
+echo Cleaning up...
 del /F /Q "{new_exe_path}" >nul 2>&1
-del /F /Q "%BACKUP_PATH%" >nul 2>&1
+:: Try to delete .old, but ignore failure (it might still be locked until reboot)
+del /F /Q "{current_exe_path}.old" >nul 2>&1
 
 echo.
-echo Update completed! Starting new version...
+echo Update completed successfully!
+echo Starting new version...
 echo.
 timeout /t 2 /nobreak >nul
 
