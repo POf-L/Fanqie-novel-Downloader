@@ -391,8 +391,9 @@ ping -n 4 127.0.0.1 >nul
 
 echo Starting application...
 echo Target: "{current_exe_path}"
+echo WorkDir: "{exe_dir}"
 
-start "" "{current_exe_path}"
+start "" /D "{exe_dir}" "{current_exe_path}"
 
 echo New version launch attempt complete.
 ping -n 2 127.0.0.1 >nul
