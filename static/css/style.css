@@ -57,6 +57,18 @@
     box-sizing: border-box;
 }
 
+/* 隐藏滚动条但保持滚动功能 */
+::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+html {
+    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;  /* IE/Edge */
+}
+
 body {
     font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
     background: var(--bg-dark);
@@ -67,6 +79,41 @@ body {
     font-size: 14px;
     image-rendering: pixelated;
     text-transform: uppercase;
+    overflow: hidden;
+}
+
+/* ===================== 窗口控制按钮 ===================== */
+
+.window-controls {
+    display: flex;
+    gap: 0;
+    margin-left: 16px;
+    -webkit-app-region: no-drag;
+}
+
+.win-btn {
+    width: 40px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s;
+    font-family: 'Consolas', monospace;
+}
+
+.win-btn:hover {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.win-close:hover {
+    background: #ff0000;
+    color: #ffffff;
 }
 
 /* 扫描线效果 */
@@ -107,7 +154,8 @@ body::after {
     max-width: 1400px;
     margin: 0 auto;
     padding: 16px;
-    min-height: 100vh;
+    height: 100vh;
+    overflow-y: auto;
     position: relative;
     z-index: 1;
 }
@@ -124,6 +172,11 @@ body::after {
     margin-bottom: 16px;
     position: relative;
     box-shadow: var(--shadow-pixel);
+    -webkit-app-region: drag;  /* 可拖动区域 */
+}
+
+.header-actions {
+    -webkit-app-region: no-drag;  /* 按钮区域不可拖动 */
 }
 
 /* 像素装饰边框 - 内部双线 */
@@ -1165,22 +1218,9 @@ body::after {
 
 /* ===================== SCP & 8-Bit Enhancements ===================== */
 
-/* SCP Warning Banner */
+/* SCP Warning Banner - 隐藏，无边框模式下不需要 */
 .scp-warning-banner {
-    background: #990000;
-    color: #fff;
-    text-align: center;
-    padding: 8px;
-    font-family: 'Press Start 2P', monospace;
-    font-size: 12px;
-    border-bottom: 2px solid #ff0000;
-    position: sticky;
-    top: 0;
-    z-index: 10000;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    animation: blink-red 4s infinite;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    display: none;
 }
 
 @keyframes blink-red {

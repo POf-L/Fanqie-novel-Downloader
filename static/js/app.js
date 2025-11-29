@@ -1504,3 +1504,39 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
+
+/* ===================== 窗口控制 (无边框模式) ===================== */
+
+function initWindowControls() {
+    const minBtn = document.getElementById('winMinimize');
+    const maxBtn = document.getElementById('winMaximize');
+    const closeBtn = document.getElementById('winClose');
+    
+    if (!minBtn || !maxBtn || !closeBtn) return;
+    
+    // 检测是否在 pywebview 环境中
+    const isPyWebView = () => window.pywebview && window.pywebview.api;
+    
+    minBtn.addEventListener('click', () => {
+        if (isPyWebView()) {
+            window.pywebview.api.minimize_window();
+        }
+    });
+    
+    maxBtn.addEventListener('click', () => {
+        if (isPyWebView()) {
+            window.pywebview.api.toggle_maximize();
+        }
+    });
+    
+    closeBtn.addEventListener('click', () => {
+        if (isPyWebView()) {
+            window.pywebview.api.close_window();
+        } else {
+            window.close();
+        }
+    });
+}
+
+// 初始化窗口控制
+document.addEventListener('DOMContentLoaded', initWindowControls);

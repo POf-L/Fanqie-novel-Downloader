@@ -56,17 +56,40 @@ def open_web_interface(port, access_token):
         try:
             import webview
             
+            # 窗口控制 API (延迟绑定)
+            _window = None
+            
+            class WindowApi:
+                def minimize_window(self):
+                    if _window:
+                        _window.minimize()
+                
+                def toggle_maximize(self):
+                    if _window:
+                        if hasattr(_window, 'maximized') and _window.maximized:
+                            _window.restore()
+                        else:
+                            _window.maximize()
+                
+                def close_window(self):
+                    if _window:
+                        _window.destroy()
+            
+            api = WindowApi()
+            
             def on_closed():
                 print(t("main_app_closed"))
             
-            # 创建窗口
-            webview.create_window(
+            # 创建窗口 (无边框模式)
+            _window = webview.create_window(
                 title='番茄小说下载器',
                 url=url,
                 width=1200,
                 height=800,
                 min_size=(1000, 700),
-                background_color='#FAFAFA'
+                background_color='#0a0a0a',
+                frameless=True,
+                js_api=api
             )
             
             try:
