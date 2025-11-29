@@ -92,7 +92,8 @@ update_download_status = {
     'downloaded_size': 0,
     'completed': False,
     'error': None,
-    'save_path': ''
+    'save_path': '',
+    'temp_file_path': ''  # 临时下载文件路径
 }
 update_lock = threading.Lock()
 
@@ -109,7 +110,7 @@ def set_update_status(**kwargs):
                 update_download_status[key] = value
 
 def update_download_worker(url, save_path, filename):
-    """更新下载工作线程"""
+    """更新下载工作线程 - 下载到临时文件避免权限问题"""
     print(f'[DEBUG] update_download_worker started')
     print(f'[DEBUG]   url: {url}')
     print(f'[DEBUG]   save_path: {save_path}')
@@ -127,11 +128,13 @@ def update_download_worker(url, save_path, filename):
         )
         
         import requests
-        full_path = os.path.join(save_path, filename)
-        print(f'[DEBUG]   full_path: {full_path}')
+        import tempfile
         
-        # 支持断点续传（简单的检查文件是否存在）
-        # 这里为了安全起见，如果是更新包，最好是重新下载，避免文件损坏
+        # 下载到临时目录的 .new 文件，避免覆盖正在运行的程序
+        temp_dir = tempfile.gettempdir()
+        temp_filename = filename + '.new'
+        full_path = os.path.join(temp_dir, temp_filename)
+        print(f'[DEBUG]   temp_path: {full_path}')
         
         print(f'[DEBUG] Sending GET request...')
         response = requests.get(url, stream=True, timeout=30)
@@ -165,11 +168,13 @@ def update_download_worker(url, save_path, filename):
             print(f'[DEBUG] File exists: {os.path.exists(full_path)}')
             if os.path.exists(full_path):
                 print(f'[DEBUG] File size: {os.path.getsize(full_path)} bytes')
+            # 保存临时文件路径供后续应用更新使用
             set_update_status(
                 is_downloading=False, 
                 completed=True, 
                 progress=100, 
-                message='下载完成'
+                message='下载完成，点击"应用更新"安装',
+                temp_file_path=full_path
             )
         else:
             # 被取消
@@ -944,19 +949,25 @@ def api_apply_update():
                 'message': '更新文件尚未下载完成'
             }), 400
         
-        save_path = status.get('save_path', '')
-        filename = status.get('filename', '')
-        print(f'[DEBUG] save_path: {save_path}')
-        print(f'[DEBUG] filename: {filename}')
+        # 使用临时文件路径
+        new_file_path = status.get('temp_file_path', '')
+        print(f'[DEBUG] temp_file_path: {new_file_path}')
         
-        if not save_path or not filename:
+        if not new_file_path:
+            # 兼容旧逻辑
+            save_path = status.get('save_path', '')
+            filename = status.get('filename', '')
+            if save_path and filename:
+                new_file_path = os.path.join(save_path, filename)
+        
+        print(f'[DEBUG] new_file_path: {new_file_path}')
+        
+        if not new_file_path:
             return jsonify({
                 'success': False, 
                 'message': '更新文件信息不完整'
             }), 400
         
-        new_file_path = os.path.join(save_path, filename)
-        print(f'[DEBUG] new_file_path: {new_file_path}')
         print(f'[DEBUG] file exists: {os.path.exists(new_file_path)}')
         
         if not os.path.exists(new_file_path):

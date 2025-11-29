@@ -305,17 +305,20 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     
     print(f'[DEBUG] New file size: {os.path.getsize(new_exe_path)} bytes')
     
-    # 创建更新批处理脚本
+    # 获取当前进程 PID
+    pid = os.getpid()
+    
+    # 创建更新批处理脚本（直接嵌入 PID 避免参数传递问题）
     bat_content = f'''@echo off
 chcp 65001 >nul
 echo ====================================
 echo 番茄小说下载器 - 自动更新
 echo ====================================
 echo.
-echo 正在等待程序退出...
+echo 正在等待程序退出 (PID: {pid})...
 
 :wait_loop
-tasklist /FI "PID eq %1" 2>nul | find /I "%1" >nul
+tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
 if not errorlevel 1 (
     timeout /t 1 /nobreak >nul
     goto wait_loop
@@ -325,10 +328,10 @@ echo 程序已退出，开始更新...
 echo.
 
 :: 备份旧版本
-set BACKUP_PATH="{current_exe_path}.backup"
+set "BACKUP_PATH={current_exe_path}.backup"
 if exist "{current_exe_path}" (
     echo 备份旧版本...
-    copy /Y "{current_exe_path}" %BACKUP_PATH% >nul
+    copy /Y "{current_exe_path}" "%BACKUP_PATH%" >nul
     if errorlevel 1 (
         echo 备份失败，更新终止
         pause
@@ -341,7 +344,7 @@ echo 安装新版本...
 copy /Y "{new_exe_path}" "{current_exe_path}" >nul
 if errorlevel 1 (
     echo 更新失败，正在恢复旧版本...
-    copy /Y %BACKUP_PATH% "{current_exe_path}" >nul
+    copy /Y "%BACKUP_PATH%" "{current_exe_path}" >nul
     pause
     exit /b 1
 )
@@ -349,7 +352,7 @@ if errorlevel 1 (
 :: 清理
 echo 清理临时文件...
 del /F /Q "{new_exe_path}" >nul 2>&1
-del /F /Q %BACKUP_PATH% >nul 2>&1
+del /F /Q "%BACKUP_PATH%" >nul 2>&1
 
 echo.
 echo ✓ 更新完成！正在启动新版本...
@@ -370,14 +373,11 @@ exit /b 0
         with open(bat_path, 'w', encoding='utf-8') as f:
             f.write(bat_content)
         
-        # 获取当前进程 PID
-        pid = os.getpid()
-        
-        # 启动批处理脚本（使用新的控制台窗口，传递当前 PID）
+        # 启动批处理脚本（使用新的控制台窗口）
+        # 使用 shell=True 确保 start 命令正确解析
         subprocess.Popen(
-            ['cmd', '/c', 'start', '番茄小说下载器更新', '/wait', bat_path, str(pid)],
-            shell=False,
-            creationflags=subprocess.CREATE_NEW_CONSOLE
+            f'start "番茄小说下载器更新" cmd /c "{bat_path}"',
+            shell=True
         )
         
         print(f'更新脚本已启动，程序即将退出...')
