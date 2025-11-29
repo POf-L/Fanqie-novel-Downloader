@@ -318,21 +318,24 @@ echo ====================================
 echo.
 echo Waiting for application to exit (PID: {pid})...
 
-:wait_loop
+:: Give it 3 seconds to exit gracefully
+timeout /t 3 /nobreak >nul
+
+:: Check and force kill if still running
 tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
 if not errorlevel 1 (
-    echo Application still running, waiting...
+    echo Application stuck, force killing...
+    taskkill /F /T /PID {pid} >nul 2>&1
     timeout /t 1 /nobreak >nul
-    goto wait_loop
 )
 
-:: Double check and force kill if needed
-timeout /t 2 /nobreak >nul
+:: Final check
 tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
 if not errorlevel 1 (
-    echo Force killing process...
-    taskkill /F /PID {pid} >nul 2>&1
-    timeout /t 1 /nobreak >nul
+    echo Failed to kill application! Aborting update.
+    echo Please manually close the application and try again.
+    pause
+    exit /b 1
 )
 
 echo Application exited. Starting update...
