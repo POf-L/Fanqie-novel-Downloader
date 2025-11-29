@@ -338,8 +338,9 @@ def check_access():
 @app.route('/')
 def index():
     """主页"""
+    from config import __version__
     token = request.args.get('token', '')
-    return render_template('index.html', access_token=token)
+    return render_template('index.html', version=__version__, access_token=token)
 
 @app.route('/api/init', methods=['POST'])
 def api_init():

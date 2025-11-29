@@ -47,19 +47,26 @@ const AppState = {
 
 /* ===================== 版本管理 ===================== */
 
-async function fetchVersion() {
+async function fetchVersion(retryCount = 0) {
     const versionEl = document.getElementById('version');
     if (!versionEl) return;
     
     try {
-        const response = await fetch('/api/version');
+        // 添加时间戳防止缓存
+        const response = await fetch(`/api/version?t=${new Date().getTime()}`);
         const data = await response.json();
         if (data.success && data.version) {
             versionEl.textContent = data.version;
+            logger.log(`✓ 版本信息: ${data.version}`);
         }
-    } catch (error) {
-        console.error('获取版本信息失败:', error);
-        versionEl.textContent = 'unknown';
+    } catch (e) {
+        console.error('获取版本信息失败:', e);
+        // 重试最多3次
+        if (retryCount < 3) {
+            setTimeout(() => fetchVersion(retryCount + 1), 1000);
+        } else {
+            logger.log('! 获取版本信息失败');
+        }
     }
 }
 
