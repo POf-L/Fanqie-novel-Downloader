@@ -86,34 +86,47 @@ body {
 
 .window-controls {
     display: flex;
-    gap: 0;
+    gap: 8px;
     margin-left: 16px;
     -webkit-app-region: no-drag;
 }
 
 .win-btn {
-    width: 40px;
+    width: 32px;
     height: 32px;
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 16px;
+    border: var(--pixel-border-sm) solid var(--border-dim);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    font-size: 14px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.1s;
-    font-family: 'Consolas', monospace;
+    transition: var(--transition);
+    font-family: 'Consolas', monospace; /* 符号显示更清晰 */
+    box-shadow: var(--shadow-pixel-sm);
+    position: relative;
 }
 
 .win-btn:hover {
     background: var(--bg-surface);
-    color: var(--text-primary);
+    color: var(--primary);
+    border-color: var(--primary);
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 #000;
+    z-index: 10;
+}
+
+.win-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0 #000;
 }
 
 .win-close:hover {
-    background: #ff0000;
+    background: var(--danger);
+    border-color: var(--danger);
     color: #ffffff;
+    box-shadow: 3px 3px 0 #000, 0 0 8px var(--danger);
 }
 
 /* 扫描线效果 */
