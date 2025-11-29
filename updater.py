@@ -402,29 +402,12 @@ echo.
 echo Starting new version in 3 seconds...
 ping -n 4 127.0.0.1 >nul
 
-:: Start new version using multiple methods for reliability
-cd /d "{exe_dir}"
-
 echo Starting application...
-:: Method 1: Direct start with exe name (most reliable after cd)
-start "" "{exe_name}"
+echo Target: "{current_exe_path}"
 
-if errorlevel 1 (
-    echo Method 1 failed, trying absolute path...
-    :: Method 2: Absolute path
-    start "" "{current_exe_path}"
-)
+start "" "{current_exe_path}"
 
-if errorlevel 1 (
-    echo.
-    echo ERROR: Failed to restart application automatically.
-    echo Please start the application manually:
-    echo {current_exe_path}
-    echo.
-    pause
-)
-
-echo New version started.
+echo New version launch attempt complete.
 ping -n 2 127.0.0.1 >nul
 
 :: Delete self (delayed)
