@@ -268,13 +268,34 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
+    padding: 10px 12px;
     background: linear-gradient(90deg, #FDF5E6 0%, #F5E6C8 100%);
-    border: 1px solid transparent;
+    border: 1px solid #D4C4A8;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
-    margin-bottom: 6px;
+    margin-bottom: 0;
+    min-height: 42px;
+}
+
+.chapter-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: #8B2323;
+    cursor: pointer;
+}
+
+.chapter-item span {
+    flex: 1;
+    font-size: 13px;
+    color: #4A3728;
+    line-height: 1.4;
+    word-break: break-word;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 .chapter-item:last-child {
@@ -284,6 +305,22 @@
 .chapter-item:hover {
     background: linear-gradient(90deg, #F5E6C8 0%, #EDE0C8 100%);
     border-color: #A08060;
+}
+
+/* 章节选择容器 - 手动选择模式 */
+.chapter-manual-container {
+    padding: 16px;
+    background: linear-gradient(180deg, #EDE0C8 0%, #F5E6C8 100%);
+    border: 2px solid #8B7355;
+    border-radius: 8px;
+}
+
+.chapter-manual-container .chapter-actions {
+    border-color: #D4C4A8 !important;
+}
+
+#dialogSelectedCount {
+    color: #8B2323;
 }
 
 .chapter-item.selected {

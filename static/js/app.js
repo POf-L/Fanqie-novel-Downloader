@@ -1194,11 +1194,11 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                     <button class="btn btn-sm btn-secondary" onclick="window.invertChaptersInDialog()">反选</button>
                     <span id="dialogSelectedCount" style="margin-left: 15px; font-weight: bold;">已选: 0 章</span>
                 </div>
-                <div class="chapter-list" id="dialogChapterList" style="max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
+                <div class="chapter-list" id="dialogChapterList" style="max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px;">
                     ${bookInfo.chapters.map((ch, idx) => `
-                        <label class="chapter-item" style="display: flex; align-items: center; padding: 8px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
-                            <input type="checkbox" value="${idx}" onchange="window.updateDialogSelectedCount()" style="margin-right: 8px;">
-                            <span style="flex: 1; font-size: 0.9em;">${ch.title}</span>
+                        <label class="chapter-item">
+                            <input type="checkbox" value="${idx}" onchange="window.updateDialogSelectedCount()">
+                            <span>${ch.title}</span>
                         </label>
                     `).join('')}
                 </div>
