@@ -991,7 +991,7 @@ async function showUpdateModal(updateInfo) {
                                 
                                 if (status.is_downloading) {
                                     progressBar.style.width = status.progress + '%';
-                                    progressText.textContent = status.message;
+                                    progressText.textContent = status.message || '正在下载...';
                                     progressPercent.textContent = status.progress + '%';
                                     setTimeout(pollProgress, 500);
                                 } else if (status.completed) {
@@ -1031,6 +1031,10 @@ async function showUpdateModal(updateInfo) {
                                     progressText.textContent = 'X ' + status.message;
                                     downloadUpdateBtn.disabled = false;
                                     downloadUpdateBtn.textContent = '重新下载';
+                                } else {
+                                    // 初始状态，线程可能还未开始，继续轮询
+                                    progressText.textContent = '准备下载...';
+                                    setTimeout(pollProgress, 500);
                                 }
                             } catch (e) {
                                 console.error('获取下载状态失败:', e);
