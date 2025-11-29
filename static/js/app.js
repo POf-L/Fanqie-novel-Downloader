@@ -1471,14 +1471,14 @@ async function handleBrowse() {
 /* ===================== 初始化 ===================== */
 
 document.addEventListener('DOMContentLoaded', async () => {
-    logger.log('> 应用启动...');
+    logger.log(i18n.t('msg_app_start'));
     
     // 从URL获取访问令牌
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     if (token) {
         AppState.setAccessToken(token);
-        logger.log('✓ 访问令牌已加载');
+        logger.log(i18n.t('msg_token_loaded'));
     }
     
     initializeUI();
@@ -1486,10 +1486,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 初始化模块
     const success = await api.init();
     if (success) {
-        logger.log('准备就绪，请输入书籍信息开始下载');
+        logger.log(i18n.t('msg_ready'));
     } else {
-        logger.log('! 应用初始化完成，但部分功能可能不可用');
-        logger.log('如遇到问题，请检查网络连接或重启应用');
+        logger.log(i18n.t('msg_init_partial'));
+        logger.log(i18n.t('msg_check_network'));
     }
 });
 

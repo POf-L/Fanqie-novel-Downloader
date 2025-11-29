@@ -69,6 +69,8 @@ const translations = {
         // JS Messages
         "msg_version_info": "✓ 版本信息: ",
         "msg_fetch_version_fail": "! 获取版本信息失败",
+        "msg_app_start": "> 应用启动...",
+        "msg_token_loaded": "✓ 访问令牌已加载",
         "msg_init_app": "* 初始化应用...",
         "msg_module_loaded": "√ 核心模块加载完成",
         "msg_module_fail": "! 模块加载失败: ",
@@ -81,6 +83,10 @@ const translations = {
         "msg_cancel_fail": "X 取消下载失败: ",
         "msg_folder_fail": "X 文件夹选择失败: ",
         "msg_select_chapter_warn": "请至少选择一章",
+        
+        "msg_ready": "准备就绪，请输入书籍信息开始下载",
+        "msg_init_partial": "! 应用初始化完成，但部分功能可能不可用",
+        "msg_check_network": "如遇到问题，请检查网络连接或重启应用",
         
         // Common Backend Messages Mappings (Frontend translation)
         "backend_msg_download_complete": "下载完成",
@@ -156,6 +162,8 @@ const translations = {
         // JS Messages
         "msg_version_info": "✓ Version: ",
         "msg_fetch_version_fail": "! Failed to fetch version",
+        "msg_app_start": "> Starting app...",
+        "msg_token_loaded": "✓ Access token loaded",
         "msg_init_app": "* Initializing...",
         "msg_module_loaded": "√ Core modules loaded",
         "msg_module_fail": "! Module load failed: ",
@@ -168,6 +176,10 @@ const translations = {
         "msg_cancel_fail": "X Cancel failed: ",
         "msg_folder_fail": "X Folder selection failed: ",
         "msg_select_chapter_warn": "Please select at least one chapter",
+        
+        "msg_ready": "Ready. Enter book info to start download",
+        "msg_init_partial": "! App initialized, but some features may be unavailable",
+        "msg_check_network": "If you encounter issues, check network or restart app",
         
         // Common Backend Messages Mappings
         "backend_msg_download_complete": "Download Completed",
@@ -216,6 +228,10 @@ class I18n {
                 // Simple strategy: if element has children, assume specific structure or just replace text content if simple
                 if (el.children.length === 0) {
                     el.textContent = this.t(key);
+                    // Update data-text for glitch effect
+                    if (el.hasAttribute('data-text')) {
+                        el.setAttribute('data-text', this.t(key));
+                    }
                 } else {
                     // Custom handling for elements with icons
                     // Try to find a text node to update, or a specific class like .text-content
