@@ -351,7 +351,8 @@ def api_init():
 @app.route('/api/version', methods=['GET'])
 def api_version():
     """获取当前版本号"""
-    return jsonify({'success': True, 'version': APP_VERSION})
+    from config import __version__
+    return jsonify({'success': True, 'version': __version__})
 
 @app.route('/api/status', methods=['GET'])
 def api_status():
