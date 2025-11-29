@@ -80,15 +80,32 @@ class Logger {
     
     log(message) {
         const entry = document.createElement('div');
-        entry.className = 'log-entry';
-        entry.textContent = `[${this.getTime()}] ${message}`;
+        entry.className = 'log-entry typing-cursor';
         this.container.appendChild(entry);
         
-        // 自动滚动到底部
-        const logSection = document.getElementById('logContainer');
-        if (logSection) {
-            logSection.scrollTop = logSection.scrollHeight;
-        }
+        const fullText = `[${this.getTime()}] ${message}`;
+        let index = 0;
+        // Adjust speed based on length
+        const speed = fullText.length > 50 ? 10 : 30;
+        
+        const type = () => {
+            if (index < fullText.length) {
+                entry.textContent += fullText.charAt(index);
+                index++;
+                
+                // 自动滚动到底部
+                const logSection = document.getElementById('logContainer');
+                if (logSection) {
+                    logSection.scrollTop = logSection.scrollHeight;
+                }
+                
+                setTimeout(type, speed);
+            } else {
+                entry.classList.remove('typing-cursor');
+            }
+        };
+        
+        type();
         
         // 限制日志数量
         const entries = this.container.querySelectorAll('.log-entry');

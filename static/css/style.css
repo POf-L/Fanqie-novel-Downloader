@@ -1160,3 +1160,155 @@ body::after {
         display: block;
     }
 }
+
+/* ===================== SCP & 8-Bit Enhancements ===================== */
+
+/* SCP Warning Banner */
+.scp-warning-banner {
+    background: #990000;
+    color: #fff;
+    text-align: center;
+    padding: 8px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    border-bottom: 2px solid #ff0000;
+    position: sticky;
+    top: 0;
+    z-index: 10000;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    animation: blink-red 4s infinite;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+
+@keyframes blink-red {
+    0%, 100% { background: #990000; }
+    50% { background: #660000; }
+}
+
+/* Glitch Effect */
+.glitch {
+    position: relative;
+    display: inline-block;
+}
+
+.glitch::before,
+.glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-card);
+}
+
+.glitch::before {
+    left: 2px;
+    text-shadow: -1px 0 #ff00c1;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim-1 5s infinite linear alternate-reverse;
+}
+
+.glitch::after {
+    left: -2px;
+    text-shadow: -1px 0 #00fff9;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim-2 5s infinite linear alternate-reverse;
+}
+
+@keyframes glitch-anim-1 {
+    0% { clip: rect(30px, 9999px, 10px, 0); }
+    5% { clip: rect(85px, 9999px, 98px, 0); }
+    10% { clip: rect(2px, 9999px, 77px, 0); }
+    15% { clip: rect(58px, 9999px, 21px, 0); }
+    20% { clip: rect(5px, 9999px, 97px, 0); }
+    25% { clip: rect(71px, 9999px, 100px, 0); }
+    30% { clip: rect(6px, 9999px, 4px, 0); }
+    35% { clip: rect(60px, 9999px, 89px, 0); }
+    40% { clip: rect(26px, 9999px, 24px, 0); }
+    45% { clip: rect(90px, 9999px, 79px, 0); }
+    50% { clip: rect(15px, 9999px, 46px, 0); }
+    55% { clip: rect(16px, 9999px, 7px, 0); }
+    60% { clip: rect(2px, 9999px, 34px, 0); }
+    65% { clip: rect(86px, 9999px, 50px, 0); }
+    70% { clip: rect(58px, 9999px, 63px, 0); }
+    75% { clip: rect(21px, 9999px, 97px, 0); }
+    80% { clip: rect(65px, 9999px, 39px, 0); }
+    85% { clip: rect(34px, 9999px, 4px, 0); }
+    90% { clip: rect(96px, 9999px, 80px, 0); }
+    95% { clip: rect(41px, 9999px, 63px, 0); }
+    100% { clip: rect(28px, 9999px, 76px, 0); }
+}
+
+@keyframes glitch-anim-2 {
+    0% { clip: rect(65px, 9999px, 100px, 0); }
+    5% { clip: rect(52px, 9999px, 74px, 0); }
+    10% { clip: rect(79px, 9999px, 85px, 0); }
+    15% { clip: rect(75px, 9999px, 5px, 0); }
+    20% { clip: rect(67px, 9999px, 61px, 0); }
+    25% { clip: rect(14px, 9999px, 79px, 0); }
+    30% { clip: rect(1px, 9999px, 66px, 0); }
+    35% { clip: rect(86px, 9999px, 30px, 0); }
+    40% { clip: rect(23px, 9999px, 98px, 0); }
+    45% { clip: rect(85px, 9999px, 72px, 0); }
+    50% { clip: rect(71px, 9999px, 75px, 0); }
+    55% { clip: rect(2px, 9999px, 48px, 0); }
+    60% { clip: rect(30px, 9999px, 16px, 0); }
+    65% { clip: rect(59px, 9999px, 50px, 0); }
+    70% { clip: rect(41px, 9999px, 62px, 0); }
+    75% { clip: rect(2px, 9999px, 82px, 0); }
+    80% { clip: rect(47px, 9999px, 73px, 0); }
+    85% { clip: rect(3px, 9999px, 27px, 0); }
+    90% { clip: rect(26px, 9999px, 55px, 0); }
+    95% { clip: rect(42px, 9999px, 97px, 0); }
+    100% { clip: rect(38px, 9999px, 49px, 0); }
+}
+
+/* SCP Classified Stamp */
+.scp-stamp {
+    position: absolute;
+    top: 40px;
+    right: 40px;
+    border: 4px solid rgba(255, 0, 0, 0.2);
+    color: rgba(255, 0, 0, 0.2);
+    padding: 10px 20px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 32px;
+    transform: rotate(-20deg);
+    pointer-events: none;
+    z-index: 0;
+    text-transform: uppercase;
+    font-weight: bold;
+    white-space: nowrap;
+    mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='50'><rect x='0' y='0' width='100%' height='100%' fill='white' /><rect x='10' y='10' width='20' height='20' fill='black' opacity='0.5' /></svg>"); /* Grunge effect simulation */
+}
+
+/* Typewriter Cursor */
+.typing-cursor::after {
+    content: '█';
+    animation: cursor-blink 1s infinite;
+    margin-left: 4px;
+    color: var(--primary);
+}
+
+@keyframes cursor-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* Secure Container Border */
+.secure-container {
+    border: 1px solid var(--border-dim);
+    position: relative;
+}
+
+.secure-container::before {
+    content: 'SECURE CONNECTION // ENCRYPTED';
+    position: absolute;
+    bottom: -20px;
+    right: 0;
+    font-size: 9px;
+    color: var(--border-dim);
+    letter-spacing: 2px;
+}
