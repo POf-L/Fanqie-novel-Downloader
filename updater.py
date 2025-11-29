@@ -393,7 +393,7 @@ echo Starting application...
 echo Target: "{current_exe_path}"
 echo WorkDir: "{exe_dir}"
 
-start "" /D "{exe_dir}" "{current_exe_path}"
+start "Fanqie Novel Downloader" /D "{exe_dir}" "{current_exe_path}"
 
 echo New version launch attempt complete.
 ping -n 2 127.0.0.1 >nul
