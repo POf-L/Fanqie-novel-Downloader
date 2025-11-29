@@ -309,60 +309,77 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     pid = os.getpid()
     
     # 创建更新批处理脚本（直接嵌入 PID 避免参数传递问题）
+    # 注意：使用英文提示避免 CMD 编码问题
     bat_content = f'''@echo off
 chcp 65001 >nul
 echo ====================================
-echo 番茄小说下载器 - 自动更新
+echo Fanqie Novel Downloader - Auto Update
 echo ====================================
 echo.
-echo 正在等待程序退出 (PID: {pid})...
+echo Waiting for application to exit (PID: {pid})...
 
 :wait_loop
 tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
 if not errorlevel 1 (
+    echo Application still running, waiting...
     timeout /t 1 /nobreak >nul
     goto wait_loop
 )
 
-echo 程序已退出，开始更新...
+:: Double check and force kill if needed
+timeout /t 2 /nobreak >nul
+tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
+if not errorlevel 1 (
+    echo Force killing process...
+    taskkill /F /PID {pid} >nul 2>&1
+    timeout /t 1 /nobreak >nul
+)
+
+echo Application exited. Starting update...
 echo.
 
-:: 备份旧版本
+:: Backup old version
 set "BACKUP_PATH={current_exe_path}.backup"
 if exist "{current_exe_path}" (
-    echo 备份旧版本...
+    echo Backing up old version...
     copy /Y "{current_exe_path}" "%BACKUP_PATH%" >nul
     if errorlevel 1 (
-        echo 备份失败，更新终止
+        echo Backup failed! Aborting update.
         pause
         exit /b 1
     )
 )
 
-:: 替换新版本
-echo 安装新版本...
+:: Replace with new version
+echo Installing new version...
+:retry_copy
 copy /Y "{new_exe_path}" "{current_exe_path}" >nul
 if errorlevel 1 (
-    echo 更新失败，正在恢复旧版本...
-    copy /Y "%BACKUP_PATH%" "{current_exe_path}" >nul
-    pause
-    exit /b 1
+    echo Copy failed, retrying in 1 second...
+    timeout /t 1 /nobreak >nul
+    copy /Y "{new_exe_path}" "{current_exe_path}" >nul
+    if errorlevel 1 (
+        echo Update failed! Restoring old version...
+        copy /Y "%BACKUP_PATH%" "{current_exe_path}" >nul
+        pause
+        exit /b 1
+    )
 )
 
-:: 清理
-echo 清理临时文件...
+:: Cleanup
+echo Cleaning up temporary files...
 del /F /Q "{new_exe_path}" >nul 2>&1
 del /F /Q "%BACKUP_PATH%" >nul 2>&1
 
 echo.
-echo ✓ 更新完成！正在启动新版本...
+echo Update completed! Starting new version...
 echo.
 timeout /t 2 /nobreak >nul
 
-:: 启动新版本
+:: Start new version
 start "" "{current_exe_path}"
 
-:: 删除自身
+:: Delete self
 del /F /Q "%~f0" >nul 2>&1
 exit /b 0
 '''
