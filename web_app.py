@@ -737,6 +737,23 @@ def api_batch_cancel():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/language', methods=['GET', 'POST'])
+def api_language():
+    """获取/设置语言配置"""
+    from locales import get_current_lang, set_current_lang
+    
+    if request.method == 'GET':
+        return jsonify({'language': get_current_lang()})
+    else:
+        data = request.get_json()
+        lang = data.get('language', 'zh')
+        if lang not in ['zh', 'en']:
+            lang = 'zh'
+        if set_current_lang(lang):
+            return jsonify({'success': True, 'language': lang})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to save language'}), 500
+
 @app.route('/api/config/save-path', methods=['GET', 'POST'])
 def api_config_save_path():
     """获取/保存下载路径配置"""

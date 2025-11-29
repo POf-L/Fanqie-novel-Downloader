@@ -191,6 +191,9 @@ class I18n {
     constructor() {
         this.lang = localStorage.getItem('app_language') || 'zh';
         this.observers = [];
+        
+        // 启动时同步语言到后端
+        this.syncToBackend(this.lang);
     }
     
     t(key) {
@@ -206,6 +209,17 @@ class I18n {
         localStorage.setItem('app_language', lang);
         this.updatePage();
         this.notifyObservers();
+        
+        // 同步语言设置到后端
+        this.syncToBackend(lang);
+    }
+    
+    syncToBackend(lang) {
+        fetch('/api/language', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ language: lang })
+        }).catch(err => console.warn('Failed to sync language to backend:', err));
     }
     
     toggleLanguage() {

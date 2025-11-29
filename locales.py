@@ -3,9 +3,41 @@
 Language Configuration / 语言配置文件
 """
 
+import os
+import json
+import tempfile
+
 # Default language
 # 可以通过修改此变量切换语言 / Change this to 'en' to switch language
 DEFAULT_LANG = "zh"
+
+# 配置文件路径（与 web_app.py 保持一致）
+_CONFIG_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
+
+def get_current_lang():
+    """从配置文件读取当前语言设置"""
+    try:
+        if os.path.exists(_CONFIG_FILE):
+            with open(_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                return config.get('language', DEFAULT_LANG)
+    except:
+        pass
+    return DEFAULT_LANG
+
+def set_current_lang(lang):
+    """保存语言设置到配置文件"""
+    try:
+        config = {}
+        if os.path.exists(_CONFIG_FILE):
+            with open(_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        config['language'] = lang
+        with open(_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
 
 # Translations
 MESSAGES = {
@@ -234,7 +266,7 @@ def t(key, *args):
         key: Message key
         *args: Format arguments
     """
-    lang_code = DEFAULT_LANG
+    lang_code = get_current_lang()
     # Fallback to zh if lang not found
     if lang_code not in MESSAGES:
         lang_code = "zh"

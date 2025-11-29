@@ -66,7 +66,9 @@ def open_web_interface(port, access_token):
                 
                 def toggle_maximize(self):
                     if _window:
-                        if hasattr(_window, 'maximized') and _window.maximized:
+                        is_maximized = hasattr(_window, 'maximized') and _window.maximized
+                        is_fullscreen = hasattr(_window, 'fullscreen') and _window.fullscreen
+                        if is_maximized or is_fullscreen:
                             _window.restore()
                         else:
                             _window.maximize()
