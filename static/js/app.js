@@ -45,6 +45,24 @@ const AppState = {
     }
 };
 
+/* ===================== 版本管理 ===================== */
+
+async function fetchVersion() {
+    const versionEl = document.getElementById('version');
+    if (!versionEl) return;
+    
+    try {
+        const response = await fetch('/api/version');
+        const data = await response.json();
+        if (data.success && data.version) {
+            versionEl.textContent = data.version;
+        }
+    } catch (error) {
+        console.error('获取版本信息失败:', error);
+        versionEl.textContent = 'unknown';
+    }
+}
+
 /* ===================== 日志管理 ===================== */
 
 class Logger {
@@ -466,9 +484,8 @@ function initializeUI() {
     // 浏览按钮（模拟文件选择）
     document.getElementById('browseBtn').addEventListener('click', handleBrowse);
     
-    // 版本信息
-    const versionEl = document.getElementById('version');
-    if (versionEl) versionEl.textContent = '1.0.0';
+    // 版本信息 - 从API获取
+    fetchVersion();
     
     // 初始化章节选择弹窗事件
     initChapterModalEvents();

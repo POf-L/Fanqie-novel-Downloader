@@ -340,6 +340,15 @@ def api_init():
         return jsonify({'success': True, 'message': '模块加载完成'})
     return jsonify({'success': False, 'message': '模块加载失败'}), 500
 
+@app.route('/api/version', methods=['GET'])
+def api_version():
+    """获取当前版本号"""
+    try:
+        from config import __version__
+        return jsonify({'success': True, 'version': __version__})
+    except Exception as e:
+        return jsonify({'success': False, 'version': 'unknown', 'message': str(e)}), 500
+
 @app.route('/api/status', methods=['GET'])
 def api_status():
     """获取下载状态"""
