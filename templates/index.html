@@ -12,7 +12,7 @@
         <!-- 顶部栏 -->
         <header class="dashboard-header">
             <div class="brand">
-                <div class="app-logo">🍅</div>
+                <div class="app-logo pixel-tomato"></div>
                 <h1 class="app-title">番茄小说下载器</h1>
             </div>
             <div class="header-actions">
@@ -31,11 +31,11 @@
                     <!-- 导航标签 -->
                     <div class="tab-nav">
                         <button class="tab-btn active" data-tab="search">
-                            <span class="tab-icon">🔍</span>
+                            <span class="tab-icon pixel-icon">[?]</span>
                             <span class="tab-label">搜索书籍</span>
                         </button>
                         <button class="tab-btn" data-tab="download">
-                            <span class="tab-icon">⬇️</span>
+                            <span class="tab-icon pixel-icon">[+]</span>
                             <span class="tab-label">手动下载</span>
                         </button>
                     </div>
@@ -102,10 +102,10 @@
 
                                 <div class="form-actions">
                                     <button class="btn btn-primary btn-xl" id="downloadBtn">
-                                        <span class="icon">🚀</span> 开始下载
+                                        <span class="icon pixel-icon">[>]</span> 开始下载
                                     </button>
                                     <button class="btn btn-danger btn-xl" id="cancelBtn" style="display: none;">
-                                        <span class="icon">⏹</span> 取消下载
+                                        <span class="icon pixel-icon">[X]</span> 取消下载
                                     </button>
                                     <button class="btn btn-secondary" id="clearBtn">重置</button>
                                 </div>
@@ -162,7 +162,7 @@
     <div class="modal" id="chapterModal" style="display: none;">
         <div class="modal-content" style="max-width: 720px; width: 90%;">
             <div class="modal-header">
-                <h3 style="margin: 0; font-size: 16px;">📑 选择章节</h3>
+                <h3 style="margin: 0; font-size: 14px;">[#] 选择章节</h3>
                 <button class="modal-close" id="chapterModalClose">&times;</button>
             </div>
             <div class="modal-body" style="padding: 16px;">
@@ -174,7 +174,7 @@
                 </div>
                 <div class="chapter-list" id="chapterList" style="max-height: 400px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;">
                     <div class="empty-state">
-                        <div class="empty-state-icon">📖</div>
+                        <div class="empty-state-icon pixel-icon">[=]</div>
                         <div class="empty-state-text">请先获取章节列表</div>
                     </div>
                 </div>
@@ -190,7 +190,7 @@
     <div class="modal" id="updateModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>🎉 发现新版本</h3>
+                <h3>[!] 发现新版本</h3>
                 <button class="modal-close" id="updateModalClose">&times;</button>
             </div>
             <div class="modal-body">

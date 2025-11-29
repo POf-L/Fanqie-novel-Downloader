@@ -1,4 +1,4 @@
-/* ===================== 复古书卷风格弹窗 ===================== */
+/* ===================== 8-BIT 像素风格弹窗 ===================== */
 
 .modal {
     display: none;
@@ -8,134 +8,122 @@
     top: 0;
     width: 100%;
     height: 100%;
-    background: rgba(47, 24, 16, 0.6);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.85);
     align-items: center;
     justify-content: center;
-    animation: fadeIn 0.3s ease;
+    animation: pixelFadeIn 0.2s steps(4);
 }
 
-@keyframes fadeIn {
+@keyframes pixelFadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
 }
 
-@keyframes unrollScroll {
+@keyframes pixelSlideIn {
     from { 
         opacity: 0;
-        transform: translateY(-30px) scaleY(0.9);
+        transform: translateY(-20px);
     }
     to { 
         opacity: 1;
-        transform: translateY(0) scaleY(1);
+        transform: translateY(0);
     }
 }
 
-/* 弹窗主体 - 卷轴风格 */
+/* 弹窗主体 - 像素风格 */
 .modal-content {
-    background: linear-gradient(180deg, #F5E6C8 0%, #EDE0C8 50%, #E8D4A8 100%);
+    background: #16213e;
     padding: 0;
-    border-radius: 12px;
     width: 90%;
     max-width: 600px;
     max-height: 85vh;
     overflow: hidden;
-    border: 4px solid #5C4033;
+    border: 4px solid #00ff00;
     box-shadow: 
-        0 20px 60px rgba(47, 24, 16, 0.4),
-        inset 0 1px 0 rgba(255, 250, 240, 0.5);
+        8px 8px 0 #000000,
+        0 0 20px rgba(0, 255, 0, 0.3);
     display: flex;
     flex-direction: column;
-    animation: unrollScroll 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: pixelSlideIn 0.2s steps(4);
     position: relative;
 }
 
-/* 卷轴装饰边框 */
+/* 像素装饰边框 - 内部双线 */
 .modal-content::before {
     content: '';
     position: absolute;
-    top: 10px;
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
-    border: 2px dashed #A08060;
-    border-radius: 8px;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    border: 2px solid #006600;
     pointer-events: none;
     z-index: 0;
 }
 
-/* 卷轴顶部装饰 */
+/* 移除旧装饰 */
 .modal-content::after {
-    content: '━━━━━ ❧ ━━━━━';
-    position: absolute;
-    top: 4px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 14px;
-    color: #B8860B;
-    letter-spacing: 2px;
-    z-index: 1;
+    display: none;
 }
 
 /* 弹窗头部 */
 .modal-header {
-    padding: 28px 28px 18px;
-    border-bottom: 2px solid #8B7355;
+    padding: 16px;
+    border-bottom: 2px solid #00ff00;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: linear-gradient(180deg, rgba(184, 134, 11, 0.15) 0%, transparent 100%);
+    background: #1a1a2e;
     position: relative;
     z-index: 1;
 }
 
 .modal-header h3 {
     margin: 0;
-    font-family: 'ZCOOL XiaoWei', 'Noto Serif SC', serif;
-    font-size: 20px;
-    font-weight: 600;
-    color: #2F1810;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+    font-size: 14px;
+    font-weight: 400;
+    color: #00ff00;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .modal-header h3::before {
-    content: '◆';
-    color: #B8860B;
-    font-size: 14px;
+    display: none;
 }
 
 /* 关闭按钮 */
 .modal-close {
-    width: 36px;
-    height: 36px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(180deg, #EDE0C8 0%, #D4C4A8 100%);
-    border: 2px solid #8B7355;
-    border-radius: 50%;
-    font-size: 20px;
+    background: #0f0f23;
+    border: 2px solid #ff0000;
+    font-size: 16px;
     cursor: pointer;
-    color: #6B5344;
-    transition: all 0.3s ease;
+    color: #ff0000;
+    transition: all 0.1s steps(2);
+    font-family: 'Press Start 2P', monospace;
 }
 
 .modal-close:hover {
-    background: linear-gradient(180deg, #8B2323 0%, #B22222 100%);
-    border-color: #8B2323;
-    color: #FDF5E6;
-    transform: rotate(90deg);
+    background: #ff0000;
+    border-color: #ff3333;
+    color: #ffffff;
+    box-shadow: 0 0 10px #ff0000;
 }
 
 /* 弹窗主体内容 */
 .modal-body {
-    padding: 24px 28px;
+    padding: 16px;
     overflow-y: auto;
     flex: 1;
     position: relative;
     z-index: 1;
+    background: #16213e;
 }
 
 .modal-body::-webkit-scrollbar {
@@ -143,24 +131,23 @@
 }
 
 .modal-body::-webkit-scrollbar-track {
-    background: #E8D4A8;
-    border-left: 1px solid #8B7355;
+    background: #0d0d0d;
+    border-left: 2px solid #006600;
 }
 
 .modal-body::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #8B7355 0%, #5C4033 100%);
-    border-radius: 5px;
-    border: 2px solid #E8D4A8;
+    background: #00ff00;
+    border: 2px solid #0d0d0d;
 }
 
 /* 弹窗底部 */
 .modal-footer {
-    padding: 18px 28px;
-    border-top: 2px solid #8B7355;
+    padding: 12px 16px;
+    border-top: 2px solid #00ff00;
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
-    background: linear-gradient(180deg, transparent 0%, rgba(184, 134, 11, 0.1) 100%);
+    gap: 10px;
+    background: #1a1a2e;
     position: relative;
     z-index: 1;
 }
@@ -169,22 +156,21 @@
 
 .book-info {
     display: flex;
-    padding: 24px;
-    gap: 24px;
-    background: linear-gradient(135deg, rgba(184, 134, 11, 0.08) 0%, transparent 100%);
-    border-bottom: 2px dashed #A08060;
-    margin: -24px -28px 24px;
-    padding: 24px 28px;
+    padding: 16px;
+    gap: 16px;
+    background: #0f0f23;
+    border-bottom: 2px dashed #006600;
+    margin: -16px -16px 16px;
 }
 
 .book-cover {
-    width: 100px;
-    height: 140px;
+    width: 80px;
+    height: 110px;
     object-fit: cover;
-    border-radius: 4px;
-    border: 3px solid #8B7355;
-    box-shadow: 4px 4px 12px rgba(47, 24, 16, 0.25);
+    border: 2px solid #00ff00;
+    box-shadow: 4px 4px 0 #000000;
     flex-shrink: 0;
+    image-rendering: pixelated;
 }
 
 .book-details {
@@ -195,107 +181,113 @@
 }
 
 .book-title {
-    font-family: 'ZCOOL XiaoWei', 'Noto Serif SC', serif;
-    margin: 0 0 12px 0;
-    font-size: 20px;
-    font-weight: 600;
-    color: #2F1810;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 400;
+    color: #00ff00;
 }
 
 .book-author {
-    margin: 0 0 8px 0;
-    color: #4A3728;
-    font-size: 14px;
+    margin: 0 0 6px 0;
+    color: #00cc00;
+    font-size: 11px;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
 }
 
 .book-author::before {
-    content: '✍ ';
-    color: #B8860B;
+    content: '[A] ';
+    color: #00ffff;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
 }
 
 .book-abstract {
-    margin: 12px 0;
-    font-size: 13px;
-    color: #6B5344;
+    margin: 10px 0;
+    font-size: 10px;
+    color: #008800;
     line-height: 1.8;
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-style: italic;
+    font-style: normal;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
 }
 
 .book-chapters {
     margin: 0;
-    font-size: 12px;
-    color: #6B5344;
+    font-size: 10px;
+    color: #008800;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
 }
 
 .book-chapters::before {
-    content: '📖 ';
+    content: '[#] ';
+    color: #ff00ff;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
 }
 
 /* ===================== 章节选择区域 ===================== */
 
 .chapter-selection {
-    padding: 20px 0;
+    padding: 16px 0;
 }
 
 .chapter-selection h3 {
-    margin: 0 0 16px 0;
-    font-family: 'Noto Serif SC', serif;
-    font-size: 16px;
-    color: #2F1810;
+    margin: 0 0 12px 0;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+    font-size: 12px;
+    color: #00ff00;
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
 .chapter-selection h3::before {
-    content: '▸';
-    color: #B8860B;
+    display: none;
 }
 
 /* 章节列表 */
 .chapter-list {
-    background: linear-gradient(180deg, #EDE0C8 0%, #F5E6C8 100%);
-    border: 2px solid #8B7355;
-    border-radius: 8px;
-    padding: 16px;
+    background: #0f0f23;
+    border: 2px solid #00ff00;
+    padding: 12px;
 }
 
 .chapter-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    background: linear-gradient(90deg, #FDF5E6 0%, #F5E6C8 100%);
-    border: 1px solid #D4C4A8;
-    border-radius: 6px;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #1a1a2e;
+    border: 2px solid #006600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.1s steps(2);
     margin-bottom: 0;
-    min-height: 42px;
+    min-height: 36px;
 }
 
 .chapter-item input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
-    accent-color: #8B2323;
+    accent-color: #00ff00;
     cursor: pointer;
 }
 
 .chapter-item span {
     flex: 1;
-    font-size: 13px;
-    color: #4A3728;
+    font-size: 10px;
+    color: #00cc00;
     line-height: 1.4;
     word-break: break-word;
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
 }
 
 .chapter-item:last-child {
@@ -303,40 +295,39 @@
 }
 
 .chapter-item:hover {
-    background: linear-gradient(90deg, #F5E6C8 0%, #EDE0C8 100%);
-    border-color: #A08060;
+    background: #16213e;
+    border-color: #00ff00;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
 }
 
 /* 章节选择容器 - 手动选择模式 */
 .chapter-manual-container {
-    padding: 16px;
-    background: linear-gradient(180deg, #EDE0C8 0%, #F5E6C8 100%);
-    border: 2px solid #8B7355;
-    border-radius: 8px;
+    padding: 12px;
+    background: #0f0f23;
+    border: 2px solid #00ff00;
 }
 
 .chapter-manual-container .chapter-actions {
-    border-color: #D4C4A8 !important;
+    border-color: #006600 !important;
 }
 
 #dialogSelectedCount {
-    color: #8B2323;
+    color: #ff00ff;
 }
 
 /* 章节范围选择 */
 .chapter-inputs {
-    padding: 16px;
-    background: linear-gradient(180deg, #EDE0C8 0%, #F5E6C8 100%);
-    border: 2px solid #8B7355;
-    border-radius: 8px;
-    margin-top: 12px;
+    padding: 12px;
+    background: #0f0f23;
+    border: 2px solid #00ff00;
+    margin-top: 10px;
 }
 
 .input-row {
     display: flex;
     align-items: center;
-    margin-bottom: 12px;
-    gap: 12px;
+    margin-bottom: 10px;
+    gap: 10px;
 }
 
 .input-row:last-child {
@@ -344,108 +335,108 @@
 }
 
 .input-row label {
-    font-family: 'Noto Serif SC', serif;
-    font-size: 14px;
-    font-weight: 600;
-    color: #2F1810;
-    min-width: 80px;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+    font-size: 11px;
+    font-weight: 400;
+    color: #00ff00;
+    min-width: 70px;
     flex-shrink: 0;
 }
 
 .chapter-select {
     flex: 1;
-    padding: 12px 16px;
-    font-family: 'Noto Serif SC', serif;
-    font-size: 14px;
-    color: #2F1810;
-    background: linear-gradient(180deg, #FDF5E6 0%, #F5E6C8 100%);
-    border: 2px solid #A08060;
-    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+    font-size: 11px;
+    color: #00ff00;
+    background: #1a1a2e;
+    border: 2px solid #006600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.1s steps(2);
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238B7355' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2300ff00' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 40px;
+    background-position: right 10px center;
+    padding-right: 32px;
 }
 
 .chapter-select:hover {
-    border-color: #8B7355;
+    border-color: #00ff00;
 }
 
 .chapter-select:focus {
     outline: none;
-    border-color: #8B2323;
-    box-shadow: 0 0 0 3px rgba(139, 35, 35, 0.15);
+    border-color: #00ff00;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
 }
 
 .chapter-select option {
-    padding: 10px;
-    background: #F5E6C8;
-    color: #2F1810;
+    padding: 8px;
+    background: #1a1a2e;
+    color: #00ff00;
 }
 
 /* 章节选择模式单选按钮 */
 .chapter-range {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-bottom: 12px;
+    gap: 8px;
+    margin-bottom: 10px;
 }
 
 .chapter-range label {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    background: linear-gradient(90deg, #FDF5E6 0%, #F5E6C8 100%);
-    border: 2px solid #D4C4A8;
-    border-radius: 6px;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #1a1a2e;
+    border: 2px solid #006600;
     cursor: pointer;
-    font-family: 'Noto Serif SC', serif;
-    font-size: 14px;
-    color: #4A3728;
-    transition: all 0.2s ease;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+    font-size: 11px;
+    color: #00cc00;
+    transition: all 0.1s steps(2);
 }
 
 .chapter-range label:hover {
-    border-color: #A08060;
+    border-color: #00ff00;
 }
 
 .chapter-range input[type="radio"] {
-    width: 18px;
-    height: 18px;
-    accent-color: #8B2323;
+    width: 16px;
+    height: 16px;
+    accent-color: #00ff00;
     cursor: pointer;
 }
 
 .chapter-range input[type="radio"]:checked + span,
 .chapter-range label:has(input[type="radio"]:checked) {
-    color: #8B2323;
-    font-weight: 600;
-    border-color: #8B2323;
-    background: linear-gradient(90deg, rgba(139, 35, 35, 0.08) 0%, rgba(139, 35, 35, 0.04) 100%);
+    color: #00ff00;
+    font-weight: 400;
+    border-color: #00ff00;
+    background: #16213e;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
 }
 
 .chapter-item.selected {
-    background: linear-gradient(90deg, rgba(139, 35, 35, 0.12) 0%, rgba(139, 35, 35, 0.06) 100%);
-    border-color: #8B2323;
+    background: #16213e;
+    border-color: #00ff00;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
 }
 
 .chapter-item input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    accent-color: #8B2323;
+    width: 16px;
+    height: 16px;
+    accent-color: #00ff00;
     cursor: pointer;
 }
 
 .chapter-item span {
-    font-family: 'Noto Serif SC', serif;
-    font-size: 14px;
-    color: #4A3728;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+    font-size: 10px;
+    color: #00cc00;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -454,76 +445,76 @@
 /* ===================== 更新弹窗 ===================== */
 
 .update-info {
-    font-family: 'Noto Serif SC', serif;
-    font-size: 15px;
-    line-height: 1.8;
-    color: #4A3728;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+    font-size: 11px;
+    line-height: 2;
+    color: #00cc00;
 }
 
 .update-info p {
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
 .update-info strong {
-    color: #2F1810;
+    color: #00ff00;
 }
 
 .update-description {
-    margin-top: 20px;
-    padding: 16px;
-    background: linear-gradient(180deg, #EDE0C8 0%, #F5E6C8 100%);
-    border: 2px solid #8B7355;
-    border-radius: 8px;
+    margin-top: 16px;
+    padding: 12px;
+    background: #0f0f23;
+    border: 2px solid #00ff00;
     max-height: 200px;
     overflow-y: auto;
 }
 
 .update-description strong {
     display: block;
-    margin-bottom: 10px;
-    color: #2F1810;
+    margin-bottom: 8px;
+    color: #00ff00;
 }
 
 .update-description strong::before {
-    content: '📜 ';
+    content: '[i] ';
+    color: #00ffff;
+    font-family: 'Press Start 2P', monospace;
 }
 
 .update-description div {
-    font-size: 14px;
-    color: #6B5344;
-    line-height: 1.7;
+    font-size: 10px;
+    color: #008800;
+    line-height: 1.8;
 }
 
 /* Markdown 表格样式 */
 .md-table {
     width: 100%;
     border-collapse: collapse;
-    margin: 12px 0;
-    font-size: 13px;
-    background: #FDF5E6;
-    border-radius: 6px;
+    margin: 10px 0;
+    font-size: 7px;
+    background: #1a1a2e;
     overflow: hidden;
-    border: 1px solid #8B7355;
+    border: 2px solid #00ff00;
 }
 
 .md-table th,
 .md-table td {
-    padding: 10px 12px;
+    padding: 8px 10px;
     text-align: left;
-    border-bottom: 1px solid #D4C4A8;
+    border-bottom: 2px solid #006600;
 }
 
 .md-table th {
-    background: linear-gradient(180deg, #E8D4A8 0%, #D4C4A8 100%);
-    font-weight: 600;
-    color: #2F1810;
+    background: #0f0f23;
+    font-weight: 400;
+    color: #00ffff;
 }
 
 .md-table tbody tr:hover {
-    background: #F5E6C8;
+    background: #16213e;
 }
 
 .md-table tbody tr:last-child td {
@@ -535,36 +526,36 @@
 .version-options {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .version-option {
     display: flex;
     align-items: flex-start;
-    gap: 14px;
-    padding: 16px;
-    background: linear-gradient(135deg, #F5E6C8 0%, #EDE0C8 100%);
-    border: 2px solid #8B7355;
-    border-radius: 8px;
+    gap: 12px;
+    padding: 12px;
+    background: #1a1a2e;
+    border: 2px solid #006600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.1s steps(2);
 }
 
 .version-option:hover {
-    background: linear-gradient(135deg, #EDE0C8 0%, #E8D4A8 100%);
-    transform: translateX(4px);
+    background: #16213e;
+    border-color: #00ff00;
 }
 
 .version-option.recommended {
-    border-color: #8B2323;
-    background: linear-gradient(135deg, rgba(139, 35, 35, 0.08) 0%, rgba(139, 35, 35, 0.04) 100%);
+    border-color: #ff00ff;
+    background: #1a1a2e;
+    box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
 }
 
 .version-option input[type="radio"] {
-    margin-top: 4px;
-    accent-color: #8B2323;
-    width: 18px;
-    height: 18px;
+    margin-top: 2px;
+    accent-color: #00ff00;
+    width: 16px;
+    height: 16px;
 }
 
 .version-option span {
@@ -573,28 +564,30 @@
 
 .version-option strong {
     display: block;
-    font-family: 'Noto Serif SC', serif;
-    font-size: 15px;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+    font-size: 11px;
     margin-bottom: 6px;
-    color: #2F1810;
+    color: #00ff00;
 }
 
 .version-option small {
-    color: #6B5344;
-    font-size: 13px;
+    color: #008800;
+    font-size: 10px;
+    font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
 }
 
 .version-option .badge {
     display: inline-block;
-    padding: 3px 10px;
-    font-size: 11px;
-    font-weight: 600;
-    background: linear-gradient(135deg, #8B2323 0%, #B22222 100%);
-    color: #FDF5E6;
-    border-radius: 4px;
-    margin-left: 10px;
+    padding: 3px 8px;
+    font-size: 6px;
+    font-weight: 400;
+    background: #ff00ff;
+    color: #ffffff;
+    margin-left: 8px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    border: 2px solid #cc00cc;
+    font-family: 'Press Start 2P', monospace;
 }
 
 /* ===================== 响应式设计 ===================== */
@@ -603,26 +596,26 @@
     .modal-content {
         width: 95%;
         max-height: 90vh;
-        margin: 16px;
+        margin: 12px;
     }
     
     .modal-header,
     .modal-body,
     .modal-footer {
-        padding-left: 20px;
-        padding-right: 20px;
+        padding-left: 12px;
+        padding-right: 12px;
     }
     
     .book-info {
         flex-direction: column;
         align-items: center;
         text-align: center;
-        padding: 20px;
+        padding: 12px;
     }
     
     .book-cover {
-        width: 80px;
-        height: 112px;
+        width: 60px;
+        height: 84px;
     }
     
     .modal-footer {
