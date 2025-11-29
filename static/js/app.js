@@ -764,6 +764,38 @@ function simpleMarkdownToHtml(markdown) {
     
     let html = markdown;
     
+    // 处理 Markdown 表格
+    const tableRegex = /\|(.+)\|\n\|([\s\-\:]+\|)+\n((\|.+\|\n?)+)/g;
+    html = html.replace(tableRegex, (match) => {
+        const lines = match.trim().split('\n');
+        if (lines.length < 3) return match;
+        
+        // 解析表头
+        const headerCells = lines[0].split('|').filter(cell => cell.trim());
+        // 跳过分隔行 (lines[1])
+        // 解析数据行
+        const dataRows = lines.slice(2);
+        
+        let tableHtml = '<table class="md-table"><thead><tr>';
+        headerCells.forEach(cell => {
+            tableHtml += `<th>${cell.trim()}</th>`;
+        });
+        tableHtml += '</tr></thead><tbody>';
+        
+        dataRows.forEach(row => {
+            if (row.trim()) {
+                const cells = row.split('|').filter(cell => cell.trim() !== '');
+                tableHtml += '<tr>';
+                cells.forEach(cell => {
+                    tableHtml += `<td>${cell.trim()}</td>`;
+                });
+                tableHtml += '</tr>';
+            }
+        });
+        tableHtml += '</tbody></table>';
+        return tableHtml;
+    });
+    
     // 转换标题
     html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
     html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
@@ -791,6 +823,8 @@ function simpleMarkdownToHtml(markdown) {
     html = html.replace(/<\/h([1-6])><br>/g, '</h$1>');
     html = html.replace(/<br><\/ul>/g, '</ul>');
     html = html.replace(/<ul><br>/g, '<ul>');
+    html = html.replace(/<br><table/g, '<table');
+    html = html.replace(/<\/table><br>/g, '</table>');
     
     return html;
 }

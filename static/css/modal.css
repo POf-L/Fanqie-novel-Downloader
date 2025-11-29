@@ -353,6 +353,39 @@
     line-height: 1.7;
 }
 
+/* Markdown 表格样式 */
+.md-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+    background: #FDF5E6;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #8B7355;
+}
+
+.md-table th,
+.md-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid #D4C4A8;
+}
+
+.md-table th {
+    background: linear-gradient(180deg, #E8D4A8 0%, #D4C4A8 100%);
+    font-weight: 600;
+    color: #2F1810;
+}
+
+.md-table tbody tr:hover {
+    background: #F5E6C8;
+}
+
+.md-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
 /* ===================== 版本选择器 ===================== */
 
 .version-options {
