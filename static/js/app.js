@@ -1208,7 +1208,7 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                     <label>起始章节:</label>
                     <select id="startChapter" class="chapter-select">
                         ${bookInfo.chapters.map((ch, idx) => 
-                            `<option value="${idx}">${idx + 1}. ${ch.title}</option>`
+                            `<option value="${idx}">${ch.title}</option>`
                         ).join('')}
                     </select>
                 </div>
@@ -1216,7 +1216,7 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                     <label>结束章节:</label>
                     <select id="endChapter" class="chapter-select">
                         ${bookInfo.chapters.map((ch, idx) => 
-                            `<option value="${idx}" ${idx === bookInfo.chapters.length - 1 ? 'selected' : ''}>${idx + 1}. ${ch.title}</option>`
+                            `<option value="${idx}" ${idx === bookInfo.chapters.length - 1 ? 'selected' : ''}>${ch.title}</option>`
                         ).join('')}
                     </select>
                 </div>
