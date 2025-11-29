@@ -23,6 +23,7 @@ import aiohttp
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from watermark import apply_watermark_to_chapter
+from locales import t
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 requests.packages.urllib3.disable_warnings()
@@ -108,7 +109,7 @@ class APIManager:
             return None
         except Exception as e:
             with print_lock:
-                print(f"搜索异常: {str(e)}")
+                print(t("dl_search_error", str(e)))
             return None
     
     def get_book_detail(self, book_id: str) -> Optional[Dict]:
@@ -128,21 +129,21 @@ class APIManager:
             return None
         except Exception as e:
             with print_lock:
-                print(f"获取书籍详情异常: {str(e)}")
+                print(t("dl_detail_error", str(e)))
             return None
     
     def get_chapter_list(self, book_id: str) -> Optional[List[Dict]]:
         """获取章节列表"""
         try:
             with print_lock:
-                print(f"[DEBUG] 开始获取章节列表: ID={book_id}")
+                print(t("dl_chapter_list_start", book_id))
                 
             url = f"{self.base_url}{self.endpoints['book']}"
             params = {"book_id": book_id}
             response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
             
             with print_lock:
-                print(f"[DEBUG] 章节列表响应: {response.status_code}")
+                print(t("dl_chapter_list_resp", response.status_code))
             
             if response.status_code == 200:
                 data = response.json()
@@ -154,7 +155,7 @@ class APIManager:
             return None
         except Exception as e:
             with print_lock:
-                print(f"获取章节列表异常: {str(e)}")
+                print(t("dl_chapter_list_error", str(e)))
             return None
     
     def get_chapter_content(self, item_id: str) -> Optional[Dict]:
@@ -171,7 +172,7 @@ class APIManager:
             return None
         except Exception as e:
             with print_lock:
-                print(f"获取章节内容异常: {str(e)}")
+                print(t("dl_content_error", str(e)))
             return None
 
     async def get_chapter_content_async(self, item_id: str) -> Optional[Dict]:
@@ -357,7 +358,7 @@ def save_status(book_id: str, downloaded_ids):
             json.dump(list(downloaded_ids), f, ensure_ascii=False, indent=2)
     except Exception as e:
         with print_lock:
-            print(f"保存下载状态失败: {str(e)}")
+            print(t("dl_save_status_fail", str(e)))
 
 
 def clear_status(book_id: str):
@@ -506,7 +507,7 @@ def download_cover(cover_url, headers):
         
     except Exception as e:
         with print_lock:
-            print(f"下载封面失败: {str(e)}")
+            print(t("dl_cover_fail", str(e)))
         return None, None, None
 
 
@@ -530,11 +531,33 @@ def create_epub(name, author_name, description, cover_url, chapters, save_path):
                 book.set_cover(f'cover{file_ext}', cover_content)
         except Exception as e:
             with print_lock:
-                print(f"添加封面失败: {str(e)}")
+                print(t("dl_cover_add_fail", str(e)))
     
     spine_items = ['nav']
     toc_items = []
     
+    # 创建书籍信息页 (简介页)
+    intro_html = f'<h1>{name}</h1>'
+    if author_name:
+        intro_html += f'<p><strong>作者：</strong> {author_name}</p>'
+    
+    if description:
+        intro_html += '<hr/>'
+        intro_html += '<h3>简介</h3>'
+        # 处理简介的换行
+        desc_lines = description.split('\n')
+        for line in desc_lines:
+            if line.strip():
+                intro_html += f'<p>{line.strip()}</p>'
+                
+    intro_chapter = epub.EpubHtml(title='书籍详情', file_name='intro.xhtml', lang='zh-CN')
+    intro_chapter.content = intro_html
+    book.add_item(intro_chapter)
+    
+    # 将简介页添加到 spine 和 toc
+    spine_items.append(intro_chapter)
+    toc_items.append(intro_chapter)
+
     for idx, ch_data in enumerate(chapters):
         chapter_file = f'chapter_{idx + 1}.xhtml'
         title = ch_data.get('title', f'第{idx + 1}章')
@@ -885,7 +908,7 @@ class NovelDownloader:
             return None
         except Exception as e:
             with print_lock:
-                print(f"搜索失败: {str(e)}")
+                print(t("dl_search_fail", str(e)))
             return None
 
 
@@ -931,21 +954,21 @@ class BatchDownloader:
         self.total_count = len(book_ids)
         
         if not book_ids:
-            return {'success': False, 'message': '没有要下载的书籍', 'results': []}
+            return {'success': False, 'message': t('dl_batch_no_books'), 'results': []}
         
         api = get_api_manager()
         if api is None:
-            return {'success': False, 'message': 'API 初始化失败', 'results': []}
+            return {'success': False, 'message': t('dl_batch_api_fail'), 'results': []}
         
         def log(msg):
             print(msg)
         
-        log(f"📚 开始批量下载，共 {self.total_count} 本书籍")
+        log(t("dl_batch_start", self.total_count))
         log("=" * 50)
         
         for idx, book_id in enumerate(book_ids):
             if self.is_cancelled:
-                log("⚠️ 批量下载已取消")
+                log(t("dl_batch_cancelled"))
                 break
             
             self.current_index = idx + 1
@@ -960,10 +983,10 @@ class BatchDownloader:
             except:
                 pass
             
-            log(f"\n[{self.current_index}/{self.total_count}] 开始下载: 《{book_name}》")
+            log("\n" + t("dl_batch_downloading", self.current_index, self.total_count, book_name))
             
             if progress_callback:
-                progress_callback(self.current_index, self.total_count, book_name, 'downloading', f'正在下载第 {self.current_index} 本...')
+                progress_callback(self.current_index, self.total_count, book_name, 'downloading', t("dl_batch_progress", self.current_index))
             
             # 执行下载
             result = {
@@ -985,14 +1008,14 @@ class BatchDownloader:
                 if success:
                     result['success'] = True
                     result['message'] = '下载成功'
-                    log(f"✅ 《{book_name}》下载完成")
+                    log(t("dl_batch_success", book_name))
                 else:
                     result['message'] = '下载失败'
-                    log(f"❌ 《{book_name}》下载失败")
+                    log(t("dl_batch_fail", book_name))
                     
             except Exception as e:
                 result['message'] = str(e)
-                log(f"❌ 《{book_name}》下载异常: {str(e)}")
+                log(t("dl_batch_exception", book_name, str(e)))
             
             self.results.append(result)
             
@@ -1009,20 +1032,20 @@ class BatchDownloader:
         failed_count = len(self.results) - success_count
         
         log("\n" + "=" * 50)
-        log(f"📊 批量下载完成统计:")
-        log(f"   成功: {success_count} 本")
-        log(f"   失败: {failed_count} 本")
-        log(f"   总计: {len(self.results)} 本")
+        log(t("dl_batch_summary"))
+        log(t("dl_batch_stats_success", success_count))
+        log(t("dl_batch_stats_fail", failed_count))
+        log(t("dl_batch_stats_total", len(self.results)))
         
         if failed_count > 0:
-            log("\n❌ 失败列表:")
+            log("\n" + t("dl_batch_fail_list"))
             for r in self.results:
                 if not r['success']:
                     log(f"   - 《{r['book_name']}》: {r['message']}")
         
         return {
             'success': failed_count == 0,
-            'message': f'完成 {success_count}/{len(self.results)} 本',
+            'message': t("dl_batch_complete", success_count, len(self.results)),
             'total': len(self.results),
             'success_count': success_count,
             'failed_count': failed_count,

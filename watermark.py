@@ -5,6 +5,7 @@
 
 import random
 import re
+from locales import t
 
 # 隐形字符列表 (仅保留不影响阅读顺序的字符)
 INVISIBLE_CHARS = [
@@ -58,7 +59,7 @@ def insert_watermark(content: str, watermark_text: str = None, num_insertions: i
     
     # 默认水印文本
     if watermark_text is None:
-        watermark_text = "当前小说使用https://github.com/POf-L/Fanqie-novel-Downloader免费下载器下载，购买的请立即差评并申请退款和举报！"
+        watermark_text = t("wm_watermark_full")
     
     # 自动计算插入次数
     if num_insertions is None:
@@ -122,7 +123,7 @@ def apply_watermark_to_chapter(content: str) -> str:
         return content
     
     # 默认水印文本
-    watermark_text = "当前小说使用https://github.com/POf-L/Fanqie-novel-Downloader下载"
+    watermark_text = t("wm_watermark_simple")
     
     # 将水印文本添加隐形字符
     watermarked_text = add_invisible_chars_to_text(watermark_text, insertion_rate=0.25)

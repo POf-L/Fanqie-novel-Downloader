@@ -8,8 +8,9 @@ import json
 import threading
 import queue
 import tempfile
-import secrets
-import time
+import subprocess
+import re
+from locales import t
 from flask import Flask, render_template, request, jsonify, send_from_directory, abort
 from flask_cors import CORS
 import logging
@@ -120,7 +121,7 @@ def update_download_worker(url, save_path, filename):
         set_update_status(
             is_downloading=True, 
             progress=0, 
-            message='正在连接服务器...', 
+            message=t('web_update_status_connect'), 
             filename=filename,
             completed=False,
             error=None,
@@ -143,7 +144,7 @@ def update_download_worker(url, save_path, filename):
         
         total_size = int(response.headers.get('content-length', 0))
         print(f'[DEBUG] Total size: {total_size} bytes')
-        set_update_status(total_size=total_size, message='开始下载...')
+        set_update_status(total_size=total_size, message=t('web_update_status_start'))
         
         downloaded = 0
         chunk_size = 8192
@@ -159,7 +160,7 @@ def update_download_worker(url, save_path, filename):
                     set_update_status(
                         progress=progress, 
                         downloaded_size=downloaded,
-                        message=f'正在下载: {progress}%'
+                        message=t('web_update_status_dl', progress)
                     )
         
         if get_update_status()['is_downloading']:
@@ -173,7 +174,7 @@ def update_download_worker(url, save_path, filename):
                 is_downloading=False, 
                 completed=True, 
                 progress=100, 
-                message='下载完成，点击"应用更新"安装',
+                message=t('web_update_complete'),
                 temp_file_path=full_path
             )
         else:
@@ -190,7 +191,7 @@ def update_download_worker(url, save_path, filename):
         set_update_status(
             is_downloading=False, 
             error=str(e), 
-            message=f'下载失败: {str(e)}'
+            message=t('web_update_fail', str(e))
         )
 
 # 延迟导入重型模块
@@ -210,7 +211,7 @@ def init_modules():
         downloader_instance = api
         return True
     except Exception as e:
-        print(f"模块加载失败: {e}")
+        print(t("msg_module_fail", e))
         return False
 
 def get_status():
@@ -368,10 +369,10 @@ def api_search():
     offset = data.get('offset', 0)
     
     if not keyword:
-        return jsonify({'success': False, 'message': '请输入搜索关键词'}), 400
+        return jsonify({'success': False, 'message': t('web_search_keyword_empty')}), 400
     
     if not api_manager:
-        return jsonify({'success': False, 'message': 'API未初始化'}), 500
+        return jsonify({'success': False, 'message': t('web_api_not_init')}), 500
     
     try:
         result = api_manager.search_books(keyword, offset)
@@ -415,19 +416,19 @@ def api_search():
                                     # 转换为字符串进行比较
                                     status_code_str = str(status_code) if status_code is not None else ''
                                     if status_code_str == '0':
-                                        status = '已完结'
+                                        status = t('dl_status_finished')
                                     elif status_code_str == '1':
-                                        status = '连载中'
+                                        status = t('dl_status_serializing')
                                     elif status_code_str == '2':
-                                        status = '完结'
+                                        status = t('dl_status_completed_2')
                                     else:
                                         status = ''
                                     
                                     books.append({
                                         'book_id': str(book.get('book_id', '')),
-                                        'book_name': book.get('book_name', '未知书名'),
-                                        'author': book.get('author', '未知作者'),
-                                        'abstract': book.get('abstract', '') or book.get('book_abstract_v2', '暂无简介'),
+                                        'book_name': book.get('book_name', t('dl_unknown_book')),
+                                        'author': book.get('author', t('dl_unknown_author')),
+                                        'abstract': book.get('abstract', '') or book.get('book_abstract_v2', t('dl_no_intro')),
                                         'cover_url': book.get('thumb_url', '') or book.get('cover', ''),
                                         'word_count': word_count,
                                         'chapter_count': chapter_count,
@@ -458,7 +459,7 @@ def api_search():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'message': f'搜索失败: {str(e)}'}), 500
+        return jsonify({'success': False, 'message': t('web_search_fail', str(e))}), 500
 
 @app.route('/api/book-info', methods=['POST'])
 def api_book_info():
@@ -468,7 +469,7 @@ def api_book_info():
     book_id = data.get('book_id', '').strip()
     
     if not book_id:
-        return jsonify({'success': False, 'message': '请输入书籍ID或URL'}), 400
+        return jsonify({'success': False, 'message': t('web_book_id_empty')}), 400
     
     # 从URL中提取ID
     if 'fanqienovel.com' in book_id:
@@ -476,14 +477,14 @@ def api_book_info():
         if match:
             book_id = match.group(1)
         else:
-            return jsonify({'success': False, 'message': 'URL格式错误'}), 400
+            return jsonify({'success': False, 'message': t('web_url_error')}), 400
     
     # 验证book_id是数字
     if not book_id.isdigit():
-        return jsonify({'success': False, 'message': '书籍ID应为纯数字'}), 400
+        return jsonify({'success': False, 'message': t('web_id_not_digit')}), 400
     
     if not api:
-        return jsonify({'success': False, 'message': 'API未初始化'}), 500
+        return jsonify({'success': False, 'message': t('web_api_not_init')}), 500
     
     try:
         # 获取书籍信息
@@ -491,14 +492,14 @@ def api_book_info():
         book_detail = api_manager.get_book_detail(book_id)
         print(f"[DEBUG] book_detail result: {str(book_detail)[:100]}")
         if not book_detail:
-            return jsonify({'success': False, 'message': '获取书籍信息失败'}), 400
+            return jsonify({'success': False, 'message': t('web_book_info_fail')}), 400
         
         # 获取章节列表
         print(f"[DEBUG] calling get_chapter_list for {book_id}")
         chapters_data = api_manager.get_chapter_list(book_id)
         print(f"[DEBUG] chapters_data type: {type(chapters_data)}")
         if not chapters_data:
-            return jsonify({'success': False, 'message': '无法获取章节列表'}), 400
+            return jsonify({'success': False, 'message': t('web_chapter_list_fail')}), 400
         
         chapters = []
         if isinstance(chapters_data, dict):
@@ -512,17 +513,17 @@ def api_book_info():
                         for ch in volume:
                             if isinstance(ch, dict):
                                 item_id = ch.get("itemId") or ch.get("item_id")
-                                title = ch.get("title", f"第{idx+1}章")
+                                title = ch.get("title", t("dl_chapter_title", idx+1))
                                 if item_id:
                                     chapters.append({"id": str(item_id), "title": title, "index": idx})
                                     idx += 1
             else:
                 for idx, item_id in enumerate(all_item_ids):
-                    chapters.append({"id": str(item_id), "title": f"第{idx+1}章", "index": idx})
+                    chapters.append({"id": str(item_id), "title": t("dl_chapter_title", idx+1), "index": idx})
         elif isinstance(chapters_data, list):
             for idx, ch in enumerate(chapters_data):
                 item_id = ch.get("item_id") or ch.get("chapter_id")
-                title = ch.get("title", f"第{idx+1}章")
+                title = ch.get("title", t("dl_chapter_title", idx+1))
                 if item_id:
                     chapters.append({"id": str(item_id), "title": title, "index": idx})
         
@@ -533,9 +534,9 @@ def api_book_info():
             'success': True,
             'data': {
                 'book_id': book_id,
-                'book_name': book_detail.get('book_name', '未知小说'),
-                'author': book_detail.get('author', '未知作者'),
-                'abstract': book_detail.get('abstract', '暂无简介'),
+                'book_name': book_detail.get('book_name', t('dl_unknown_book')),
+                'author': book_detail.get('author', t('dl_unknown_author')),
+                'abstract': book_detail.get('abstract', t('dl_no_intro')),
                 'cover_url': book_detail.get('thumb_url', ''),
                 'chapters': chapters
             }
@@ -543,7 +544,7 @@ def api_book_info():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'message': f'获取信息失败: {str(e)}'}), 500
+        return jsonify({'success': False, 'message': t('web_get_info_fail', str(e))}), 500
 
 @app.route('/api/download', methods=['POST'])
 def api_download():
@@ -551,7 +552,7 @@ def api_download():
     data = request.get_json()
     
     if get_status()['is_downloading']:
-        return jsonify({'success': False, 'message': '已有下载任务在进行'}), 400
+        return jsonify({'success': False, 'message': t('web_download_exists')}), 400
     
     book_id = data.get('book_id', '').strip()
     save_path = data.get('save_path', get_default_download_path()).strip()
@@ -561,7 +562,7 @@ def api_download():
     selected_chapters = data.get('selected_chapters')
     
     if not book_id:
-        return jsonify({'success': False, 'message': '请输入书籍ID或URL'}), 400
+        return jsonify({'success': False, 'message': t('web_book_id_empty')}), 400
     
     # 从URL中提取ID
     if 'fanqienovel.com' in book_id:
@@ -569,17 +570,17 @@ def api_download():
         if match:
             book_id = match.group(1)
         else:
-            return jsonify({'success': False, 'message': 'URL格式错误'}), 400
+            return jsonify({'success': False, 'message': t('web_url_error')}), 400
     
     # 验证book_id是数字
     if not book_id.isdigit():
-        return jsonify({'success': False, 'message': '书籍ID应为纯数字'}), 400
+        return jsonify({'success': False, 'message': t('web_id_not_digit')}), 400
     
     # 确保路径存在
     try:
         os.makedirs(save_path, exist_ok=True)
     except Exception as e:
-        return jsonify({'success': False, 'message': f'保存路径错误: {str(e)}'}), 400
+        return jsonify({'success': False, 'message': t('web_save_path_error', str(e))}), 400
     
     # 添加到下载队列
     task = {
@@ -591,9 +592,9 @@ def api_download():
         'selected_chapters': selected_chapters
     }
     download_queue.put(task)
-    update_status(is_downloading=True, progress=0, message='任务已加入队列')
+    update_status(is_downloading=True, progress=0, message=t('web_task_added'))
     
-    return jsonify({'success': True, 'message': '下载任务已开始'})
+    return jsonify({'success': True, 'message': t('web_task_started')})
 
 @app.route('/api/cancel', methods=['POST'])
 def api_cancel():
@@ -939,7 +940,7 @@ def api_apply_update():
         if not can_update:
             return jsonify({
                 'success': False, 
-                'message': '当前环境不支持自动更新，请手动替换程序文件'
+                'message': t('web_auto_update_unsupported')
             }), 400
         
         # 获取下载的更新文件信息
@@ -948,7 +949,7 @@ def api_apply_update():
         if not status.get('completed'):
             return jsonify({
                 'success': False, 
-                'message': '更新文件尚未下载完成'
+                'message': t('web_update_not_ready')
             }), 400
         
         # 使用临时文件路径
@@ -967,7 +968,7 @@ def api_apply_update():
         if not new_file_path:
             return jsonify({
                 'success': False, 
-                'message': '更新文件信息不完整'
+                'message': t('web_update_info_incomplete')
             }), 400
         
         print(f'[DEBUG] file exists: {os.path.exists(new_file_path)}')
@@ -975,7 +976,7 @@ def api_apply_update():
         if not os.path.exists(new_file_path):
             return jsonify({
                 'success': False, 
-                'message': f'更新文件不存在: {new_file_path}'
+                'message': t('web_update_file_missing', new_file_path)
             }), 400
         
         print(f'[DEBUG] file size: {os.path.getsize(new_file_path)} bytes')
@@ -984,25 +985,30 @@ def api_apply_update():
         print('[DEBUG] Calling apply_update...')
         if apply_update(new_file_path):
             # 更新成功启动，准备退出程序
+            # 等待足够时间确保更新脚本已启动并开始监控进程
             def delayed_exit():
                 import time
-                time.sleep(1)
+                print('[DEBUG] Waiting for update script to start...')
+                time.sleep(3)  # 给更新脚本足够的启动时间
+                print('[DEBUG] Exiting application for update...')
                 os._exit(0)
             
-            threading.Thread(target=delayed_exit, daemon=True).start()
+            # 使用非守护线程确保退出逻辑能完成
+            exit_thread = threading.Thread(target=delayed_exit, daemon=False)
+            exit_thread.start()
             
             return jsonify({
                 'success': True, 
-                'message': '更新程序已启动，应用即将关闭并自动更新...'
+                'message': t('web_update_start_success')
             })
         else:
             return jsonify({
                 'success': False, 
-                'message': '启动更新程序失败'
+                'message': t('web_update_start_fail')
             }), 500
             
     except Exception as e:
-        return jsonify({'success': False, 'message': f'应用更新失败: {str(e)}'}), 500
+        return jsonify({'success': False, 'message': t('web_apply_update_fail', str(e))}), 500
 
 @app.route('/api/open-folder', methods=['POST'])
 def api_open_folder():
@@ -1011,7 +1017,7 @@ def api_open_folder():
     path = data.get('path')
     
     if not path or not os.path.exists(path):
-        return jsonify({'success': False, 'message': '路径不存在'}), 400
+        return jsonify({'success': False, 'message': t('web_path_not_exist')}), 400
         
     try:
         if os.name == 'nt':
@@ -1026,4 +1032,5 @@ def api_open_folder():
 
 if __name__ == '__main__':
     print(f'配置文件位置: {CONFIG_FILE}')
+    print(t('web_server_started'))
     app.run(host='127.0.0.1', port=5000, debug=False)

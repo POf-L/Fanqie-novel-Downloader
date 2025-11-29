@@ -7,6 +7,7 @@ import requests
 import re
 from packaging import version as pkg_version
 from typing import Optional, Dict, Tuple
+from locales import t
 
 def parse_version(ver_str: str) -> Optional[pkg_version.Version]:
     """解析版本号字符串"""
@@ -126,17 +127,17 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
             # 分类 Windows 版本
             if 'Standalone' in name:
                 asset_type = 'standalone'
-                description = '完整版 - 内置 WebView2 运行时,开箱即用'
+                description = t("up_desc_standalone")
                 recommended = True
                 print(f'[DEBUG]   -> Matched: standalone')
             elif 'debug' in name.lower():
                 asset_type = 'debug'
-                description = '调试版 - 包含调试信息和控制台窗口'
+                description = t("up_desc_debug")
                 recommended = False
                 print(f'[DEBUG]   -> Matched: debug')
             else:
                 asset_type = 'standard'
-                description = '标准版 - 需要系统已安装 WebView2'
+                description = t("up_desc_standard")
                 recommended = False
                 print(f'[DEBUG]   -> Matched: standard')
         
@@ -144,14 +145,14 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
             if not ('linux' in name.lower() and not name.endswith('.exe')):
                 continue
             asset_type = 'debug' if 'debug' in name.lower() else 'release'
-            description = '调试版' if asset_type == 'debug' else '发布版'
+            description = t("up_desc_linux_debug") if asset_type == 'debug' else t("up_desc_linux_release")
             recommended = asset_type == 'release'
         
         elif platform == 'macos':
             if not ('macos' in name.lower() and not name.endswith('.exe')):
                 continue
             asset_type = 'debug' if 'debug' in name.lower() else 'release'
-            description = '调试版' if asset_type == 'debug' else '发布版'
+            description = t("up_desc_linux_debug") if asset_type == 'debug' else t("up_desc_linux_release")
             recommended = asset_type == 'release'
         
         else:
@@ -232,7 +233,7 @@ def check_and_notify(current_version: str, repo: str, silent: bool = False) -> O
     
     if result is None:
         if not silent:
-            print('⚠️ 无法检查更新，请检查网络连接')
+            print(t("up_check_fail"))
         return None
     
     has_update, latest_info = result
@@ -254,7 +255,7 @@ def check_and_notify(current_version: str, repo: str, silent: bool = False) -> O
         }
     else:
         if not silent:
-            print(f'✅ 当前已是最新版本 ({current_version})')
+            print(t("up_latest", current_version))
         return {
             'has_update': False,
             'current_version': current_version,
@@ -289,7 +290,7 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     # 检查是否为打包后的 exe
     if not getattr(sys, 'frozen', False):
         print('[DEBUG] Not a frozen executable, cannot auto-update')
-        print('自动更新仅支持打包后的程序')
+        print(t("up_not_frozen"))
         return False
     
     # 获取当前程序路径
@@ -300,7 +301,7 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     # 检查新版本文件是否存在
     if not os.path.exists(new_exe_path):
         print(f'[DEBUG] New file does not exist!')
-        print(f'新版本文件不存在: {new_exe_path}')
+        print(t("up_new_missing", new_exe_path))
         return False
     
     print(f'[DEBUG] New file size: {os.path.getsize(new_exe_path)} bytes')
@@ -311,98 +312,152 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     # 获取可执行文件名
     exe_name = os.path.basename(current_exe_path)
 
+    # 获取当前程序所在目录
+    exe_dir = os.path.dirname(current_exe_path)
+    
     # 创建更新批处理脚本（直接嵌入 PID 避免参数传递问题）
     # 注意：使用英文提示避免 CMD 编码问题
     bat_content = f'''@echo off
-chcp 65001 >nul
+chcp 65001 >nul 2>&1
+setlocal enabledelayedexpansion
+
 echo ====================================
 echo Fanqie Novel Downloader - Auto Update
 echo ====================================
 echo.
 echo Waiting for application to exit (PID: {pid})...
 
-:: Give it 3 seconds to exit gracefully
-timeout /t 3 /nobreak >nul
+:: Wait for main process to exit (check every second, max 30 seconds)
+set /a count=0
+:waitloop
+tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul
+if errorlevel 1 goto :process_exited
+set /a count+=1
+if !count! geq 30 goto :force_kill
+ping -n 2 127.0.0.1 >nul
+goto :waitloop
 
-:: Force kill by PID
+:force_kill
+echo Process did not exit gracefully, forcing termination...
 taskkill /F /PID {pid} >nul 2>&1
+ping -n 2 127.0.0.1 >nul
 
-:: Force kill by Image Name (in case of restarts or zombies)
+:process_exited
+echo Application exited.
+echo.
+
+:: Also kill any remaining instances by name
 taskkill /F /IM "{exe_name}" >nul 2>&1
 
-:: Wait a bit for file handles to release
-timeout /t 2 /nobreak >nul
+:: Wait for file handles to be released
+echo Waiting for file locks to release...
+ping -n 4 127.0.0.1 >nul
 
 echo Starting update process...
 echo.
 
-:: Strategy: Move-and-Replace
+:: Strategy: Move-and-Replace with retry
 :: Windows allows renaming running/locked executables, but not overwriting them.
 
-:: 1. Move current exe to .old
-echo Moving old version to backup...
+set /a retry=0
+:move_retry
+echo Attempt to backup old version...
 del /F /Q "{current_exe_path}.old" >nul 2>&1
-move /Y "{current_exe_path}" "{current_exe_path}.old" >nul
+move /Y "{current_exe_path}" "{current_exe_path}.old"
 if errorlevel 1 (
-    echo Failed to move old version. The file might be heavily locked.
-    echo Trying to force kill again...
-    taskkill /F /IM "{exe_name}" >nul 2>&1
-    timeout /t 2 /nobreak >nul
-    move /Y "{current_exe_path}" "{current_exe_path}.old" >nul
-    if errorlevel 1 (
-        echo Still unable to update. Please restart your computer.
-        pause
-        exit /b 1
+    set /a retry+=1
+    if !retry! lss 5 (
+        echo Retry !retry!/5 - file still locked, waiting...
+        taskkill /F /IM "{exe_name}" >nul 2>&1
+        ping -n 3 127.0.0.1 >nul
+        goto :move_retry
     )
-)
-
-:: 2. Copy new exe to original location
-echo Installing new version...
-copy /Y "{new_exe_path}" "{current_exe_path}" >nul
-if errorlevel 1 (
-    echo Copy failed! Restoring old version...
-    move /Y "{current_exe_path}.old" "{current_exe_path}" >nul
+    echo ERROR: Cannot backup old version after 5 attempts.
+    echo Please close all instances and try again.
     pause
     exit /b 1
 )
+echo Old version backed up successfully.
 
-:: 3. Cleanup
-echo Cleaning up...
+:: Copy new exe to original location
+echo Installing new version...
+copy /Y "{new_exe_path}" "{current_exe_path}"
+if errorlevel 1 (
+    echo ERROR: Copy failed! Restoring old version...
+    move /Y "{current_exe_path}.old" "{current_exe_path}"
+    pause
+    exit /b 1
+)
+echo New version installed successfully.
+
+:: Cleanup
+echo Cleaning up temporary files...
 del /F /Q "{new_exe_path}" >nul 2>&1
-:: Try to delete .old, but ignore failure (it might still be locked until reboot)
 del /F /Q "{current_exe_path}.old" >nul 2>&1
 
 echo.
+echo ====================================
 echo Update completed successfully!
-echo Starting new version...
+echo ====================================
 echo.
-timeout /t 2 /nobreak >nul
+echo Starting new version in 3 seconds...
+ping -n 4 127.0.0.1 >nul
 
-:: Start new version
-start "" "{current_exe_path}"
+:: Start new version using multiple methods for reliability
+cd /d "{exe_dir}"
 
-:: Delete self
-del /F /Q "%~f0" >nul 2>&1
+:: Method 1: Direct start with working directory
+start "Fanqie Novel Downloader" /D "{exe_dir}" "{current_exe_path}"
+if errorlevel 1 (
+    echo First start method failed, trying alternative...
+    :: Method 2: Use cmd /c
+    cmd /c start "" "{current_exe_path}"
+)
+
+echo New version started.
+ping -n 2 127.0.0.1 >nul
+
+:: Delete self (delayed)
+(goto) 2>nul & del /F /Q "%~f0"
 exit /b 0
 '''
     
     # 写入批处理文件
     try:
         bat_path = os.path.join(tempfile.gettempdir(), 'fanqie_update.bat')
+        print(f'[DEBUG] Writing update script to: {bat_path}')
+        
         with open(bat_path, 'w', encoding='utf-8') as f:
             f.write(bat_content)
         
+        print(f'[DEBUG] Update script written successfully')
+        
         # 启动批处理脚本（使用新的控制台窗口）
-        # 使用 shell=True 确保 start 命令正确解析
-        subprocess.Popen(
-            f'start "番茄小说下载器更新" cmd /c "{bat_path}"',
-            shell=True
+        # 使用 CREATE_NEW_CONSOLE 标志确保脚本在独立窗口运行
+        # 不使用 shell=True 和嵌套的 start 命令，更可靠
+        CREATE_NEW_CONSOLE = 0x00000010
+        DETACHED_PROCESS = 0x00000008
+        
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 1  # SW_SHOWNORMAL
+        
+        process = subprocess.Popen(
+            ['cmd.exe', '/c', bat_path],
+            creationflags=CREATE_NEW_CONSOLE,
+            startupinfo=startupinfo,
+            cwd=tempfile.gettempdir(),
+            close_fds=True
         )
         
+        print(f'[DEBUG] Update script started with PID: {process.pid}')
         print(f'更新脚本已启动，程序即将退出...')
         return True
         
     except Exception as e:
+        import traceback
+        print(f'[DEBUG] Failed to create/start update script:')
+        traceback.print_exc()
         print(f'创建更新脚本失败: {e}')
         return False
 

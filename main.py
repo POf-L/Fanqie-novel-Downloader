@@ -12,6 +12,7 @@ import requests
 import secrets
 import socket
 from pathlib import Path
+from locales import t
 
 def find_free_port():
     """查找一个可用的随机端口"""
@@ -43,7 +44,7 @@ def run_flask_app(port, access_token):
             threaded=True
         )
     except Exception as e:
-        print(f"Flask 应用启动失败: {e}")
+        print(t("main_flask_fail", e))
         sys.exit(1)
 
 def open_web_interface(port, access_token):
@@ -56,7 +57,7 @@ def open_web_interface(port, access_token):
             import webview
             
             def on_closed():
-                print("应用已关闭")
+                print(t("main_app_closed"))
             
             # 创建窗口
             webview.create_window(
@@ -74,8 +75,8 @@ def open_web_interface(port, access_token):
                 # 处理 'NoneType' object has no attribute 'BrowserProcessId' 等浏览器引擎初始化错误
                 error_msg = str(e)
                 if 'BrowserProcessId' in error_msg or 'NoneType' in error_msg:
-                    print(f"PyWebView 浏览器引擎初始化失败: {error_msg}")
-                    print("自动切换到系统浏览器...")
+                    print(t("main_webview_init_fail", error_msg))
+                    print(t("main_switch_browser"))
                     raise ImportError("WebView engine failed")
                 else:
                     raise
@@ -83,14 +84,14 @@ def open_web_interface(port, access_token):
                 # 处理其他 webview 相关错误
                 error_msg = str(e)
                 if any(keyword in error_msg.lower() for keyword in ['browser', 'webview', 'edge', 'chromium']):
-                    print(f"PyWebView 启动失败: {error_msg}")
-                    print("自动切换到系统浏览器...")
+                    print(t("main_webview_fail", error_msg))
+                    print(t("main_switch_browser"))
                     raise ImportError("WebView failed to start")
                 else:
                     raise
             
         except ImportError:
-            print("PyWebView 未安装或不可用，使用系统浏览器打开...")
+            print(t("main_webview_unavailable"))
             import webbrowser
             time.sleep(2)  # 等待 Flask 启动
             webbrowser.open(url)
@@ -100,27 +101,27 @@ def open_web_interface(port, access_token):
                 while True:
                     time.sleep(1)
             except KeyboardInterrupt:
-                print("\n应用已关闭")
+                print("\n" + t("main_app_closed"))
                 sys.exit(0)
     
     except Exception as e:
-        print(f"打开界面失败: {e}")
+        print(t("main_interface_fail", e))
         sys.exit(1)
 
 def main():
     """主函数"""
     print("=" * 50)
-    print("番茄小说下载器 - Web 版")
+    print(t("main_title"))
     print("=" * 50)
     
     # 显示版本信息
     from config import __version__, __github_repo__
-    print(f"当前版本: {__version__}")
+    print(t("main_version", __version__))
     
     # 显示配置文件路径
     import tempfile
     config_file = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
-    print(f"配置文件: {config_file}")
+    print(t("main_config_path", config_file))
     
     # 生成随机访问令牌
     access_token = secrets.token_urlsafe(32)
@@ -130,7 +131,7 @@ def main():
         base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
         webview2_path = os.path.join(base_path, 'WebView2')
         if os.path.exists(webview2_path):
-            print(f"正在配置内置 WebView2: {webview2_path}")
+            print(t("main_webview2_config", webview2_path))
             os.environ["WEBVIEW2_BROWSER_EXECUTABLE_FOLDER"] = webview2_path
     
     # 查找可用端口
@@ -150,7 +151,7 @@ def main():
     update_thread.start()
     
     # 检查依赖
-    print("\n检查依赖...")
+    print("\n" + t("main_check_deps"))
     required_packages = {
         'flask': 'Flask',
         'flask_cors': 'Flask-CORS',
@@ -166,35 +167,35 @@ def main():
             missing_packages.append(name)
     
     if missing_packages:
-        print(f"\n缺少依赖: {', '.join(missing_packages)}")
-        print("请运行: pip install flask flask-cors")
+        print(f"\n{t('main_missing_deps', ', '.join(missing_packages))}")
+        print(t("main_install_deps"))
         sys.exit(1)
     
-    print("\n启动应用...")
+    print("\n" + t("main_starting"))
     
     # 在后台线程中启动 Flask
     flask_thread = threading.Thread(target=run_flask_app, args=(port, access_token), daemon=True)
     flask_thread.start()
     
     # 等待 Flask 启动
-    print("等待服务器启动...")
+    print(t("main_wait_server"))
     max_retries = 30
     url = f'http://127.0.0.1:{port}?token={access_token}'
     for i in range(max_retries):
         try:
             response = requests.get(url, timeout=1)
             if response.status_code == 200:
-                print("✓ 服务器已启动")
+                print(t("main_server_started"))
                 break
         except:
             if i < max_retries - 1:
                 time.sleep(0.5)
             else:
-                print("✗ 服务器启动超时")
+                print(t("main_server_timeout"))
                 sys.exit(1)
     
     # 打开 Web 界面
-    print("\n打开应用界面...")
+    print("\n" + t("main_opening_interface"))
     open_web_interface(port, access_token)
 
 if __name__ == '__main__':

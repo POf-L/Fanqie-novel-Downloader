@@ -27,12 +27,13 @@ import threading
 import requests
 from typing import Dict
 from fake_useragent import UserAgent
+from locales import t
 
 REMOTE_CONFIG_URL = "https://qbin.me/r/fpoash/"
 
 def load_remote_config() -> Dict:
     """从远程 URL 加载配置"""
-    print(f"正在获取最新的 API 配置: {REMOTE_CONFIG_URL}")
+    print(t("config_fetching", REMOTE_CONFIG_URL))
     
     default_config = {
         "api_base_url": "",
@@ -67,14 +68,14 @@ def load_remote_config() -> Dict:
             if "tomato_endpoints" in remote_conf:
                 default_config["endpoints"] = remote_conf["tomato_endpoints"]
                 
-            print(f"成功加载配置，API 地址: {default_config['api_base_url']}")
+            print(t("config_success", default_config['api_base_url']))
             return default_config
             
     except Exception as e:
-        print(f"获取远程配置失败: {str(e)}")
+        print(t("config_fail", str(e)))
         # 如果获取失败且用户要求不保留硬编码，这里可能导致程序无法运行
         # 但为了保证程序基本结构完整，返回空配置或报错
-        print("⚠️ 警告: 无法连接配置服务器，程序可能无法正常工作")
+        print(t("config_server_error"))
     
     return default_config
 
