@@ -76,20 +76,37 @@ class Logger {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
         this.maxEntries = 100;
+        this.entries = [];
+    }
+    
+    logKey(key, suffix = '') {
+        this._addEntry({
+            type: 'key',
+            key: key,
+            suffix: suffix,
+            time: this.getTime()
+        });
     }
     
     log(message) {
+        this._addEntry({
+            type: 'raw',
+            message: message,
+            time: this.getTime()
+        });
+    }
+    
+    _addEntry(data) {
+        this.entries.push(data);
+        if (this.entries.length > this.maxEntries) {
+            this.entries.shift();
+        }
+        
         const entry = document.createElement('div');
         entry.className = 'log-entry typing-cursor';
         this.container.appendChild(entry);
         
-        // Translate backend message if possible
-        let translatedMsg = message;
-        if (typeof i18n !== 'undefined') {
-            translatedMsg = i18n.translateBackendMsg(message);
-        }
-        
-        const fullText = `[${this.getTime()}] ${translatedMsg}`;
+        const fullText = `[${data.time}] ${this._formatText(data)}`;
         let index = 0;
         // Adjust speed based on length
         const speed = fullText.length > 50 ? 10 : 30;
@@ -114,9 +131,36 @@ class Logger {
         type();
         
         // 限制日志数量
-        const entries = this.container.querySelectorAll('.log-entry');
-        if (entries.length > this.maxEntries) {
-            entries[0].remove();
+        const domEntries = this.container.querySelectorAll('.log-entry');
+        if (domEntries.length > this.maxEntries) {
+            domEntries[0].remove();
+        }
+    }
+    
+    refresh() {
+        this.container.innerHTML = '';
+        this.entries.forEach(data => {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = `[${data.time}] ${this._formatText(data)}`;
+            this.container.appendChild(entry);
+        });
+        
+        const logSection = document.getElementById('logContainer');
+        if (logSection) {
+            logSection.scrollTop = logSection.scrollHeight;
+        }
+    }
+    
+    _formatText(data) {
+        if (data.type === 'key') {
+            return (typeof i18n !== 'undefined' ? i18n.t(data.key) : data.key) + (data.suffix || '');
+        } else {
+            let msg = data.message;
+            if (typeof i18n !== 'undefined') {
+                msg = i18n.translateBackendMsg(msg);
+            }
+            return msg;
         }
     }
     
@@ -127,6 +171,7 @@ class Logger {
     
     clear() {
         this.container.innerHTML = '';
+        this.entries = [];
     }
 }
 
@@ -163,23 +208,23 @@ class APIClient {
             
             return await response.json();
         } catch (error) {
-            logger.log(i18n.t('msg_request_fail') + error.message);
+            logger.logKey('msg_request_fail', error.message);
             throw error;
         }
     }
     
     async init() {
-        logger.log(i18n.t('msg_init_app'));
+        logger.logKey('msg_init_app');
         try {
             const result = await this.request('/api/init', { method: 'POST' });
             if (result.success) {
-                logger.log(i18n.t('msg_module_loaded'));
+                logger.logKey('msg_module_loaded');
             } else {
-                logger.log(i18n.t('msg_module_fail') + result.message);
+                logger.logKey('msg_module_fail', result.message);
             }
             return result.success;
         } catch (error) {
-            logger.log(i18n.t('msg_init_fail'));
+            logger.logKey('msg_init_fail');
             return false;
         }
     }
@@ -243,7 +288,7 @@ class APIClient {
             });
             
             if (result.success) {
-                logger.log(i18n.t('msg_task_started'));
+                logger.logKey('msg_task_started');
                 AppState.setDownloading(true);
                 this.startStatusPolling();
                 // 自动切换到进度标签页
@@ -263,13 +308,13 @@ class APIClient {
         try {
             const result = await this.request('/api/cancel', { method: 'POST' });
             if (result.success) {
-                logger.log(i18n.t('msg_download_cancelled'));
+                logger.logKey('msg_download_cancelled');
                 AppState.setDownloading(false);
                 this.stopStatusPolling();
                 return true;
             }
         } catch (error) {
-            logger.log(i18n.t('msg_cancel_fail') + error.message);
+            logger.logKey('msg_cancel_fail', error.message);
         }
         return false;
     }
@@ -370,7 +415,7 @@ class APIClient {
             });
             return result;
         } catch (error) {
-            logger.log(i18n.t('msg_folder_fail') + error.message);
+            logger.logKey('msg_folder_fail', error.message);
             return { success: false };
         }
     }
@@ -539,6 +584,7 @@ function initializeUI() {
         
         i18n.onLanguageChange((lang) => {
             updateLangBtn(lang);
+            logger.refresh();
         });
     }
     

@@ -60,24 +60,30 @@ def open_web_interface(port, access_token):
             _window = None
             
             class WindowApi:
+                def __init__(self):
+                    self._is_maximized = False
+
                 def minimize_window(self):
                     if _window:
                         _window.minimize()
                 
                 def toggle_maximize(self):
                     if _window:
-                        is_maximized = hasattr(_window, 'maximized') and _window.maximized
-                        is_fullscreen = hasattr(_window, 'fullscreen') and _window.fullscreen
+                        # 优先处理全屏状态
+                        is_fullscreen = getattr(_window, 'fullscreen', False)
                         
                         if is_fullscreen:
                             if hasattr(_window, 'toggle_fullscreen'):
                                 _window.toggle_fullscreen()
                             else:
                                 _window.restore()
-                        elif is_maximized:
+                            self._is_maximized = False
+                        elif self._is_maximized:
                             _window.restore()
+                            self._is_maximized = False
                         else:
                             _window.maximize()
+                            self._is_maximized = True
                 
                 def close_window(self):
                     if _window:
