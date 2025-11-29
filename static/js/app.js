@@ -79,11 +79,11 @@ class Logger {
         this.entries = [];
     }
     
-    logKey(key, suffix = '') {
+    logKey(key, ...args) {
         this._addEntry({
             type: 'key',
             key: key,
-            suffix: suffix,
+            args: args,
             time: this.getTime()
         });
     }
@@ -154,7 +154,7 @@ class Logger {
     
     _formatText(data) {
         if (data.type === 'key') {
-            return (typeof i18n !== 'undefined' ? i18n.t(data.key) : data.key) + (data.suffix || '');
+            return (typeof i18n !== 'undefined' ? i18n.t(data.key, ...(data.args || [])) : data.key) + (data.suffix || '');
         } else {
             let msg = data.message;
             if (typeof i18n !== 'undefined') {
@@ -585,6 +585,35 @@ function initializeUI() {
             logger.refresh();
         });
     }
+
+    // 初始化风格切换
+    const styleBtn = document.getElementById('styleToggle');
+    if (styleBtn) {
+        const styleLabel = document.getElementById('styleLabel');
+        const iconSpan = styleBtn.querySelector('.icon');
+        
+        // 检查本地存储的风格偏好
+        const savedStyle = localStorage.getItem('app_style');
+        if (savedStyle === 'scp') {
+            document.body.classList.add('scp-mode');
+            styleLabel.textContent = 'SCP';
+            iconSpan.textContent = '[⚠]';
+        }
+
+        styleBtn.addEventListener('click', () => {
+            document.body.classList.toggle('scp-mode');
+            const isScp = document.body.classList.contains('scp-mode');
+            
+            styleLabel.textContent = isScp ? 'SCP' : '8-BIT';
+            iconSpan.textContent = isScp ? '[⚠]' : '[🎨]';
+            
+            // 保存偏好
+            localStorage.setItem('app_style', isScp ? 'scp' : '8bit');
+            
+            // 添加切换音效或视觉反馈（可选）
+            logger.log(isScp ? '> ACCESSING SCP DATABASE...' : '> REVERTING TO 8-BIT SYSTEMS...');
+        });
+    }
     
     checkForUpdate();
 }
@@ -617,7 +646,7 @@ let currentSearchKeyword = '';
 async function handleSearch() {
     const keyword = document.getElementById('searchKeyword').value.trim();
     if (!keyword) {
-        alert('请输入搜索关键词');
+        alert(i18n.t('alert_input_keyword'));
         return;
     }
     
@@ -702,21 +731,30 @@ function displaySearchResults(books, append = false) {
         item.className = 'search-item';
         item.onclick = () => selectBook(book.book_id, book.book_name);
         
-        const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + '万字' : '';
-        const chapterCount = book.chapter_count ? book.chapter_count + '章' : '';
+        const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + i18n.t('meta_word_count_suffix') : '';
+        const chapterCount = book.chapter_count ? book.chapter_count + i18n.t('meta_chapter_count_suffix') : '';
         const status = book.status || '';
-        // We might want to translate status too if it's fixed strings
-        const statusClass = (status === '完结' || status === '已完结') ? 'complete' : 'ongoing';
+        
+        // Translate status
+        let displayStatus = status;
+        let statusClass = 'ongoing';
+        
+        if (status === '完结' || status === '已完结') {
+            displayStatus = i18n.t('status_complete');
+            statusClass = 'complete';
+        } else if (status === '连载' || status === '连载中') {
+            displayStatus = i18n.t('status_ongoing');
+        }
         
         item.innerHTML = `
             <img class="search-cover" src="${book.cover_url || ''}" alt="" onerror="this.style.display='none'">
             <div class="search-info">
                 <div class="search-title">
                     ${book.book_name}
-                    ${status ? `<span class="status-badge ${statusClass}">${status}</span>` : ''}
+                    ${status ? `<span class="status-badge ${statusClass}">${displayStatus}</span>` : ''}
                 </div>
                 <div class="search-meta">${book.author} · ${wordCount}${chapterCount ? ' · ' + chapterCount : ''}</div>
-                <div class="search-desc">${book.abstract || '暂无简介'}</div>
+                <div class="search-desc">${book.abstract || i18n.t('label_no_desc')}</div>
             </div>
         `;
         
@@ -730,7 +768,7 @@ function displaySearchResults(books, append = false) {
 
 function selectBook(bookId, bookName) {
     document.getElementById('bookId').value = bookId;
-    logger.log(`+ 已选择: ${bookName} (ID: ${bookId})`);
+    logger.logKey('log_selected', bookName, bookId);
     
     // 自动切换到下载标签页
     switchTab('download');
@@ -748,7 +786,7 @@ function clearSearchResults() {
 async function handleSelectChapters() {
     const bookId = document.getElementById('bookId').value.trim();
     if (!bookId) {
-        alert('请先输入书籍ID');
+        alert(i18n.t('alert_input_book_id'));
         return;
     }
     
@@ -757,9 +795,9 @@ async function handleSelectChapters() {
     if (bookId.includes('fanqienovel.com')) {
         const match = bookId.match(/\/page\/(\d+)/);
         if (match) validId = match[1];
-        else { alert('URL格式错误'); return; }
+        else { alert(i18n.t('alert_url_format_error')); return; }
     } else if (!/^\d+$/.test(bookId)) {
-        alert('书籍ID应为纯数字');
+        alert(i18n.t('alert_id_number'));
         return;
     }
     
@@ -767,16 +805,16 @@ async function handleSelectChapters() {
     const listContainer = document.getElementById('chapterList');
     
     modal.style.display = 'flex';
-    listContainer.innerHTML = '<div style="text-align: center; padding: 20px;">正在获取章节列表...</div>';
+    listContainer.innerHTML = `<div style="text-align: center; padding: 20px;">${i18n.t('text_fetching_chapters')}</div>`;
     
-    logger.log(`# 获取章节列表: ${validId}`);
+    logger.logKey('log_get_chapter_list', validId);
     const bookInfo = await api.getBookInfo(validId);
     
     if (bookInfo && bookInfo.chapters) {
         currentChapters = bookInfo.chapters;
         renderChapterList(bookInfo.chapters);
     } else {
-        listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: red;">获取章节失败</div>';
+        listContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: red;">${i18n.t('text_fetch_chapter_fail')}</div>`;
     }
 }
 
@@ -820,7 +858,7 @@ function renderChapterList(chapters) {
 function updateSelectedCount() {
     const checkboxes = document.querySelectorAll('#chapterList input[type="checkbox"]');
     const checked = Array.from(checkboxes).filter(cb => cb.checked);
-    document.getElementById('selectedCount').textContent = `已选: ${checked.length} / ${checkboxes.length} 章`;
+    document.getElementById('selectedCount').textContent = i18n.t('label_selected_count', checked.length, checkboxes.length);
 }
 
 function toggleAllChapters(checked) {
@@ -842,16 +880,18 @@ function confirmChapterSelection() {
     AppState.selectedChapters = selected.length > 0 ? selected : null;
     
     const btn = document.getElementById('selectChaptersBtn');
-    if (AppState.selectedChapters) {
-        btn.textContent = `= 已选 ${AppState.selectedChapters.length} 章`;
-        btn.classList.remove('btn-info');
-        btn.classList.add('btn-success');
-        logger.log(`√ 已确认选择 ${AppState.selectedChapters.length} 个章节`);
-    } else {
-        btn.textContent = `= 选择章节`;
-        btn.classList.remove('btn-success');
-        btn.classList.add('btn-info');
-        logger.log(`√ 已取消章节选择 (默认下载全部)`);
+    if (btn) { // check existence as it might not be there in all versions
+        if (AppState.selectedChapters) {
+            btn.textContent = i18n.t('btn_selected_count', AppState.selectedChapters.length);
+            btn.classList.remove('btn-info');
+            btn.classList.add('btn-success');
+            logger.logKey('log_confirmed_selection', AppState.selectedChapters.length);
+        } else {
+            btn.textContent = i18n.t('btn_select_chapters');
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-info');
+            logger.logKey('log_cancel_selection');
+        }
     }
     
     closeChapterModal();
@@ -874,7 +914,7 @@ async function checkForUpdate() {
 }
 
 function simpleMarkdownToHtml(markdown) {
-    if (!markdown) return '暂无更新说明';
+    if (!markdown) return i18n.t('text_no_changelog');
     
     let html = markdown;
     
@@ -957,7 +997,7 @@ async function showUpdateModal(updateInfo) {
     if (updateDescription.parentNode) updateDescription.parentNode.style.display = 'block';
     versionSelector.style.display = 'none';
     downloadUpdateBtn.disabled = false;
-    downloadUpdateBtn.textContent = '立即下载';
+    downloadUpdateBtn.textContent = i18n.t('btn_download_update');
     
     const modalFooter = document.querySelector('.modal-footer');
     if (modalFooter) modalFooter.style.display = 'flex';
@@ -968,7 +1008,7 @@ async function showUpdateModal(updateInfo) {
     currentVersion.textContent = updateInfo.current_version;
     latestVersion.textContent = updateInfo.latest_version;
     
-    const releaseBody = updateInfo.release_info?.body || updateInfo.message || '暂无更新说明';
+    const releaseBody = updateInfo.release_info?.body || updateInfo.message || i18n.t('text_no_changelog');
     updateDescription.innerHTML = simpleMarkdownToHtml(releaseBody);
     
     // 获取可下载的版本选项
@@ -980,7 +1020,7 @@ async function showUpdateModal(updateInfo) {
         
         if (result.success && result.assets && result.assets.length > 0) {
             // 显示版本选择器
-            versionSelector.innerHTML = '<h4>选择下载版本:</h4>';
+            versionSelector.innerHTML = `<h4>${i18n.t('update_select_version')}</h4>`;
             const optionsContainer = document.createElement('div');
             optionsContainer.className = 'version-options';
             
@@ -1000,11 +1040,15 @@ async function showUpdateModal(updateInfo) {
                     radio.checked = true;
                 }
                 
+                let typeText = i18n.t('update_type_standard');
+                if (asset.type === 'standalone') typeText = i18n.t('update_type_standalone');
+                else if (asset.type === 'debug') typeText = i18n.t('update_type_debug');
+                
                 const label = document.createElement('span');
                 label.innerHTML = `
-                    <strong>${asset.type === 'standalone' ? '完整版' : asset.type === 'debug' ? '调试版' : '标准版'}</strong> 
+                    <strong>${typeText}</strong> 
                     (${asset.size_mb} MB)
-                    ${asset.recommended ? '<span class="badge">推荐</span>' : ''}
+                    ${asset.recommended ? `<span class="badge">${i18n.t('update_badge_rec')}</span>` : ''}
                     <br>
                     <small>${asset.description}</small>
                 `;
@@ -1034,7 +1078,7 @@ async function showUpdateModal(updateInfo) {
             downloadUpdateBtn.onclick = async () => {
                 const selectedRadio = document.querySelector('input[name="version"]:checked');
                 if (!selectedRadio) {
-                    alert('请选择一个版本');
+                    alert(i18n.t('alert_select_version'));
                     return;
                 }
                 
@@ -1044,7 +1088,7 @@ async function showUpdateModal(updateInfo) {
                 if (canAutoUpdate) {
                     // 自动更新流程 (支持 Windows/Linux/macOS)
                     downloadUpdateBtn.disabled = true;
-                    downloadUpdateBtn.textContent = '正在下载...';
+                    downloadUpdateBtn.textContent = i18n.t('update_btn_downloading');
                     
                     // 隐藏不需要的元素以腾出空间
                     updateDescription.parentNode.style.display = 'none'; // 隐藏更新说明区域
@@ -1057,20 +1101,20 @@ async function showUpdateModal(updateInfo) {
                         progressContainer.id = 'updateProgressContainer';
                         progressContainer.innerHTML = `
                             <div style="margin-top: 16px; padding: 12px; background: #0f0f23; border: 2px solid #00ff00; box-shadow: 4px 4px 0 #000000;">
-                                <h4 style="margin: 0 0 12px 0; color: #00ff00; text-align: center; font-family: 'Press Start 2P', monospace; font-size: 10px;">> DOWNLOADING_UPDATE...</h4>
+                                <h4 style="margin: 0 0 12px 0; color: #00ff00; text-align: center; font-family: 'Press Start 2P', monospace; font-size: 10px;">${i18n.t('update_progress_title')}</h4>
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-family: 'Press Start 2P', monospace; font-size: 9px;">
-                                    <span id="updateProgressText" style="color: #00cc00;">CONNECTING...</span>
+                                    <span id="updateProgressText" style="color: #00cc00;">${i18n.t('update_status_connecting')}</span>
                                     <span id="updateProgressPercent" style="color: #00ff00;">0%</span>
                                 </div>
                                 <div style="background: #1a1a2e; border: 2px solid #006600; height: 16px; position: relative; padding: 2px;">
                                     <div id="updateProgressBar" style="background: #00ff00; height: 100%; width: 0%; transition: width 0.2s steps(4);"></div>
                                 </div>
                                 <div style="margin-top: 12px; font-size: 10px; color: #008800; text-align: center; font-family: 'Press Start 2P', monospace; line-height: 1.5;">
-                                    * DO NOT CLOSE *
+                                    ${i18n.t('update_warn_dont_close')}
                                 </div>
                             </div>
                             <button id="installUpdateBtn" style="display: none; margin-top: 16px; width: 100%; padding: 14px; background: #00ff00; color: #000000; border: 2px solid #006600; cursor: pointer; font-size: 12px; font-family: 'Press Start 2P', monospace; box-shadow: 4px 4px 0 #000000;">
-                                [ INSTALL & RESTART ]
+                                ${i18n.t('update_btn_install')}
                             </button>
                         `;
                         // 插入到版本选择器原来的位置（现在隐藏了）
@@ -1109,12 +1153,12 @@ async function showUpdateModal(updateInfo) {
                                 
                                 if (status.is_downloading) {
                                     progressBar.style.width = status.progress + '%';
-                                    progressText.textContent = status.message || '正在下载...';
+                                    progressText.textContent = status.message || i18n.t('update_btn_downloading');
                                     progressPercent.textContent = status.progress + '%';
                                     setTimeout(pollProgress, 500);
                                 } else if (status.completed) {
                                     progressBar.style.width = '100%';
-                                    progressText.textContent = '√ DOWNLOAD COMPLETE';
+                                    progressText.textContent = i18n.t('update_status_complete');
                                     progressPercent.textContent = '100%';
                                     
                                     // 隐藏底部按钮区域，避免干扰
@@ -1125,7 +1169,7 @@ async function showUpdateModal(updateInfo) {
                                     installBtn.style.display = 'block';
                                     installBtn.onclick = async () => {
                                         installBtn.disabled = true;
-                                        installBtn.textContent = '正在准备更新...';
+                                        installBtn.textContent = i18n.t('update_btn_preparing');
                                         
                                         try {
                                             const applyRes = await fetch('/api/apply-update', { 
@@ -1135,26 +1179,26 @@ async function showUpdateModal(updateInfo) {
                                             const applyResult = await applyRes.json();
                                             
                                             if (applyResult.success) {
-                                                installBtn.textContent = '更新中，程序即将重启...';
+                                                installBtn.textContent = i18n.t('update_btn_restarting');
                                                 progressText.textContent = '* ' + applyResult.message;
                                             } else {
-                                                alert('应用更新失败: ' + applyResult.message);
+                                                alert(i18n.t('alert_apply_update_fail') + applyResult.message);
                                                 installBtn.disabled = false;
-                                                installBtn.textContent = '> 立即安装更新';
+                                                installBtn.textContent = '> ' + i18n.t('update_btn_install').replace(/[\[\]]/g, '').trim();
                                             }
                                         } catch (e) {
-                                            alert('应用更新失败: ' + e.message);
+                                            alert(i18n.t('alert_apply_update_fail') + e.message);
                                             installBtn.disabled = false;
-                                            installBtn.textContent = '> 立即安装更新';
+                                            installBtn.textContent = '> ' + i18n.t('update_btn_install').replace(/[\[\]]/g, '').trim();
                                         }
                                     };
                                 } else if (status.error) {
                                     progressText.textContent = 'X ' + status.message;
                                     downloadUpdateBtn.disabled = false;
-                                    downloadUpdateBtn.textContent = '重新下载';
+                                    downloadUpdateBtn.textContent = i18n.t('update_btn_retry');
                                 } else {
                                     // 初始状态，线程可能还未开始，继续轮询
-                                    progressText.textContent = '准备下载...';
+                                    progressText.textContent = i18n.t('update_status_ready');
                                     setTimeout(pollProgress, 500);
                                 }
                             } catch (e) {
@@ -1166,9 +1210,9 @@ async function showUpdateModal(updateInfo) {
                         setTimeout(pollProgress, 500);
                         
                     } catch (e) {
-                        alert('下载失败: ' + e.message);
+                        alert(i18n.t('alert_download_fail') + e.message);
                         downloadUpdateBtn.disabled = false;
-                        downloadUpdateBtn.textContent = '下载更新';
+                        downloadUpdateBtn.textContent = i18n.t('update_btn_default');
                     }
                 } else {
                     // 非 Windows 或非自动更新模式，使用浏览器下载
@@ -1228,12 +1272,12 @@ async function handleDownload() {
     const fileFormat = document.querySelector('input[name="format"]:checked').value;
     
     if (!bookId) {
-        alert('请输入书籍ID或URL');
+        alert(i18n.t('alert_input_book_id'));
         return;
     }
     
     if (!savePath) {
-        alert('请选择保存路径');
+        alert(i18n.t('alert_select_path'));
         return;
     }
     
@@ -1241,23 +1285,23 @@ async function handleDownload() {
     if (bookId.includes('fanqienovel.com')) {
         const match = bookId.match(/\/page\/(\d+)/);
         if (!match) {
-            alert('URL格式错误，请使用正确的Fanqie小说URL');
+            alert(i18n.t('alert_url_error'));
             return;
         }
     } else if (!/^\d+$/.test(bookId)) {
-        alert('书籍ID应为纯数字');
+        alert(i18n.t('alert_id_number'));
         return;
     }
     
-    logger.log(`# 正在获取书籍信息: ${bookId}`);
+    logger.logKey('log_prepare_download', bookId);
     
     const bookInfo = await api.getBookInfo(bookId);
     if (!bookInfo) {
-        alert('获取书籍信息失败，请检查ID是否正确');
+        alert(i18n.t('alert_fetch_fail'));
         return;
     }
     
-    logger.log('√ 获取成功，准备显示确认窗口');
+    // logger.log('√ 获取成功，准备显示确认窗口'); // Assuming log_prepare_download covers it or we just show dialog
     showConfirmDialog(bookInfo, savePath, fileFormat);
 }
 
@@ -1271,9 +1315,9 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
     if (AppState.selectedChapters) {
         selectionHtml = `
             <div class="chapter-selection-info" style="padding: 12px; background: #0f0f23; border: 2px solid #00ff00;">
-                <p style="margin: 0 0 8px 0; color: #00ff00; font-family: 'Press Start 2P', monospace; font-size: 11px;">√ 已手动选择 ${AppState.selectedChapters.length} 个章节</p>
-                <p style="margin: 0 0 10px 0; color: #008800; font-size: 10px;">提示：自定义选择模式下不支持"整书极速下载"</p>
-                <button class="btn btn-sm btn-secondary" onclick="window.reSelectChapters()">重新选择章节</button>
+                <p style="margin: 0 0 8px 0; color: #00ff00; font-family: 'Press Start 2P', monospace; font-size: 11px;">${i18n.t('label_manual_selected', AppState.selectedChapters.length)}</p>
+                <p style="margin: 0 0 10px 0; color: #008800; font-size: 10px;">${i18n.t('hint_manual_mode')}</p>
+                <button class="btn btn-sm btn-secondary" onclick="window.reSelectChapters()">${i18n.t('btn_reselect')}</button>
             </div>
         `;
     } else {
@@ -1281,21 +1325,21 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
             <div class="chapter-range">
                 <label>
                     <input type="radio" name="chapterMode" value="all" checked>
-                    下载全部章节 (支持极速模式)
+                    ${i18n.t('radio_all_chapters')}
                 </label>
                 <label>
                     <input type="radio" name="chapterMode" value="range">
-                    自定义章节范围
+                    ${i18n.t('radio_range_chapters')}
                 </label>
                 <label>
                     <input type="radio" name="chapterMode" value="manual">
-                    手动选择章节
+                    ${i18n.t('radio_manual_chapters')}
                 </label>
             </div>
             
             <div class="chapter-inputs" id="chapterInputs" style="display: none;">
                 <div class="input-row">
-                    <label>起始章节:</label>
+                    <label>${i18n.t('label_start_chapter')}</label>
                     <select id="startChapter" class="chapter-select">
                         ${bookInfo.chapters.map((ch, idx) => 
                             `<option value="${idx}">${ch.title}</option>`
@@ -1303,7 +1347,7 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                     </select>
                 </div>
                 <div class="input-row">
-                    <label>结束章节:</label>
+                    <label>${i18n.t('label_end_chapter')}</label>
                     <select id="endChapter" class="chapter-select">
                         ${bookInfo.chapters.map((ch, idx) => 
                             `<option value="${idx}" ${idx === bookInfo.chapters.length - 1 ? 'selected' : ''}>${ch.title}</option>`
@@ -1314,10 +1358,10 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
             
             <div class="chapter-manual-container" id="chapterManualContainer" style="display: none; margin-top: 12px;">
                 <div class="chapter-actions" style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 2px solid #006600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                    <button class="btn btn-sm btn-secondary" onclick="window.selectAllChaptersInDialog()">全选</button>
-                    <button class="btn btn-sm btn-secondary" onclick="window.selectNoneChaptersInDialog()">全不选</button>
-                    <button class="btn btn-sm btn-secondary" onclick="window.invertChaptersInDialog()">反选</button>
-                    <span id="dialogSelectedCount" style="margin-left: 15px; font-weight: bold;">已选: 0 章</span>
+                    <button class="btn btn-sm btn-secondary" onclick="window.selectAllChaptersInDialog()">${i18n.t('btn_select_all')}</button>
+                    <button class="btn btn-sm btn-secondary" onclick="window.selectNoneChaptersInDialog()">${i18n.t('btn_select_none')}</button>
+                    <button class="btn btn-sm btn-secondary" onclick="window.invertChaptersInDialog()">${i18n.t('btn_invert_selection')}</button>
+                    <span id="dialogSelectedCount" style="margin-left: 15px; font-weight: bold;">${i18n.t('label_dialog_selected', 0)}</span>
                 </div>
                 <div class="chapter-list" id="dialogChapterList" style="max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px;">
                     ${bookInfo.chapters.map((ch, idx) => `
@@ -1334,7 +1378,7 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3>+ 确认下载</h3>
+                <h3>${i18n.t('title_confirm_download')}</h3>
                 <button class="modal-close" onclick="this.closest('.modal').remove()">✕</button>
             </div>
             
@@ -1343,21 +1387,21 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                     ${bookInfo.cover_url ? `<img src="${bookInfo.cover_url}" alt="封面" class="book-cover" onerror="this.style.display='none'">` : ''}
                     <div class="book-details">
                         <h3 class="book-title">${bookInfo.book_name}</h3>
-                        <p class="book-author">作者: ${bookInfo.author}</p>
+                        <p class="book-author">${i18n.t('label_author')}${bookInfo.author}</p>
                         <p class="book-abstract">${bookInfo.abstract}</p>
-                        <p class="book-chapters">共 ${bookInfo.chapters.length} 章</p>
+                        <p class="book-chapters">${i18n.t('label_total_chapters', bookInfo.chapters.length)}</p>
                     </div>
                 </div>
                 
                 <div class="chapter-selection">
-                    <h3>章节选择</h3>
+                    <h3>${i18n.t('title_chapter_selection')}</h3>
                     ${selectionHtml}
                 </div>
             </div>
             
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">取消</button>
-                <button class="btn btn-primary" id="confirmDownloadBtn">开始下载</button>
+                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">${i18n.t('btn_cancel')}</button>
+                <button class="btn btn-primary" id="confirmDownloadBtn">${i18n.t('btn_start_download')}</button>
             </div>
         </div>
     `;
@@ -1386,8 +1430,8 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
         let selectedChapters = AppState.selectedChapters;
         
         if (selectedChapters) {
-            logger.log(`# 准备下载《${bookInfo.book_name}》`);
-            logger.log(`> 模式: 手动选择 (${selectedChapters.length} 章)`);
+            logger.logKey('log_prepare_download', bookInfo.book_name);
+            logger.logKey('log_mode_manual', selectedChapters.length);
         } else {
             // Safe check for chapterMode
             const modeInput = modal.querySelector('input[name="chapterMode"]:checked');
@@ -1401,46 +1445,46 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                     endChapter = parseInt(modal.querySelector('#endChapter').value);
                     
                     if (startChapter > endChapter) {
-                        alert('起始章节不能大于结束章节');
+                        alert(i18n.t('alert_chapter_range_error'));
                         return;
                     }
                     
-                    logger.log(`# 准备下载《${bookInfo.book_name}》`);
-                    logger.log(`> 章节范围: 第 ${startChapter + 1} 章 - 第 ${endChapter + 1} 章`);
+                    logger.logKey('log_prepare_download', bookInfo.book_name);
+                    logger.logKey('log_chapter_range', startChapter + 1, endChapter + 1);
                 } else if (mode === 'manual') {
                     // 获取手动选择的章节
                     const checkboxes = modal.querySelectorAll('#dialogChapterList input[type="checkbox"]:checked');
                     selectedChapters = Array.from(checkboxes).map(cb => parseInt(cb.value));
                     
                     if (selectedChapters.length === 0) {
-                        alert('请至少选择一个章节');
+                        alert(i18n.t('alert_select_one_chapter'));
                         return;
                     }
                     
-                    logger.log(`# 准备下载《${bookInfo.book_name}》`);
-                    logger.log(`> 模式: 手动选择 (${selectedChapters.length} 章)`);
+                    logger.logKey('log_prepare_download', bookInfo.book_name);
+                    logger.logKey('log_mode_manual', selectedChapters.length);
                 } else {
-                    logger.log(`# 准备下载《${bookInfo.book_name}》全部章节`);
+                    logger.logKey('log_download_all', bookInfo.book_name);
                 }
             }
         }
         
-        logger.log(`$ 保存路径: ${savePath}`);
-        logger.log(`= 文件格式: ${fileFormat.toUpperCase()}`);
+        logger.logKey('log_save_path', savePath);
+        logger.logKey('log_file_format', fileFormat.toUpperCase());
         
         api.startDownload(bookInfo.book_id, savePath, fileFormat, startChapter, endChapter, selectedChapters);
         modal.remove();
     });
     } catch (e) {
         console.error('Error showing confirm dialog:', e);
-        logger.log(`X 显示确认窗口失败: ${e.message}`);
-        alert('显示确认窗口失败，请查看控制台日志');
+        logger.logKey('log_show_dialog_fail', e.message);
+        alert(i18n.t('alert_show_dialog_fail'));
     }
 }
 
 
 async function handleCancel() {
-    if (confirm('确定要取消下载吗？')) {
+    if (confirm(i18n.t('confirm_cancel_download'))) {
         await api.cancelDownload();
     }
 }
@@ -1451,7 +1495,7 @@ window.updateDialogSelectedCount = function() {
     const checked = Array.from(checkboxes).filter(cb => cb.checked);
     const countElement = document.getElementById('dialogSelectedCount');
     if (countElement) {
-        countElement.textContent = `已选: ${checked.length} 章`;
+        countElement.textContent = i18n.t('label_dialog_selected', checked.length);
     }
 };
 
@@ -1484,7 +1528,7 @@ window.reSelectChapters = function() {
 };
 
 function handleClear() {
-    if (confirm('确定要清理所有设置吗？')) {
+    if (confirm(i18n.t('confirm_clear_settings'))) {
         document.getElementById('bookId').value = '';
         document.getElementById('savePath').value = '';
         document.querySelector('input[name="format"]').checked = true;

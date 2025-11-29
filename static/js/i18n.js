@@ -8,6 +8,12 @@ const translations = {
         // Header
         "app_title": "番茄小说下载器",
         "github_link": "GitHub",
+        "title_toggle_style": "切换风格",
+        "title_minimize": "最小化",
+        "title_maximize": "最大化",
+        "title_close": "关闭",
+        "style_8bit": "8-BIT",
+        "style_scp": "SCP",
         
         // Tabs
         "tab_search": "搜索书籍",
@@ -21,6 +27,11 @@ const translations = {
         "btn_clear": "清除结果",
         "btn_load_more": "加载更多",
         "search_no_results": "未找到相关书籍",
+        "status_complete": "完结",
+        "status_ongoing": "连载中",
+        "meta_word_count_suffix": "万字",
+        "meta_chapter_count_suffix": "章",
+        "label_no_desc": "暂无简介",
         
         // Download Pane
         "download_config_title": "手动下载配置",
@@ -57,6 +68,27 @@ const translations = {
         "empty_chapter_list": "请先获取章节列表",
         "btn_cancel": "取消",
         "btn_confirm": "确定",
+        "text_fetching_chapters": "正在获取章节列表...",
+        "text_fetch_chapter_fail": "获取章节失败",
+        "text_no_changelog": "暂无更新说明",
+        "label_selected_count": "已选: {0} / {1} 章",
+        "btn_selected_count": "= 已选 {0} 章",
+        "btn_select_chapters": "= 选择章节",
+        
+        // Confirm Dialog
+        "label_manual_selected": "√ 已手动选择 {0} 个章节",
+        "hint_manual_mode": "提示：自定义选择模式下不支持\"整书极速下载\"",
+        "btn_reselect": "重新选择章节",
+        "radio_all_chapters": "下载全部章节 (支持极速模式)",
+        "radio_range_chapters": "自定义章节范围",
+        "radio_manual_chapters": "手动选择章节",
+        "label_start_chapter": "起始章节:",
+        "label_end_chapter": "结束章节:",
+        "label_dialog_selected": "已选: {0} 章",
+        "title_confirm_download": "+ 确认下载",
+        "label_author": "作者: ",
+        "label_total_chapters": "共 {0} 章",
+        "title_chapter_selection": "章节选择",
         
         // Update Modal
         "modal_update_title": "[!] 发现新版本",
@@ -65,8 +97,42 @@ const translations = {
         "label_update_desc": "更新说明：",
         "btn_download_update": "立即下载",
         "btn_later": "稍后提醒",
+        "update_select_version": "选择下载版本:",
+        "update_type_standalone": "完整版",
+        "update_type_debug": "调试版",
+        "update_type_standard": "标准版",
+        "update_badge_rec": "推荐",
+        "update_btn_downloading": "正在下载...",
+        "update_progress_title": "> DOWNLOADING_UPDATE...",
+        "update_status_connecting": "CONNECTING...",
+        "update_warn_dont_close": "* DO NOT CLOSE *",
+        "update_btn_install": "[ INSTALL & RESTART ]",
+        "update_status_complete": "√ DOWNLOAD COMPLETE",
+        "update_btn_preparing": "正在准备更新...",
+        "update_btn_restarting": "更新中，程序即将重启...",
+        "update_btn_retry": "重新下载",
+        "update_status_ready": "准备下载...",
+        "update_status_fail": "下载失败: ",
+        "update_btn_default": "下载更新",
         
-        // JS Messages
+        // Alerts
+        "alert_input_keyword": "请输入搜索关键词",
+        "alert_input_book_id": "请输入书籍ID或URL",
+        "alert_select_path": "请选择保存路径",
+        "alert_url_error": "URL格式错误，请使用正确的Fanqie小说URL",
+        "alert_id_number": "书籍ID应为纯数字",
+        "alert_fetch_fail": "获取书籍信息失败，请检查ID是否正确",
+        "alert_chapter_range_error": "起始章节不能大于结束章节",
+        "alert_select_one_chapter": "请至少选择一个章节",
+        "alert_show_dialog_fail": "显示确认窗口失败，请查看控制台日志",
+        "confirm_cancel_download": "确定要取消下载吗？",
+        "confirm_clear_settings": "确定要清理所有设置吗？",
+        "alert_url_format_error": "URL格式错误",
+        "alert_select_version": "请选择一个版本",
+        "alert_apply_update_fail": "应用更新失败: ",
+        "alert_download_fail": "下载失败: ",
+        
+        // JS Messages / Logs
         "msg_version_info": "✓ 版本信息: ",
         "msg_fetch_version_fail": "! 获取版本信息失败",
         "msg_app_start": "> 应用启动...",
@@ -87,12 +153,21 @@ const translations = {
         "msg_save_path_updated": "√ 保存路径已更新: ",
         "msg_searching": "? 正在搜索: ",
         "msg_start_download_fail": "X 启动下载失败: ",
-        
         "msg_settings_cleared": "~ 设置已清理",
-        
         "msg_ready": "准备就绪，请输入书籍信息开始下载",
         "msg_init_partial": "! 应用初始化完成，但部分功能可能不可用",
         "msg_check_network": "如遇到问题，请检查网络连接或重启应用",
+        "log_prepare_download": "# 准备下载《{0}》",
+        "log_mode_manual": "> 模式: 手动选择 ({0} 章)",
+        "log_chapter_range": "> 章节范围: 第 {0} 章 - 第 {1} 章",
+        "log_download_all": "# 准备下载《{0}》全部章节",
+        "log_save_path": "$ 保存路径: ",
+        "log_file_format": "= 文件格式: ",
+        "log_show_dialog_fail": "X 显示确认窗口失败: ",
+        "log_selected": "+ 已选择: {0} (ID: {1})",
+        "log_get_chapter_list": "# 获取章节列表: ",
+        "log_confirmed_selection": "√ 已确认选择 {0} 个章节",
+        "log_cancel_selection": "√ 已取消章节选择 (默认下载全部)",
         
         // Common Backend Messages Mappings (Frontend translation)
         "backend_msg_download_complete": "下载完成",
@@ -107,6 +182,12 @@ const translations = {
         // Header
         "app_title": "Tomato Novel Downloader",
         "github_link": "GitHub",
+        "title_toggle_style": "Switch Style",
+        "title_minimize": "Minimize",
+        "title_maximize": "Maximize",
+        "title_close": "Close",
+        "style_8bit": "8-BIT",
+        "style_scp": "SCP",
         
         // Tabs
         "tab_search": "Search Books",
@@ -120,6 +201,11 @@ const translations = {
         "btn_clear": "Clear",
         "btn_load_more": "Load More",
         "search_no_results": "No books found",
+        "status_complete": "Completed",
+        "status_ongoing": "Ongoing",
+        "meta_word_count_suffix": "0k words",
+        "meta_chapter_count_suffix": " chapters",
+        "label_no_desc": "No description available",
         
         // Download Pane
         "download_config_title": "Download Config",
@@ -156,6 +242,27 @@ const translations = {
         "empty_chapter_list": "Please fetch chapter list first",
         "btn_cancel": "Cancel",
         "btn_confirm": "Confirm",
+        "text_fetching_chapters": "Fetching chapter list...",
+        "text_fetch_chapter_fail": "Failed to fetch chapters",
+        "text_no_changelog": "No changelog available",
+        "label_selected_count": "Selected: {0} / {1}",
+        "btn_selected_count": "= Selected {0} ch",
+        "btn_select_chapters": "= Select Chapters",
+        
+        // Confirm Dialog
+        "label_manual_selected": "√ Manually selected {0} chapters",
+        "hint_manual_mode": "Tip: 'Full Book Speed Download' is not supported in custom selection mode",
+        "btn_reselect": "Reselect Chapters",
+        "radio_all_chapters": "Download All Chapters (Speed Mode supported)",
+        "radio_range_chapters": "Custom Chapter Range",
+        "radio_manual_chapters": "Manual Chapter Selection",
+        "label_start_chapter": "Start Chapter:",
+        "label_end_chapter": "End Chapter:",
+        "label_dialog_selected": "Selected: {0} ch",
+        "title_confirm_download": "+ Confirm Download",
+        "label_author": "Author: ",
+        "label_total_chapters": "Total {0} chapters",
+        "title_chapter_selection": "Chapter Selection",
         
         // Update Modal
         "modal_update_title": "[!] New Version Found",
@@ -164,8 +271,42 @@ const translations = {
         "label_update_desc": "Changelog:",
         "btn_download_update": "Download Now",
         "btn_later": "Remind Later",
+        "update_select_version": "Select Version:",
+        "update_type_standalone": "Standalone",
+        "update_type_debug": "Debug",
+        "update_type_standard": "Standard",
+        "update_badge_rec": "Recommended",
+        "update_btn_downloading": "Downloading...",
+        "update_progress_title": "> DOWNLOADING_UPDATE...",
+        "update_status_connecting": "CONNECTING...",
+        "update_warn_dont_close": "* DO NOT CLOSE *",
+        "update_btn_install": "[ INSTALL & RESTART ]",
+        "update_status_complete": "√ DOWNLOAD COMPLETE",
+        "update_btn_preparing": "Preparing update...",
+        "update_btn_restarting": "Updating, restarting...",
+        "update_btn_retry": "Retry Download",
+        "update_status_ready": "Ready to download...",
+        "update_status_fail": "Download failed: ",
+        "update_btn_default": "Download Update",
         
-        // JS Messages
+        // Alerts
+        "alert_input_keyword": "Please enter search keyword",
+        "alert_input_book_id": "Please enter Book ID or URL",
+        "alert_select_path": "Please select save path",
+        "alert_url_error": "Invalid URL. Please use a valid Fanqie Novel URL",
+        "alert_id_number": "Book ID must be numeric",
+        "alert_fetch_fail": "Failed to fetch book info. Please check the ID.",
+        "alert_chapter_range_error": "Start chapter cannot be greater than end chapter",
+        "alert_select_one_chapter": "Please select at least one chapter",
+        "alert_show_dialog_fail": "Failed to show confirmation dialog. Check console logs.",
+        "confirm_cancel_download": "Are you sure you want to cancel the download?",
+        "confirm_clear_settings": "Are you sure you want to clear all settings?",
+        "alert_url_format_error": "URL format error",
+        "alert_select_version": "Please select a version",
+        "alert_apply_update_fail": "Failed to apply update: ",
+        "alert_download_fail": "Download failed: ",
+        
+        // JS Messages / Logs
         "msg_version_info": "✓ Version: ",
         "msg_fetch_version_fail": "! Failed to fetch version",
         "msg_app_start": "> Starting app...",
@@ -186,12 +327,21 @@ const translations = {
         "msg_save_path_updated": "√ Save path updated: ",
         "msg_searching": "? Searching for: ",
         "msg_start_download_fail": "X Failed to start download: ",
-        
         "msg_settings_cleared": "~ Settings cleared",
-        
         "msg_ready": "Ready. Enter book info to start download",
         "msg_init_partial": "! App initialized, but some features may be unavailable",
         "msg_check_network": "If you encounter issues, check network or restart app",
+        "log_prepare_download": "# Preparing download: <{0}>",
+        "log_mode_manual": "> Mode: Manual ({0} chapters)",
+        "log_chapter_range": "> Range: Ch {0} - Ch {1}",
+        "log_download_all": "# Preparing to download all chapters of <{0}>",
+        "log_save_path": "$ Save Path: ",
+        "log_file_format": "= Format: ",
+        "log_show_dialog_fail": "X Failed to show dialog: ",
+        "log_selected": "+ Selected: {0} (ID: {1})",
+        "log_get_chapter_list": "# Fetching chapter list: ",
+        "log_confirmed_selection": "√ Confirmed {0} chapters",
+        "log_cancel_selection": "√ Selection cancelled (Download all by default)",
         
         // Common Backend Messages Mappings
         "backend_msg_download_complete": "Download Completed",
@@ -208,11 +358,20 @@ class I18n {
         this.syncToBackend(this.lang);
     }
     
-    t(key) {
+    t(key, ...args) {
+        let value = key;
         if (translations[this.lang] && translations[this.lang][key]) {
-            return translations[this.lang][key];
+            value = translations[this.lang][key];
         }
-        return key; // Fallback to key if not found
+        
+        // Handle variable substitution {0}, {1}, etc.
+        if (args.length > 0) {
+            args.forEach((arg, index) => {
+                value = value.replace(new RegExp(`\\{${index}\\}`, 'g'), arg);
+            });
+        }
+        
+        return value;
     }
     
     setLanguage(lang) {
@@ -245,13 +404,15 @@ class I18n {
             // Handle inputs with placeholders separately
             if (el.tagName === 'INPUT' && el.hasAttribute('placeholder')) {
                 el.setAttribute('placeholder', this.t(key));
+            } else if (el.hasAttribute('title')) {
+                // Some elements might use title
+                el.setAttribute('title', this.t(key));
+                // If it also has content, continue to update content
+                if (el.children.length === 0 && el.textContent.trim()) {
+                     el.textContent = this.t(key);
+                }
             } else {
                 // For buttons with icons, we want to preserve the icon
-                // This is a bit tricky. We assume text is in a span or text node
-                // For this project, buttons often have <span class="icon">...</span> Text
-                // Let's try to find the text node or a span that holds the text
-                
-                // Simple strategy: if element has children, assume specific structure or just replace text content if simple
                 if (el.children.length === 0) {
                     el.textContent = this.t(key);
                     // Update data-text for glitch effect
@@ -259,17 +420,12 @@ class I18n {
                         el.setAttribute('data-text', this.t(key));
                     }
                 } else {
-                    // Custom handling for elements with icons
-                    // Try to find a text node to update, or a specific class like .text-content
-                    // If button has icon inside, we might need to wrap text in span or identify it
-                    
-                    // For this specific project:
-                    // Button structure: <span class="icon">...</span> Text
-                    // We can iterate childNodes and update the text node
                     let textNodeFound = false;
                     el.childNodes.forEach(node => {
                         if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0) {
-                            node.textContent = ' ' + this.t(key).trim(); // Add space for separation from icon
+                            // Keep leading spaces if they exist in current text
+                            const hasLeadingSpace = node.textContent.startsWith(' ');
+                            node.textContent = (hasLeadingSpace ? ' ' : '') + this.t(key).trim(); 
                             textNodeFound = true;
                         }
                     });
@@ -281,23 +437,12 @@ class I18n {
                         label.textContent = this.t(key);
                         textNodeFound = true;
                     }
-                    
-                    if (!textNodeFound && el.querySelector('.format-name')) {
-                         // For format radio labels
-                         // Actually format names like TXT/EPUB usually don't need translation or are simple
-                    }
                 }
             }
         });
         
         // Update document title
         document.title = this.t('app_title');
-        
-        // Update specific specialized elements if needed
-        const versionLabel = document.querySelector('.version-tag');
-        if (versionLabel && versionLabel.firstChild.nodeType === Node.TEXT_NODE) {
-            // versionLabel.firstChild.textContent = 'v'; // 'v' is universal
-        }
     }
     
     // Helper to translate backend messages if possible

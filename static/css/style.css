@@ -1309,6 +1309,7 @@ body::after {
 
 /* SCP Classified Stamp */
 .scp-stamp {
+    display: none;
     position: absolute;
     top: 40px;
     right: 40px;
@@ -1353,4 +1354,300 @@ body::after {
     font-size: 9px;
     color: var(--border-dim);
     letter-spacing: 2px;
+}
+
+/* ===================== SCP 风格模式 ===================== */
+body.scp-mode {
+    /* 基础色调重置 - SCP Foundation Theme (Black/White/Grey/Red) */
+    --primary: #d32f2f;       /* 警告红 */
+    --primary-hover: #b71c1c;
+    --primary-dark: #8e0000;
+    --primary-glow: 0 0 5px rgba(211, 47, 47, 0.3);
+    
+    --bg-dark: #1e1e1e;       /* 终端深灰 */
+    --bg-surface: #252526;    /* 编辑器灰 */
+    --bg-card: #2d2d30;       /* 浅一点的灰 */
+    --bg-input: #1e1e1e;
+    
+    --border: #555555;
+    --border-dim: #3e3e42;
+    --border-highlight: #d32f2f;
+    
+    --text-primary: #e0e0e0;  /* 灰白文字 */
+    --text-secondary: #9d9d9d;
+    --text-muted: #606060;
+    --text-white: #ffffff;
+    
+    /* 功能色 */
+    --success: #4caf50;       /* 柔和绿 */
+    --warning: #ff9800;       /* 橙色 */
+    --danger: #f44336;        /* 红色 */
+    --info: #2196f3;          /* 蓝色 */
+    --purple: #9c27b0;
+    
+    /* 样式重置 */
+    --pixel-border: 1px;      /* 实线细边框 */
+    --pixel-border-sm: 1px;
+    
+    /* 阴影重置 */
+    --shadow-pixel: 0 2px 4px rgba(0,0,0,0.2);
+    --shadow-pixel-sm: 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-pixel-inset: inset 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-glow: 0 0 8px rgba(255,255,255,0.1);
+    
+    /* 字体覆写 */
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    image-rendering: auto;    /* 平滑渲染 */
+    letter-spacing: 0;
+}
+
+/* 覆写全局样式 */
+body.scp-mode * {
+    text-transform: none; /* 取消全大写 */
+}
+
+/* 警告条显示 */
+body.scp-mode .scp-warning-banner {
+    display: block;
+    background: repeating-linear-gradient(
+        45deg,
+        #8e0000,
+        #8e0000 10px,
+        #1e1e1e 10px,
+        #1e1e1e 20px
+    );
+    color: #ffcccc;
+    text-align: center;
+    padding: 4px 0;
+    font-size: 12px;
+    font-weight: bold;
+    border-bottom: 2px solid #d32f2f;
+    text-shadow: 1px 1px 0 #000;
+    letter-spacing: 1px;
+}
+
+/* 头部样式 */
+body.scp-mode .dashboard-header {
+    border: 1px solid var(--border-dim);
+    border-radius: 2px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+body.scp-mode .dashboard-header::before {
+    display: none;
+}
+
+body.scp-mode .app-title {
+    font-family: 'Courier New', monospace;
+    text-transform: uppercase;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: var(--text-primary);
+    text-shadow: none;
+}
+
+/* 按钮样式 */
+body.scp-mode .btn {
+    border-radius: 2px;
+    font-family: 'Consolas', monospace;
+    text-transform: uppercase;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+body.scp-mode .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+body.scp-mode .btn-primary {
+    background: var(--primary-dark);
+    border-color: var(--primary);
+    color: white;
+}
+
+body.scp-mode .btn-primary:hover {
+    background: var(--primary);
+}
+
+/* 卡片样式 */
+body.scp-mode .card {
+    border: 1px solid var(--border-dim);
+    border-radius: 2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+body.scp-mode .card::before {
+    display: none;
+}
+
+body.scp-mode .card-header {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-dim);
+}
+
+body.scp-mode .card-header h3 {
+    font-family: 'Consolas', monospace;
+    text-transform: uppercase;
+    color: var(--text-primary);
+}
+
+body.scp-mode .card-header h3::before {
+    content: '>>';
+    color: var(--primary);
+    font-family: monospace;
+}
+
+/* 输入框 */
+body.scp-mode .form-input {
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    background: var(--bg-input);
+    font-family: 'Consolas', monospace;
+}
+
+body.scp-mode .form-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(211, 47, 47, 0.1);
+}
+
+/* 标签页 */
+body.scp-mode .tab-nav {
+    border-bottom: 1px solid var(--border-dim);
+}
+
+body.scp-mode .tab-btn {
+    border: 1px solid transparent;
+    border-bottom: none;
+    margin-right: 2px;
+    font-family: 'Consolas', monospace;
+    border-radius: 2px 2px 0 0;
+}
+
+body.scp-mode .tab-btn:hover {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+body.scp-mode .tab-btn.active {
+    background: var(--bg-card);
+    border: 1px solid var(--border-dim);
+    border-bottom-color: var(--bg-card);
+    color: var(--primary);
+    box-shadow: none;
+}
+
+body.scp-mode .tab-btn.active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--primary);
+}
+
+/* 模态框 */
+body.scp-mode .modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    border-radius: 2px;
+}
+
+body.scp-mode .modal-content::before {
+    display: none;
+}
+
+body.scp-mode .modal-header {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--primary);
+}
+
+body.scp-mode .modal-header h3 {
+    font-family: 'Consolas', monospace;
+}
+
+body.scp-mode .modal-footer {
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-dim);
+}
+
+/* 章节列表 */
+body.scp-mode .chapter-list {
+    border: 1px solid var(--border-dim) !important;
+    background: var(--bg-input) !important;
+}
+
+body.scp-mode .chapter-item {
+    border: 1px solid var(--border-dim) !important;
+    background: var(--bg-surface) !important;
+    margin-bottom: 2px;
+    border-radius: 0;
+}
+
+body.scp-mode .chapter-item:hover {
+    background: var(--bg-card) !important;
+    border-color: var(--primary) !important;
+}
+
+body.scp-mode .chapter-item.selected {
+    background: #2d2d30 !important;
+    border-color: var(--primary) !important;
+}
+
+body.scp-mode .chapter-item span {
+    color: var(--text-primary) !important;
+    font-family: 'Consolas', monospace !important;
+}
+
+/* 其他细节 */
+body.scp-mode .book-info {
+    border: 1px solid var(--border-dim) !important;
+    background: var(--bg-surface) !important;
+}
+
+body.scp-mode .book-title {
+    color: var(--text-primary) !important;
+    font-family: 'Consolas', monospace !important;
+}
+
+body.scp-mode .book-author,
+body.scp-mode .book-chapters {
+    color: var(--text-secondary) !important;
+}
+
+body.scp-mode .book-author::before,
+body.scp-mode .book-chapters::before {
+    font-family: monospace !important;
+    color: var(--primary) !important;
+}
+
+body.scp-mode .app-logo.pixel-tomato {
+    filter: grayscale(100%) opacity(0.5);
+}
+
+body.scp-mode .pixel-icon {
+    font-family: 'Segoe UI Emoji', 'Consolas', monospace !important;
+}
+
+/* 滚动条 */
+body.scp-mode ::-webkit-scrollbar {
+    width: 10px;
+    background: var(--bg-dark);
+}
+
+body.scp-mode ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 5px;
+    border: 2px solid var(--bg-dark);
+}
+
+body.scp-mode ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-highlight);
+}
+
+/* 显示SCP印章 */
+body.scp-mode .scp-stamp {
+    display: block;
 }
