@@ -323,6 +323,113 @@
     color: #8B2323;
 }
 
+/* 章节范围选择 */
+.chapter-inputs {
+    padding: 16px;
+    background: linear-gradient(180deg, #EDE0C8 0%, #F5E6C8 100%);
+    border: 2px solid #8B7355;
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.input-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+    gap: 12px;
+}
+
+.input-row:last-child {
+    margin-bottom: 0;
+}
+
+.input-row label {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #2F1810;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.chapter-select {
+    flex: 1;
+    padding: 12px 16px;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 14px;
+    color: #2F1810;
+    background: linear-gradient(180deg, #FDF5E6 0%, #F5E6C8 100%);
+    border: 2px solid #A08060;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238B7355' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 40px;
+}
+
+.chapter-select:hover {
+    border-color: #8B7355;
+}
+
+.chapter-select:focus {
+    outline: none;
+    border-color: #8B2323;
+    box-shadow: 0 0 0 3px rgba(139, 35, 35, 0.15);
+}
+
+.chapter-select option {
+    padding: 10px;
+    background: #F5E6C8;
+    color: #2F1810;
+}
+
+/* 章节选择模式单选按钮 */
+.chapter-range {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.chapter-range label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(90deg, #FDF5E6 0%, #F5E6C8 100%);
+    border: 2px solid #D4C4A8;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 14px;
+    color: #4A3728;
+    transition: all 0.2s ease;
+}
+
+.chapter-range label:hover {
+    border-color: #A08060;
+}
+
+.chapter-range input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #8B2323;
+    cursor: pointer;
+}
+
+.chapter-range input[type="radio"]:checked + span,
+.chapter-range label:has(input[type="radio"]:checked) {
+    color: #8B2323;
+    font-weight: 600;
+    border-color: #8B2323;
+    background: linear-gradient(90deg, rgba(139, 35, 35, 0.08) 0%, rgba(139, 35, 35, 0.04) 100%);
+}
+
 .chapter-item.selected {
     background: linear-gradient(90deg, rgba(139, 35, 35, 0.12) 0%, rgba(139, 35, 35, 0.06) 100%);
     border-color: #8B2323;
