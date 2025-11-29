@@ -57,7 +57,7 @@ async function fetchVersion(retryCount = 0) {
         const data = await response.json();
         if (data.success && data.version) {
             versionEl.textContent = data.version;
-            logger.log(i18n.t('msg_version_info') + data.version);
+            logger.logKey('msg_version_info', data.version);
         }
     } catch (e) {
         console.error('获取版本信息失败:', e);
@@ -65,7 +65,7 @@ async function fetchVersion(retryCount = 0) {
         if (retryCount < 3) {
             setTimeout(() => fetchVersion(retryCount + 1), 1000);
         } else {
-            logger.log(i18n.t('msg_fetch_version_fail'));
+            logger.logKey('msg_fetch_version_fail');
         }
     }
 }
@@ -239,11 +239,11 @@ class APIClient {
             if (result.success) {
                 return result.data;
             } else {
-                logger.log(`X ${result.message}`);
+                logger.logKey('msg_book_info_fail', result.message);
                 return null;
             }
         } catch (error) {
-            logger.log(`X 获取书籍信息失败: ${error.message}`);
+            logger.logKey('msg_book_info_fail', error.message);
             return null;
         }
     }
@@ -259,11 +259,11 @@ class APIClient {
             if (result.success) {
                 return result.data;
             } else {
-                logger.log(`X ${result.message}`);
+                logger.logKey('msg_search_fail', result.message);
                 return null;
             }
         } catch (error) {
-            logger.log(`X 搜索失败: ${error.message}`);
+            logger.logKey('msg_search_fail', error.message);
             return null;
         }
     }
@@ -295,11 +295,11 @@ class APIClient {
                 switchTab('progress');
                 return true;
             } else {
-                logger.log(`X ${result.message}`);
+                logger.log('X ' + result.message);
                 return false;
             }
         } catch (error) {
-            logger.log(`X 启动下载失败: ${error.message}`);
+            logger.logKey('msg_start_download_fail', error.message);
             return false;
         }
     }
@@ -631,7 +631,7 @@ async function handleSearch() {
     searchBtn.disabled = true;
     // searchBtn.textContent = '搜索中...'; // Let's keep icon or just disable
     
-    logger.log(`? 正在搜索: ${keyword}`); // TODO: dynamic log for search
+    logger.logKey('msg_searching', keyword);
     
     const result = await api.searchBooks(keyword, 0);
     
@@ -1495,20 +1495,20 @@ function handleClear() {
         AppState.selectedChapters = null;
         
         logger.clear();
-        logger.log('~ 设置已清理');
+        logger.logKey('msg_settings_cleared');
     }
 }
 
 async function handleBrowse() {
     const currentPath = document.getElementById('savePath').value || '';
     
-    logger.log('> 打开文件夹选择对话框...');
+    logger.logKey('msg_open_folder_dialog');
     
     const result = await api.selectFolder(currentPath);
     
     if (result.success && result.path) {
         AppState.setSavePath(result.path);
-        logger.log(`√ 保存路径已更新: ${result.path}`);
+        logger.logKey('msg_save_path_updated', result.path);
     } else if (result.message && result.message !== '未选择文件夹') {
         logger.log(`X ${result.message}`);
     }
@@ -1517,14 +1517,14 @@ async function handleBrowse() {
 /* ===================== 初始化 ===================== */
 
 document.addEventListener('DOMContentLoaded', async () => {
-    logger.log(i18n.t('msg_app_start'));
+    logger.logKey('msg_app_start');
     
     // 从URL获取访问令牌
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     if (token) {
         AppState.setAccessToken(token);
-        logger.log(i18n.t('msg_token_loaded'));
+        logger.logKey('msg_token_loaded');
     }
     
     initializeUI();
@@ -1532,10 +1532,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 初始化模块
     const success = await api.init();
     if (success) {
-        logger.log(i18n.t('msg_ready'));
+        logger.logKey('msg_ready');
     } else {
-        logger.log(i18n.t('msg_init_partial'));
-        logger.log(i18n.t('msg_check_network'));
+        logger.logKey('msg_init_partial');
+        logger.logKey('msg_check_network');
     }
 });
 

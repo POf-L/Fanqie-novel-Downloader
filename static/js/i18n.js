@@ -83,6 +83,12 @@ const translations = {
         "msg_cancel_fail": "X 取消下载失败: ",
         "msg_folder_fail": "X 文件夹选择失败: ",
         "msg_select_chapter_warn": "请至少选择一章",
+        "msg_open_folder_dialog": "> 打开文件夹选择对话框...",
+        "msg_save_path_updated": "√ 保存路径已更新: ",
+        "msg_searching": "? 正在搜索: ",
+        "msg_start_download_fail": "X 启动下载失败: ",
+        
+        "msg_settings_cleared": "~ 设置已清理",
         
         "msg_ready": "准备就绪，请输入书籍信息开始下载",
         "msg_init_partial": "! 应用初始化完成，但部分功能可能不可用",
@@ -176,6 +182,12 @@ const translations = {
         "msg_cancel_fail": "X Cancel failed: ",
         "msg_folder_fail": "X Folder selection failed: ",
         "msg_select_chapter_warn": "Please select at least one chapter",
+        "msg_open_folder_dialog": "> Opening folder selection dialog...",
+        "msg_save_path_updated": "√ Save path updated: ",
+        "msg_searching": "? Searching for: ",
+        "msg_start_download_fail": "X Failed to start download: ",
+        
+        "msg_settings_cleared": "~ Settings cleared",
         
         "msg_ready": "Ready. Enter book info to start download",
         "msg_init_partial": "! App initialized, but some features may be unavailable",

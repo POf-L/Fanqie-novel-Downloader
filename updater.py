@@ -318,7 +318,6 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     # 创建更新批处理脚本（直接嵌入 PID 避免参数传递问题）
     # 注意：使用英文提示避免 CMD 编码问题
     bat_content = f'''@echo off
-chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 
 echo ====================================
@@ -438,7 +437,7 @@ exit /b 0
         bat_path = os.path.join(tempfile.gettempdir(), 'fanqie_update.bat')
         print(f'[DEBUG] Writing update script to: {bat_path}')
         
-        with open(bat_path, 'w', encoding='utf-8') as f:
+        with open(bat_path, 'w', encoding='mbcs') as f:
             f.write(bat_content)
         
         print(f'[DEBUG] Update script written successfully')
