@@ -291,8 +291,6 @@ class APIClient {
                 logger.logKey('msg_task_started');
                 AppState.setDownloading(true);
                 this.startStatusPolling();
-                // 自动切换到进度标签页
-                switchTab('progress');
                 return true;
             } else {
                 logger.log('X ' + result.message);
