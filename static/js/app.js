@@ -57,7 +57,7 @@ async function fetchVersion(retryCount = 0) {
         const data = await response.json();
         if (data.success && data.version) {
             versionEl.textContent = data.version;
-            logger.log(`✓ 版本信息: ${data.version}`);
+            logger.log(i18n.t('msg_version_info') + data.version);
         }
     } catch (e) {
         console.error('获取版本信息失败:', e);
@@ -65,7 +65,7 @@ async function fetchVersion(retryCount = 0) {
         if (retryCount < 3) {
             setTimeout(() => fetchVersion(retryCount + 1), 1000);
         } else {
-            logger.log('! 获取版本信息失败');
+            logger.log(i18n.t('msg_fetch_version_fail'));
         }
     }
 }
@@ -83,7 +83,13 @@ class Logger {
         entry.className = 'log-entry typing-cursor';
         this.container.appendChild(entry);
         
-        const fullText = `[${this.getTime()}] ${message}`;
+        // Translate backend message if possible
+        let translatedMsg = message;
+        if (typeof i18n !== 'undefined') {
+            translatedMsg = i18n.translateBackendMsg(message);
+        }
+        
+        const fullText = `[${this.getTime()}] ${translatedMsg}`;
         let index = 0;
         // Adjust speed based on length
         const speed = fullText.length > 50 ? 10 : 30;
@@ -157,23 +163,23 @@ class APIClient {
             
             return await response.json();
         } catch (error) {
-            logger.log(`X 请求失败: ${error.message}`);
+            logger.log(i18n.t('msg_request_fail') + error.message);
             throw error;
         }
     }
     
     async init() {
-        logger.log('* 初始化应用...');
+        logger.log(i18n.t('msg_init_app'));
         try {
             const result = await this.request('/api/init', { method: 'POST' });
             if (result.success) {
-                logger.log('√ 核心模块加载完成');
+                logger.log(i18n.t('msg_module_loaded'));
             } else {
-                logger.log('! 模块加载失败: ' + result.message);
+                logger.log(i18n.t('msg_module_fail') + result.message);
             }
             return result.success;
         } catch (error) {
-            logger.log('X 初始化失败');
+            logger.log(i18n.t('msg_init_fail'));
             return false;
         }
     }
@@ -237,7 +243,7 @@ class APIClient {
             });
             
             if (result.success) {
-                logger.log('√ 下载任务已启动');
+                logger.log(i18n.t('msg_task_started'));
                 AppState.setDownloading(true);
                 this.startStatusPolling();
                 // 自动切换到进度标签页
@@ -257,13 +263,13 @@ class APIClient {
         try {
             const result = await this.request('/api/cancel', { method: 'POST' });
             if (result.success) {
-                logger.log('■ 下载已取消');
+                logger.log(i18n.t('msg_download_cancelled'));
                 AppState.setDownloading(false);
                 this.stopStatusPolling();
                 return true;
             }
         } catch (error) {
-            logger.log(`X 取消下载失败: ${error.message}`);
+            logger.log(i18n.t('msg_cancel_fail') + error.message);
         }
         return false;
     }
@@ -326,12 +332,12 @@ class APIClient {
         
         // 更新状态文本
         if (status.is_downloading) {
-            document.getElementById('statusText').textContent = '下载中...';
+            document.getElementById('statusText').textContent = i18n.t('status_downloading');
         } else if (progress === 100) {
-            document.getElementById('statusText').textContent = '√ 已完成';
+            document.getElementById('statusText').textContent = i18n.t('status_completed');
             updateProgressBadge(100); // 清除徽章
         } else {
-            document.getElementById('statusText').textContent = '准备就绪';
+            document.getElementById('statusText').textContent = i18n.t('status_ready');
         }
     }
     
@@ -364,7 +370,7 @@ class APIClient {
             });
             return result;
         } catch (error) {
-            logger.log(`X 文件夹选择失败: ${error.message}`);
+            logger.log(i18n.t('msg_folder_fail') + error.message);
             return { success: false };
         }
     }
@@ -514,6 +520,28 @@ function initializeUI() {
     // 初始化章节选择弹窗事件
     initChapterModalEvents();
     
+    // 初始化语言切换
+    const langBtn = document.getElementById('langToggle');
+    if (langBtn) {
+        const langLabel = document.getElementById('langLabel');
+        
+        const updateLangBtn = (lang) => {
+            langLabel.textContent = lang === 'zh' ? 'EN' : '中文';
+        };
+        
+        // Initial state
+        updateLangBtn(i18n.lang);
+        i18n.updatePage();
+        
+        langBtn.addEventListener('click', () => {
+            i18n.toggleLanguage();
+        });
+        
+        i18n.onLanguageChange((lang) => {
+            updateLangBtn(lang);
+        });
+    }
+    
     checkForUpdate();
 }
 
@@ -555,14 +583,14 @@ async function handleSearch() {
     
     const searchBtn = document.getElementById('searchBtn');
     searchBtn.disabled = true;
-    searchBtn.textContent = '搜索中...';
+    // searchBtn.textContent = '搜索中...'; // Let's keep icon or just disable
     
-    logger.log(`? 正在搜索: ${keyword}`);
+    logger.log(`? 正在搜索: ${keyword}`); // TODO: dynamic log for search
     
     const result = await api.searchBooks(keyword, 0);
     
     searchBtn.disabled = false;
-    searchBtn.textContent = '搜索';
+    searchBtn.textContent = i18n.t('btn_search');
     
     if (result && result.books) {
         displaySearchResults(result.books, false);
@@ -572,10 +600,10 @@ async function handleSearch() {
         const loadMoreContainer = document.getElementById('loadMoreContainer');
         loadMoreContainer.style.display = result.has_more ? 'block' : 'none';
         
-        logger.log(`√ 找到 ${result.books.length} 本书籍`);
+        logger.log(`${i18n.t('search_count_prefix')}${result.books.length}${i18n.t('search_count_suffix')}`);
     } else {
         displaySearchResults([], false);
-        logger.log('X 未找到相关书籍');
+        logger.log('X ' + i18n.t('search_no_results'));
     }
 }
 
@@ -584,12 +612,12 @@ async function loadMoreResults() {
     
     const loadMoreBtn = document.getElementById('loadMoreBtn');
     loadMoreBtn.disabled = true;
-    loadMoreBtn.textContent = '加载中...';
+    // loadMoreBtn.textContent = '加载中...';
     
     const result = await api.searchBooks(currentSearchKeyword, searchOffset);
     
     loadMoreBtn.disabled = false;
-    loadMoreBtn.textContent = '加载更多';
+    loadMoreBtn.textContent = i18n.t('btn_load_more');
     
     if (result && result.books && result.books.length > 0) {
         displaySearchResults(result.books, true);
@@ -617,10 +645,10 @@ function displaySearchResults(books, append = false) {
         listContainer.innerHTML = `
             <div class="empty-state">
                 <div class="empty-state-icon">#</div>
-                <div class="empty-state-text">未找到相关书籍</div>
+                <div class="empty-state-text">${i18n.t('search_no_results')}</div>
             </div>
         `;
-        countSpan.textContent = '找到 0 本书籍';
+        countSpan.textContent = i18n.t('search_count_prefix') + '0' + i18n.t('search_count_suffix');
         headerContainer.style.display = 'none';
         return;
     }
@@ -633,6 +661,7 @@ function displaySearchResults(books, append = false) {
         const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + '万字' : '';
         const chapterCount = book.chapter_count ? book.chapter_count + '章' : '';
         const status = book.status || '';
+        // We might want to translate status too if it's fixed strings
         const statusClass = (status === '完结' || status === '已完结') ? 'complete' : 'ongoing';
         
         item.innerHTML = `
@@ -652,7 +681,7 @@ function displaySearchResults(books, append = false) {
     
     // 更新计数
     const totalCount = listContainer.querySelectorAll('.search-item').length;
-    countSpan.textContent = `找到 ${totalCount} 本书籍`;
+    countSpan.textContent = `${i18n.t('search_count_prefix')}${totalCount}${i18n.t('search_count_suffix')}`;
 }
 
 function selectBook(bookId, bookName) {

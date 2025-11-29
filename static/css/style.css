@@ -64,8 +64,9 @@ body {
     line-height: 1.8;
     min-height: 100vh;
     position: relative;
-    font-size: 12px;
+    font-size: 14px;
     image-rendering: pixelated;
+    text-transform: uppercase;
 }
 
 /* 扫描线效果 */
@@ -441,7 +442,7 @@ body::after {
 }
 
 .input-group.lg .form-input {
-    font-size: 10px;
+    font-size: 12px;
     padding: 12px 16px;
 }
 
@@ -449,7 +450,7 @@ body::after {
 .form-group .form-input.lg,
 #bookId {
     width: 100%;
-    font-size: 10px;
+    font-size: 12px;
     padding: 12px 16px;
 }
 
@@ -466,6 +467,7 @@ body::after {
     box-shadow: var(--shadow-pixel-inset);
     transition: var(--transition);
     outline: none;
+    text-transform: none;
 }
 
 .form-input:focus {
@@ -593,12 +595,12 @@ body::after {
 
 .btn-sm {
     padding: 8px 14px;
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .btn-xl {
     padding: 14px 28px;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 .btn-text {
@@ -747,7 +749,7 @@ body::after {
 }
 
 .search-count {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     font-style: normal;
 }
@@ -807,7 +809,7 @@ body::after {
 
 .search-title {
     font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 400;
     color: var(--text-primary);
     margin-bottom: 6px;
@@ -817,13 +819,13 @@ body::after {
 }
 
 .search-meta {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-bottom: 4px;
 }
 
 .search-desc {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-secondary);
     line-height: 1.5;
     display: -webkit-box;
@@ -856,7 +858,7 @@ body::after {
 .status-badge {
     display: inline-block;
     padding: 5px 10px;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 400;
     font-family: 'Press Start 2P', monospace;
     background: var(--info);
@@ -1008,7 +1010,7 @@ body::after {
 
 .log-entry {
     font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-secondary);
     padding: 6px 8px;
     background: transparent;
@@ -1170,7 +1172,7 @@ body::after {
     text-align: center;
     padding: 8px;
     font-family: 'Press Start 2P', monospace;
-    font-size: 10px;
+    font-size: 12px;
     border-bottom: 2px solid #ff0000;
     position: sticky;
     top: 0;
