@@ -353,7 +353,8 @@ jobs:
             --volume "${PWD}:/workspace"
           install: |
             apt-get update -q
-            apt-get install -y python3 python3-pip python3-venv binutils
+            apt-get install -y python3 python3-pip python3-venv binutils git
+            pip3 install termux-elf-cleaner
           run: |
             cd /workspace
             python3 -m venv venv
@@ -380,6 +381,9 @@ jobs:
               --collect-data fake_useragent \
               --collect-submodules PIL \
               novel_downloader.py
+            
+            # 使用 termux-elf-cleaner 修复 ELF 解释器路径
+            termux-elf-cleaner dist/TomatoNovelDownloader-termux
             
             # 在容器内完成重命名，避免权限问题
             cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
