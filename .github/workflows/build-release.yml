@@ -353,15 +353,14 @@ jobs:
             --volume "${PWD}:/workspace"
           install: |
             apt-get update -q
-            apt-get install -y python3 python3-pip python3-venv binutils git
-            pip3 install termux-elf-cleaner
+            apt-get install -y python3 python3-pip python3-venv binutils git build-essential patchelf
           run: |
             cd /workspace
             python3 -m venv venv
             . venv/bin/activate
-            pip install --upgrade pip
+            pip install --upgrade pip setuptools wheel
             pip install -r requirements-termux.txt
-            pip install pyinstaller
+            pip install pyinstaller termux-elf-cleaner
             
             # 构建命令行版本 (使用 novel_downloader.py 作为入口)
             pyinstaller --onefile \
@@ -383,7 +382,7 @@ jobs:
               novel_downloader.py
             
             # 使用 termux-elf-cleaner 修复 ELF 解释器路径
-            termux-elf-cleaner dist/TomatoNovelDownloader-termux
+            termux-elf-cleaner dist/TomatoNovelDownloader-termux || echo "termux-elf-cleaner warning (non-fatal)"
             
             # 在容器内完成重命名，避免权限问题
             cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
