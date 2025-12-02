@@ -354,13 +354,20 @@ jobs:
           install: |
             apt-get update -q
             apt-get install -y python3 python3-pip python3-venv binutils git build-essential patchelf
+            # 从源码编译安装 termux-elf-cleaner
+            git clone https://github.com/nicholasbishop/termux-elf-cleaner.git /tmp/termux-elf-cleaner
+            cd /tmp/termux-elf-cleaner
+            make
+            cp termux-elf-cleaner /usr/local/bin/
+            cd /
+            rm -rf /tmp/termux-elf-cleaner
           run: |
             cd /workspace
             python3 -m venv venv
             . venv/bin/activate
             pip install --upgrade pip setuptools wheel
             pip install -r requirements-termux.txt
-            pip install pyinstaller termux-elf-cleaner
+            pip install pyinstaller
             
             # 构建命令行版本 (使用 novel_downloader.py 作为入口)
             pyinstaller --onefile \
