@@ -293,7 +293,7 @@ class APIClient {
                 this.startStatusPolling();
                 return true;
             } else {
-                logger.log('X ' + result.message);
+                logger.log(result.message);
                 return false;
             }
         } catch (error) {
@@ -375,9 +375,9 @@ class APIClient {
         
         // 更新状态文本
         if (status.is_downloading) {
-            document.getElementById('statusText').textContent = i18n.t('status_downloading');
+            document.getElementById('statusText').innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg> ${i18n.t('status_downloading')}`;
         } else if (progress === 100) {
-            document.getElementById('statusText').textContent = i18n.t('status_completed');
+            document.getElementById('statusText').innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> ${i18n.t('status_completed')}`;
             updateProgressBadge(100); // 清除徽章
         } else {
             document.getElementById('statusText').textContent = i18n.t('status_ready');
@@ -717,7 +717,9 @@ function displaySearchResults(books, append = false) {
     if (books.length === 0 && !append) {
         listContainer.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">#</div>
+                <div class="empty-state-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </div>
                 <div class="empty-state-text">${i18n.t('search_no_results')}</div>
             </div>
         `;
@@ -1180,20 +1182,20 @@ async function showUpdateModal(updateInfo) {
                                             
                                             if (applyResult.success) {
                                                 installBtn.textContent = i18n.t('update_btn_restarting');
-                                                progressText.textContent = '* ' + applyResult.message;
+                                                progressText.textContent = applyResult.message;
                                             } else {
                                                 alert(i18n.t('alert_apply_update_fail') + applyResult.message);
                                                 installBtn.disabled = false;
-                                                installBtn.textContent = '> ' + i18n.t('update_btn_install').replace(/[\[\]]/g, '').trim();
+                                                installBtn.textContent = i18n.t('update_btn_install');
                                             }
                                         } catch (e) {
                                             alert(i18n.t('alert_apply_update_fail') + e.message);
                                             installBtn.disabled = false;
-                                            installBtn.textContent = '> ' + i18n.t('update_btn_install').replace(/[\[\]]/g, '').trim();
+                                            installBtn.textContent = i18n.t('update_btn_install');
                                         }
                                     };
                                 } else if (status.error) {
-                                    progressText.textContent = 'X ' + status.message;
+                                    progressText.textContent = status.message;
                                     downloadUpdateBtn.disabled = false;
                                     downloadUpdateBtn.textContent = i18n.t('update_btn_retry');
                                 } else {
@@ -1552,7 +1554,7 @@ async function handleBrowse() {
         AppState.setSavePath(result.path);
         logger.logKey('msg_save_path_updated', result.path);
     } else if (result.message && result.message !== '未选择文件夹') {
-        logger.log(`X ${result.message}`);
+        logger.log(result.message);
     }
 }
 
