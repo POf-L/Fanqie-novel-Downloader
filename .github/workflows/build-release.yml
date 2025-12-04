@@ -359,7 +359,7 @@ jobs:
               libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev tk-dev tcl-dev \
               libffi-dev libssl-dev libwebp-dev libxml2-dev libxslt-dev
             # 从源码编译安装 termux-elf-cleaner
-            git clone https://github.com/nicholasbishop/termux-elf-cleaner.git /tmp/termux-elf-cleaner
+            git clone https://github.com/termux/termux-elf-cleaner.git /tmp/termux-elf-cleaner
             cd /tmp/termux-elf-cleaner
             make
             cp termux-elf-cleaner /usr/local/bin/
