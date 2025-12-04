@@ -355,12 +355,15 @@ jobs:
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -q
             # Install build dependencies for Pillow, cffi, and others
-            apt-get install -y python3 python3-pip python3-venv python3-dev binutils git build-essential patchelf \
+            apt-get install -y python3 python3-pip python3-venv python3-dev binutils git build-essential patchelf cmake \
               libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev tk-dev tcl-dev \
               libffi-dev libssl-dev libwebp-dev libxml2-dev libxslt-dev
             # 从源码编译安装 termux-elf-cleaner
             git clone https://github.com/termux/termux-elf-cleaner.git /tmp/termux-elf-cleaner
             cd /tmp/termux-elf-cleaner
+            mkdir build
+            cd build
+            cmake ..
             make
             cp termux-elf-cleaner /usr/local/bin/
             cd /
