@@ -207,6 +207,7 @@ MESSAGES = {
         "dl_verifying_order": "正在验证章节顺序...",
         "dl_intro_title": "简介",
         "dl_book_detail_title": "书籍详情",
+        "label_author": "作者: ",
 
         # updater.py (New)
         "up_auto_update_msg": "🎉 发现新版本可用！\n\n📦 最新版本: {}\n📝 版本名称: {}\n\n📄 更新说明:\n{}\n\n🔗 下载地址:\n{}\n\n建议更新到最新版本以获得更好的体验和新功能！",
@@ -382,6 +383,7 @@ MESSAGES = {
         "dl_verifying_order": "Verifying chapter order...",
         "dl_intro_title": "Introduction",
         "dl_book_detail_title": "Book Details",
+        "label_author": "Author: ",
 
         # updater.py (New)
         "up_auto_update_msg": "🎉 New version available!\n\n📦 Version: {}\n📝 Name: {}\n\n📄 Changelog:\n{}\n\n🔗 Download:\n{}\n\nRecommended to update for better experience!",

@@ -87,6 +87,7 @@ const translations = {
         "label_dialog_selected": "已选: {0} 章",
         "title_confirm_download": "+ 确认下载",
         "label_author": "作者: ",
+        "text_author": "作者: ",
         "label_total_chapters": "共 {0} 章",
         "title_chapter_selection": "章节选择",
         
@@ -265,6 +266,7 @@ const translations = {
         "label_dialog_selected": "Selected: {0} ch",
         "title_confirm_download": "+ Confirm Download",
         "label_author": "Author: ",
+        "text_author": "Author: ",
         "label_total_chapters": "Total {0} chapters",
         "title_chapter_selection": "Chapter Selection",
         

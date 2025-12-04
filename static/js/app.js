@@ -1387,7 +1387,7 @@ function showConfirmDialog(bookInfo, savePath, fileFormat) {
                     ${bookInfo.cover_url ? `<img src="${bookInfo.cover_url}" alt="封面" class="book-cover" onerror="this.style.display='none'">` : ''}
                     <div class="book-details">
                         <h3 class="book-title">${bookInfo.book_name}</h3>
-                        <p class="book-author">${i18n.t('label_author')}${bookInfo.author}</p>
+                        <p class="book-author">${i18n.t('text_author')}${bookInfo.author}</p>
                         <p class="book-abstract">${bookInfo.abstract}</p>
                         <p class="book-chapters">${i18n.t('label_total_chapters', bookInfo.chapters.length)}</p>
                     </div>
