@@ -367,7 +367,7 @@ jobs:
             rm -rf /tmp/termux-elf-cleaner
           run: |
             cd /workspace
-            python3 -m venv venv
+            python3 -m venv venv --system-site-packages
             . venv/bin/activate
             # Upgrade build tools
             pip install --upgrade pip setuptools wheel
