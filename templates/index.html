@@ -8,54 +8,46 @@
     <link rel="stylesheet" href="/static/css/modal.css">
 </head>
 <body>
-    <div class="scp-warning-banner" data-i18n="scp_warning">WARNING: UNAUTHORIZED ACCESS IS STRICTLY PROHIBITED // CLASSIFIED: LEVEL 4</div>
     <div class="dashboard-container">
         <!-- 顶部栏 -->
         <header class="dashboard-header">
             <div class="brand">
-                <div class="app-logo pixel-tomato"></div>
-                <h1 class="app-title glitch" data-text="番茄小说下载器" data-i18n="app_title">番茄小说下载器</h1>
+                <div class="app-logo"></div>
+                <h1 class="app-title" data-i18n="app_title">番茄小说下载器</h1>
             </div>
             <div class="header-actions">
-                <button class="btn btn-sm btn-secondary" id="styleToggle" title="切换风格" data-i18n="title_toggle_style">
-                    <span class="icon pixel-icon">[🎨]</span> <span id="styleLabel">8-BIT</span>
-                </button>
+                <!-- 移除风格切换按钮，固定为 Apple Flow -->
+                <!-- <button class="btn btn-sm btn-secondary" id="styleToggle" ...> -->
+                
                 <button class="btn btn-sm btn-secondary" id="langToggle">
-                    <span class="icon pixel-icon">[🌐]</span> <span id="langLabel">EN</span>
+                    <span class="icon">🌐</span> <span id="langLabel">EN</span>
                 </button>
                 <a href="https://github.com/POf-L/Fanqie-novel-Downloader" target="_blank" class="github-link" data-i18n="github_link">
-                    <svg height="24" viewBox="0 0 16 16" width="24" class="github-icon"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+                    <svg height="16" viewBox="0 0 16 16" width="16" class="github-icon"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
                     GitHub
                 </a>
                 <span class="version-tag">v<span id="version">{{ version }}</span></span>
                 <!-- 窗口控制按钮 -->
                 <div class="window-controls">
-                    <button class="win-btn win-minimize" id="winMinimize" title="最小化" data-i18n="title_minimize">
-                        <span class="icon">─</span>
-                    </button>
-                    <button class="win-btn win-maximize" id="winMaximize" title="最大化" data-i18n="title_maximize">
-                        <span class="icon">□</span>
-                    </button>
-                    <button class="win-btn win-close" id="winClose" title="关闭" data-i18n="title_close">
-                        <span class="icon">×</span>
-                    </button>
+                    <button class="win-btn win-minimize" id="winMinimize" title="最小化" data-i18n="title_minimize"></button>
+                    <button class="win-btn win-maximize" id="winMaximize" title="最大化" data-i18n="title_maximize"></button>
+                    <button class="win-btn win-close" id="winClose" title="关闭" data-i18n="title_close"></button>
                 </div>
             </div>
         </header>
 
         <div class="dashboard-grid">
             <!-- 左侧主内容区 -->
-            <main class="dashboard-main secure-container">
+            <main class="dashboard-main">
                 <div class="card content-card">
-                    <div class="scp-stamp" data-i18n="top_secret">TOP SECRET</div>
                     <!-- 导航标签 -->
                     <div class="tab-nav">
                         <button class="tab-btn active" data-tab="search">
-                            <span class="tab-icon pixel-icon">[?]</span>
+                            <span class="tab-icon">🔍</span>
                             <span class="tab-label" data-i18n="tab_search">搜索书籍</span>
                         </button>
                         <button class="tab-btn" data-tab="download">
-                            <span class="tab-icon pixel-icon">[+]</span>
+                            <span class="tab-icon">⬇️</span>
                             <span class="tab-label" data-i18n="tab_download">手动下载</span>
                         </button>
                     </div>
@@ -65,7 +57,7 @@
                         <!-- 搜索面板 -->
                         <div class="tab-pane active" id="tab-search">
                             <div class="search-bar-container">
-                                <div class="input-group lg">
+                                <div class="input-group">
                                     <input type="text" id="searchKeyword" class="form-input" placeholder="输入书名或作者名搜索..." data-i18n="search_placeholder">
                                     <button class="btn btn-primary" id="searchBtn" data-i18n="btn_search">搜索</button>
                                 </div>
@@ -78,7 +70,7 @@
                                     <button class="btn btn-sm btn-text" id="clearSearchBtn" data-i18n="btn_clear">清除结果</button>
                                 </div>
                                 <div id="searchResultList" class="search-grid"></div>
-                                <div id="loadMoreContainer" class="load-more-container" style="display: none;">
+                                <div id="loadMoreContainer" class="load-more-container" style="display: none; text-align: center; margin-top: 20px;">
                                     <button class="btn btn-secondary" id="loadMoreBtn" data-i18n="btn_load_more">加载更多</button>
                                 </div>
                             </div>
@@ -88,44 +80,43 @@
                         <div class="tab-pane" id="tab-download">
                             <div class="download-form-container">
                                 <div class="form-header">
-                                    <h3 data-i18n="download_config_title">手动下载配置</h3>
+                                    <h3 data-i18n="download_config_title">手动下载</h3>
                                     <p class="text-muted" data-i18n="download_config_desc">输入书籍 ID 或链接进行下载</p>
                                 </div>
 
                                 <div class="form-group">
                                     <label class="form-label" data-i18n="label_book_id">书籍 ID / URL</label>
-                                    <input type="text" id="bookId" class="form-input lg" placeholder="例如：12345678 或 https://fanqienovel.com/..." data-i18n="placeholder_book_id">
+                                    <input type="text" id="bookId" class="form-input" placeholder="例如：12345678 或 https://fanqienovel.com/..." data-i18n="placeholder_book_id">
                                 </div>
 
-                                <div class="form-row">
-                                    <div class="form-group flex-grow">
-                                        <label class="form-label" data-i18n="label_save_path">保存路径</label>
-                                        <div class="input-group">
-                                            <input type="text" id="savePath" class="form-input" placeholder="选择保存目录" readonly data-i18n="placeholder_save_path">
-                                            <button class="btn btn-secondary" id="browseBtn" data-i18n="btn_browse">浏览...</button>
-                                        </div>
+                                <div class="form-group">
+                                    <label class="form-label" data-i18n="label_save_path">保存路径</label>
+                                    <div class="input-group">
+                                        <input type="text" id="savePath" class="form-input" placeholder="选择保存目录" readonly data-i18n="placeholder_save_path">
+                                        <button class="btn btn-secondary" id="browseBtn" data-i18n="btn_browse">浏览...</button>
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label" data-i18n="label_format">文件格式</label>
-                                        <div class="format-selector">
-                                            <label class="format-option-card">
-                                                <input type="radio" name="format" value="txt" id="formatTxt" checked>
-                                                <span class="format-name">TXT</span>
-                                            </label>
-                                            <label class="format-option-card">
-                                                <input type="radio" name="format" value="epub" id="formatEpub">
-                                                <span class="format-name">EPUB</span>
-                                            </label>
-                                        </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" data-i18n="label_format">文件格式</label>
+                                    <div class="format-selector">
+                                        <label class="format-option-card">
+                                            <input type="radio" name="format" value="txt" id="formatTxt" checked>
+                                            <span class="format-name">TXT</span>
+                                        </label>
+                                        <label class="format-option-card">
+                                            <input type="radio" name="format" value="epub" id="formatEpub">
+                                            <span class="format-name">EPUB</span>
+                                        </label>
                                     </div>
                                 </div>
 
                                 <div class="form-actions">
                                     <button class="btn btn-primary btn-xl" id="downloadBtn" data-i18n="btn_start_download">
-                                        <span class="icon pixel-icon">[>]</span> 开始下载
+                                        开始下载
                                     </button>
                                     <button class="btn btn-danger btn-xl" id="cancelBtn" style="display: none;" data-i18n="btn_cancel_download">
-                                        <span class="icon pixel-icon">[X]</span> 取消下载
+                                        取消下载
                                     </button>
                                     <button class="btn btn-secondary" id="clearBtn" data-i18n="btn_reset">重置</button>
                                 </div>
@@ -166,7 +157,7 @@
                     </div>
                     <div class="log-container" id="logContainer">
                         <div id="logContent">
-                            <div class="log-entry text-muted" data-i18n="log_system_started">系统已启动，等待操作...</div>
+                            <div class="log-entry text-muted" data-i18n="log_system_started">系统已启动...</div>
                         </div>
                     </div>
                 </div>
@@ -180,23 +171,22 @@
 
     <!-- 章节选择弹窗 -->
     <div class="modal" id="chapterModal" style="display: none;">
-        <div class="modal-content" style="max-width: 720px; width: 90%;">
+        <div class="modal-content">
             <div class="modal-header">
-                <h3 style="margin: 0; font-size: 14px;" data-i18n="modal_chapter_title">[#] 选择章节</h3>
-                <button class="modal-close" id="chapterModalClose">&times;</button>
+                <h3 data-i18n="modal_chapter_title">选择章节</h3>
+                <button class="modal-close" id="chapterModalClose">×</button>
             </div>
-            <div class="modal-body" style="padding: 16px;">
-                <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+            <div class="modal-body">
+                <div class="chapter-actions">
                     <button class="btn btn-sm btn-secondary" id="selectAllBtn" data-i18n="btn_select_all">全选</button>
                     <button class="btn btn-sm btn-secondary" id="selectNoneBtn" data-i18n="btn_select_none">全不选</button>
                     <button class="btn btn-sm btn-secondary" id="selectInvertBtn" data-i18n="btn_invert_selection">反选</button>
-                    <span id="selectedCount" style="margin-left: auto; font-size: 13px; color: var(--text-muted);">
+                    <span id="selectedCount" style="margin-left: auto; font-size: 13px; color: var(--text-secondary);">
                         <span data-i18n="selected_count_prefix">已选: </span>0<span data-i18n="selected_count_suffix"> 章</span>
                     </span>
                 </div>
-                <div class="chapter-list" id="chapterList" style="max-height: 400px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;">
+                <div class="chapter-list" id="chapterList">
                     <div class="empty-state">
-                        <div class="empty-state-icon pixel-icon">[=]</div>
                         <div class="empty-state-text" data-i18n="empty_chapter_list">请先获取章节列表</div>
                     </div>
                 </div>
@@ -212,8 +202,8 @@
     <div class="modal" id="updateModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 data-i18n="modal_update_title">[!] 发现新版本</h3>
-                <button class="modal-close" id="updateModalClose">&times;</button>
+                <h3 data-i18n="modal_update_title">发现新版本</h3>
+                <button class="modal-close" id="updateModalClose">×</button>
             </div>
             <div class="modal-body">
                 <div class="update-info">
@@ -223,7 +213,7 @@
                         <strong data-i18n="label_update_desc">更新说明：</strong>
                         <div id="updateDescription"></div>
                     </div>
-                    <div id="versionSelector" style="display: none; margin-top: 20px;"></div>
+                    <div id="versionSelector" style="display: none;"></div>
                 </div>
             </div>
             <div class="modal-footer">

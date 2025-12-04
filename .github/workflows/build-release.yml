@@ -353,7 +353,10 @@ jobs:
             --volume "${PWD}:/workspace"
           install: |
             apt-get update -q
-            apt-get install -y python3 python3-pip python3-venv binutils git build-essential patchelf
+            # Install build dependencies for Pillow and other packages
+            apt-get install -y python3 python3-pip python3-venv binutils git build-essential patchelf \
+              libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev tk-dev tcl-dev \
+              libffi-dev libssl-dev
             # 从源码编译安装 termux-elf-cleaner
             git clone https://github.com/nicholasbishop/termux-elf-cleaner.git /tmp/termux-elf-cleaner
             cd /tmp/termux-elf-cleaner
@@ -366,7 +369,8 @@ jobs:
             python3 -m venv venv
             . venv/bin/activate
             pip install --upgrade pip setuptools wheel
-            pip install -r requirements-termux.txt
+            # Install dependencies with extended timeout and binary preference
+            pip install --default-timeout=100 --prefer-binary -r requirements-termux.txt
             pip install pyinstaller
             
             # 构建命令行版本 (使用 novel_downloader.py 作为入口)

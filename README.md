@@ -1,92 +1,75 @@
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/POf-L/Fanqie-novel-Downloader)
+# Fanqie Novel Downloader
 
-# ░▒▓█ SCP-CN-7331: 番茄档案提取协议 █▓▒░
+A modern, efficient downloader for Fanqie Novels, built with Python and a clean, responsive web interface.
 
-**安全等级 2 (受限)**  
-**警报：未经授权的访问将导致模因抹杀**
+## Features
 
----
+-   **Book Search**: Easily search for books by title or author.
+-   **Batch Download**: Download multiple books at once.
+-   **Format Support**: Export to **TXT** (plain text) or **EPUB** (e-book) formats.
+-   **Cover Art**: Automatically fetches and embeds book covers in EPUB files.
+-   **Chapter Selection**: Download full books, specific ranges, or manually selected chapters.
+-   **Cross-Platform**: Runs on Windows, macOS, Linux, and Termux (Android).
+-   **Modern UI**: Clean, "Apple Flow" inspired interface with dark mode support.
 
-## **项目编号**: SCP-CN-7331
-## **项目等级**: Safe (工具类)
+## Installation
 
-### ░▒▓ 特殊收容措施 (安装指南) ▓▒░
+### Windows / macOS / Linux
 
-SCP-CN-7331 应被收容于运行 **Python 3.7+** 的安全终端内。该实体已被证实可在 Windows、Mac 和 Linux 现实层面上稳定运行。
+1.  **Download**: Get the latest release from the [Releases](https://github.com/POf-L/Fanqie-novel-Downloader/releases) page.
+2.  **Run**:
+    -   **Windows**: Run the `.exe` file.
+    -   **Linux/macOS**: Grant execution permissions (`chmod +x ...`) and run the binary.
 
-**收容步骤:**
+### Source Code (Python)
 
-1.  **获取实体**: 将本仓库克隆至您的本地安全扇区。
-2.  **建立连接**: 执行 `pip install -r requirements.txt` 以安装必要的神经链接（依赖库）。
-3.  **激活协议**:
-    -   **Windows 特遣队**: 双击 `run.bat`。
-    -   **Linux/Mac 特遣队**: 授予执行权限 (`chmod +x run.sh`) 并执行 `./run.sh`。
-    -   **手动超频**:
-        ```bash
-        python main.py
-        ```
-    -   **Web 界面接入**: 运行 `python web_app.py` 并访问 `http://127.0.0.1:5000`。
+Requirements: Python 3.7+
 
----
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/POf-L/Fanqie-novel-Downloader.git
+    cd Fanqie-novel-Downloader
+    ```
 
-### ░▒▓ 描述 (核心功能) ▓▒░
+2.  Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-SCP-CN-7331 外观表现为一个现代化的 HTML5 界面，但其内部包含能够从"番茄宇宙"（Designation: Target-F）提取叙事数据的异常代码。
+3.  Run the application:
+    ```bash
+    # GUI Mode (Web Interface)
+    python main.py
 
-**异常特性:**
+    # CLI Mode (Command Line)
+    python novel_downloader.py
+    ```
 
-*   **[全息解析]**: `[DATA EXPUNGED]`... 成功获取书籍封面、作者及简介信息。
-*   **[维度折叠]**: 支持整本下载或自定义范围下载。
-*   **[物质重组]**: 将数据流重组为 **TXT** (纯文本) 或 **EPUB** (电子书) 格式。EPUB 格式会自动封装封面实体。
-*   **[实时监控]**: 通过动态日志和进度条实时反馈提取进度。
-*   **[跨域兼容]**: 完美适配各类操作系统环境。
+## Usage
 
----
+1.  **Open the App**: Launch the application to see the web dashboard.
+2.  **Search or Enter ID**:
+    -   Use the **Search** tab to find books.
+    -   Or paste a book URL/ID (e.g., `https://fanqienovel.com/page/123456...`) in the **Download** tab.
+3.  **Select Options**: Choose your save path and output format (TXT/EPUB).
+4.  **Download**: Click "Start Download" and watch the progress.
 
-### ░▒▓ 操作日志 (使用方法) ▓▒░
+## Building from Source
 
-**阶段 I: 目标锁定**
-获取目标叙事体的唯一识别码 (ID) 或 坐标 (URL)。
-*   **坐标样本**: `https://fanqienovel.com/page/7199473033239596087`
-*   **识别码**: `7199473033239596087`
+### Standard Build
+```bash
+pyinstaller main.spec
+```
 
-**阶段 II: 收容区设定**
-点击 **"📁 浏览"** 按钮，指定数据实体的物理存储路径。
+### Termux (Android)
+```bash
+pkg install python git make clang
+pip install -r requirements-termux.txt
+python novel_downloader.py
+```
 
-**阶段 III: 格式协议**
-*   **TXT**: 纯净数据流，兼容性 MAX。
-*   **EPUB**: 封装好的电子书实体，适合阅读终端。
+## License
 
-**阶段 IV: 执行提取**
-点击 **"🚀 开始下载"**。观察进度条（Health Bar）直至 100%。
+This project is for personal study and research purposes only. Please support original authors and official platforms.
 
----
-
-### ░▒▓ 附录 7331-A: 故障排除 ▓▒░
-
-**> 错误: 界面无法实体化 (BrowserProcessId Error)**
-*   **现象**: PyWebView 初始化失败。
-*   **收容方案**: 系统将自动启用故障转移协议，通过您的默认浏览器打开界面。无需额外操作。
-
-**> 错误: 端口被占领 (Address in use)**
-*   **现象**: 5000 端口存在其他实体。
-*   **收容方案**: 清除占用端口的实体，或修改 `main.py` 中的频率设置。
-
-**> 疑问: 下载速度缓慢**
-*   **分析**: 可能是"网络阈值"限制或目标服务器的反制措施。
-*   **建议**: 保持耐心，或检查您的网络连接节点。
-
----
-
-### ░▒▓ 附录 7331-B: 法律声明与免责 ▓▒░
-
-**[绝密]**
-本工具仅供 **个人研究与学习** 使用。
-严禁用于商业用途、大规模数据收割或任何违反当地法律法规的行为。
-
-**警告**: 使用本工具产生的任何后果（包括但不限于数据丢失、账号封禁、现实扭曲）均由操作员自行承担。
-
----
-
-*控制 (Control). 收容 (Contain). 下载 (Download).*
-*GitHub: https://github.com/POf-L/Fanqie-novel-Downloader*
+[MIT License](LICENSE)
