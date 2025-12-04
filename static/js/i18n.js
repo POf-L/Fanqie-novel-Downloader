@@ -79,7 +79,7 @@ const translations = {
         "label_manual_selected": "√ 已手动选择 {0} 个章节",
         "hint_manual_mode": "提示：自定义选择模式下不支持\"整书极速下载\"",
         "btn_reselect": "重新选择章节",
-        "radio_all_chapters": "下载全部章节 (支持极速模式)",
+        "radio_all_chapters": "下载全部章节",
         "radio_range_chapters": "自定义章节范围",
         "radio_manual_chapters": "手动选择章节",
         "label_start_chapter": "起始章节:",

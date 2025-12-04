@@ -303,8 +303,9 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     exe_dir = os.path.dirname(current_exe_path)
     
     # 创建更新批处理脚本（直接嵌入 PID 避免参数传递问题）
-    # 注意：使用英文提示避免 CMD 编码问题
+    # 注意：使用 chcp 65001 解决路径编码问题
     bat_content = f'''@echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo ====================================
@@ -337,7 +338,7 @@ taskkill /F /IM "{exe_name}" >nul 2>&1
 
 :: Wait for file handles to be released
 echo Waiting for file locks to release...
-ping -n 4 127.0.0.1 >nul
+ping -n 3 127.0.0.1 >nul
 
 echo Starting update process...
 echo.
@@ -349,19 +350,21 @@ set /a retry=0
 :move_retry
 echo Attempt to backup old version...
 del /F /Q "{current_exe_path}.old" >nul 2>&1
-move /Y "{current_exe_path}" "{current_exe_path}.old"
-if errorlevel 1 (
-    set /a retry+=1
-    if !retry! lss 5 (
-        echo Retry !retry!/5 - file still locked, waiting...
-        taskkill /F /IM "{exe_name}" >nul 2>&1
-        ping -n 3 127.0.0.1 >nul
-        goto :move_retry
+if exist "{current_exe_path}" (
+    move /Y "{current_exe_path}" "{current_exe_path}.old"
+    if errorlevel 1 (
+        set /a retry+=1
+        if !retry! lss 5 (
+            echo Retry !retry!/5 - file still locked, waiting...
+            taskkill /F /IM "{exe_name}" >nul 2>&1
+            ping -n 3 127.0.0.1 >nul
+            goto :move_retry
+        )
+        echo ERROR: Cannot backup old version after 5 attempts.
+        echo Please close all instances and try again.
+        pause
+        exit /b 1
     )
-    echo ERROR: Cannot backup old version after 5 attempts.
-    echo Please close all instances and try again.
-    pause
-    exit /b 1
 )
 echo Old version backed up successfully.
 
@@ -370,7 +373,9 @@ echo Installing new version...
 copy /Y "{new_exe_path}" "{current_exe_path}"
 if errorlevel 1 (
     echo ERROR: Copy failed! Restoring old version...
-    move /Y "{current_exe_path}.old" "{current_exe_path}"
+    if exist "{current_exe_path}.old" (
+        move /Y "{current_exe_path}.old" "{current_exe_path}"
+    )
     pause
     exit /b 1
 )
@@ -391,9 +396,9 @@ ping -n 4 127.0.0.1 >nul
 
 echo Starting application...
 echo Target: "{current_exe_path}"
-echo WorkDir: "{exe_dir}"
 
-start "Fanqie Novel Downloader" /D "{exe_dir}" "{current_exe_path}"
+:: Directly start the exe. Quotes are important.
+start "" "{current_exe_path}"
 
 echo New version launch attempt complete.
 ping -n 2 127.0.0.1 >nul
@@ -408,7 +413,8 @@ exit /b 0
         bat_path = os.path.join(tempfile.gettempdir(), 'fanqie_update.bat')
         print(f'[DEBUG] Writing update script to: {bat_path}')
         
-        with open(bat_path, 'w', encoding='mbcs') as f:
+        # 使用 utf-8 编码写入，配合 chcp 65001
+        with open(bat_path, 'w', encoding='utf-8') as f:
             f.write(bat_content)
         
         print(f'[DEBUG] Update script written successfully')
