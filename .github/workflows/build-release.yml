@@ -347,7 +347,7 @@ jobs:
         uses: uraimo/run-on-arch-action@v2
         with:
           arch: aarch64
-          distro: ubuntu24.04
+          distro: ubuntu22.04
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --volume "${PWD}:/workspace"
@@ -355,9 +355,15 @@ jobs:
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -q
             # Install build dependencies for Pillow, cffi, and others
-            apt-get install -y python3 python3-pip python3-venv python3-dev binutils git build-essential patchelf cmake \
+            apt-get install -y python3 python3-pip python3-venv python3-dev binutils git build-essential patchelf \
               libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev tk-dev tcl-dev \
-              libffi-dev libssl-dev libwebp-dev libxml2-dev libxslt-dev
+              libffi-dev libssl-dev libwebp-dev libxml2-dev libxslt-dev wget
+            # 安装新版 CMake (3.28+) 因为 termux-elf-cleaner 需要 3.25+
+            wget -q https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-aarch64.tar.gz
+            tar -xzf cmake-3.28.3-linux-aarch64.tar.gz -C /opt
+            ln -sf /opt/cmake-3.28.3-linux-aarch64/bin/cmake /usr/local/bin/cmake
+            rm cmake-3.28.3-linux-aarch64.tar.gz
+            cmake --version
             # 从源码编译安装 termux-elf-cleaner
             git clone https://github.com/termux/termux-elf-cleaner.git /tmp/termux-elf-cleaner
             cd /tmp/termux-elf-cleaner
