@@ -396,12 +396,43 @@ ping -n 4 127.0.0.1 >nul
 
 echo Starting application...
 echo Target: "{current_exe_path}"
+echo Working directory: "{exe_dir}"
 
-:: Directly start the exe. Quotes are important.
-start "" "{current_exe_path}"
+:: Change to the application directory first
+cd /d "{exe_dir}"
 
+:: Verify the new exe exists before starting
+if not exist "{current_exe_path}" (
+    echo ERROR: New executable not found at "{current_exe_path}"
+    pause
+    exit /b 1
+)
+
+:: Start the exe - use pushd/popd to handle paths with spaces
+pushd "{exe_dir}"
+echo Current directory: %CD%
+echo Launching executable...
+
+:: Method: Use explorer.exe to launch (most reliable for GUI apps)
+explorer.exe "{current_exe_path}"
+
+:: Wait a moment to let the process start
+ping -n 4 127.0.0.1 >nul
+
+:: Verify the process is running
+tasklist /FI "IMAGENAME eq {exe_name}" 2>nul | find /I "{exe_name}" >nul
+if errorlevel 1 (
+    echo WARNING: Process may not have started via explorer. Trying cmd...
+    cmd /c start "" "{current_exe_path}"
+    ping -n 3 127.0.0.1 >nul
+)
+
+popd
+
+echo.
 echo New version launch attempt complete.
-ping -n 2 127.0.0.1 >nul
+echo This window will close in 5 seconds...
+ping -n 6 127.0.0.1 >nul
 
 :: Delete self (delayed)
 (goto) 2>nul & del /F /Q "%~f0"
