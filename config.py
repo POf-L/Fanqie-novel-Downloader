@@ -25,11 +25,50 @@ else:
 import random
 import threading
 import requests
+import os
+import json
+import tempfile
 from typing import Dict
 from fake_useragent import UserAgent
 from locales import t
 
 REMOTE_CONFIG_URL = "https://qbin.me/r/fpoash/"
+_LOCAL_CONFIG_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
+
+DEFAULT_API_SOURCES = [
+    {"name": "qkfqapi.vv9v.cn", "base_url": "http://qkfqapi.vv9v.cn"},
+    {"name": "fq.shusan.cn", "base_url": "https://fq.shusan.cn"},
+    {"name": "api.jkyai.top", "base_url": "https://api.jkyai.top"},
+    {"name": "43.248.77.205:22222", "base_url": "http://43.248.77.205:22222"},
+]
+
+def _normalize_base_url(url: str) -> str:
+    url = (url or "").strip()
+    return url.rstrip('/')
+
+def _load_local_pref() -> Dict:
+    try:
+        if os.path.exists(_LOCAL_CONFIG_FILE):
+            with open(_LOCAL_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+def _dedupe_sources(sources: list) -> list:
+    seen = set()
+    deduped = []
+    for s in sources:
+        if not isinstance(s, dict):
+            continue
+        base_url = _normalize_base_url(s.get("base_url") or s.get("api_base_url") or "")
+        if not base_url or base_url in seen:
+            continue
+        seen.add(base_url)
+        name = (s.get("name") or s.get("id") or base_url).strip() if isinstance(s.get("name") or s.get("id") or base_url, str) else base_url
+        deduped.append({"name": name, "base_url": base_url})
+    return deduped
 
 def load_remote_config() -> Dict:
     """从远程 URL 加载配置"""
@@ -37,6 +76,7 @@ def load_remote_config() -> Dict:
     
     default_config = {
         "api_base_url": "",
+        "api_sources": DEFAULT_API_SOURCES.copy(),
         "request_timeout": 10,
         "max_retries": 3,
         "connection_pool_size": 10,
@@ -63,10 +103,44 @@ def load_remote_config() -> Dict:
                 "connection_pool_size": remote_conf.get("connection_pool_size", 100),
                 "max_workers": remote_conf.get("max_workers", 2),
             })
+
+            # 兼容：api_base_url = "auto"
+            if isinstance(default_config.get("api_base_url"), str) and default_config["api_base_url"].strip().lower() == "auto":
+                default_config["api_base_url"] = ""
             
             # 更新端点配置 (映射 tomato_endpoints -> endpoints)
             if "tomato_endpoints" in remote_conf:
                 default_config["endpoints"] = remote_conf["tomato_endpoints"]
+
+            # 解析多接口配置（新格式：api_sources / api_base_urls）
+            sources = []
+            if isinstance(remote_conf.get("api_sources"), list):
+                for item in remote_conf["api_sources"]:
+                    if isinstance(item, str):
+                        sources.append({"name": item, "base_url": item})
+                    elif isinstance(item, dict):
+                        base_url = item.get("base_url") or item.get("api_base_url") or item.get("url") or ""
+                        if base_url:
+                            sources.append({"name": item.get("name") or item.get("id") or base_url, "base_url": base_url})
+
+            if isinstance(remote_conf.get("api_base_urls"), list):
+                for url in remote_conf["api_base_urls"]:
+                    if isinstance(url, str) and url.strip():
+                        sources.append({"name": url.strip(), "base_url": url.strip()})
+
+            if isinstance(remote_conf.get("api_base_url"), str) and remote_conf.get("api_base_url", "").strip():
+                api_base = remote_conf["api_base_url"].strip()
+                if api_base.lower() != "auto":
+                    sources.append({"name": api_base, "base_url": api_base})
+
+            default_config["api_sources"] = _dedupe_sources(default_config.get("api_sources", []) + sources)
+
+            # 读取本地偏好（手动指定优先）
+            local_pref = _load_local_pref()
+            mode = str(local_pref.get("api_base_url_mode", "auto") or "auto").lower()
+            pref_url = _normalize_base_url(str(local_pref.get("api_base_url", "") or ""))
+            if mode == "manual" and pref_url:
+                default_config["api_base_url"] = pref_url
                 
             print(t("config_success", default_config['api_base_url']))
             return default_config

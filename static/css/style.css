@@ -334,6 +334,12 @@ body {
     overflow: hidden; /* 关键 */
 }
 
+.tab-pane.scrollable {
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 8px;
+}
+
 .tab-pane.active {
     display: flex;
 }
@@ -362,10 +368,30 @@ body {
     outline: none;
 }
 
+select.form-input {
+    cursor: pointer;
+}
+
 .form-input:focus {
     background: var(--bg-body);
     border-color: var(--primary);
     box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+}
+
+.helper-text {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.helper-text.ok {
+    color: var(--success);
+}
+
+.helper-text.bad {
+    color: var(--danger);
 }
 
 .btn {
@@ -492,6 +518,15 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: center;
+}
+
+.search-actions {
+    display: flex;
+    align-items: center;
+}
+
+.search-actions .btn {
+    white-space: nowrap;
 }
 
 .search-title {
@@ -623,6 +658,87 @@ body {
     padding: 14px 32px;
     font-size: 16px;
     flex: 1;
+}
+
+/* ===================== 待下载队列 ===================== */
+
+.queue-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.queue-summary {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.queue-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.queue-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.queue-item {
+    display: flex;
+    gap: 16px;
+    padding: 16px;
+    background: var(--bg-body);
+    border-radius: var(--radius-md);
+    transition: var(--transition);
+    border: 1px solid transparent;
+}
+
+.queue-item:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border);
+    box-shadow: var(--shadow-sm);
+}
+
+.queue-item-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.queue-item-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.queue-item-meta {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.queue-item-actions {
+    display: flex;
+    align-items: flex-start;
 }
 
 /* ===================== 右侧边栏 ===================== */

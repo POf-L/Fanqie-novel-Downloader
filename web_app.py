@@ -5,6 +5,7 @@ Web应用程序 - Flask后端，用于HTML GUI
 
 import os
 import json
+import time
 import threading
 import queue
 import tempfile
@@ -37,6 +38,29 @@ def set_access_token(token):
 # 配置文件路径 - 保存到系统临时目录（跨平台兼容）
 TEMP_DIR = tempfile.gettempdir()
 CONFIG_FILE = os.path.join(TEMP_DIR, 'fanqie_novel_downloader_config.json')
+
+def _read_local_config() -> dict:
+    try:
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+def _write_local_config(updates: dict) -> bool:
+    try:
+        cfg = _read_local_config()
+        cfg.update(updates or {})
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+def _normalize_base_url(url: str) -> str:
+    return (url or '').strip().rstrip('/')
 
 def get_default_download_path():
     """获取默认下载路径（跨平台兼容）"""
@@ -79,6 +103,9 @@ current_download_status = {
     'book_name': '',
     'total_chapters': 0,
     'downloaded_chapters': 0,
+    'queue_total': 0,
+    'queue_done': 0,
+    'queue_current': 0,
     'messages': []  # 消息队列，存储所有待传递的消息
 }
 status_lock = threading.Lock()
@@ -204,6 +231,9 @@ def init_modules():
     """初始化核心模块"""
     global api, api_manager, novel_downloader, downloader_instance
     try:
+        # 若未指定接口则自动选择一个可用的
+        _ensure_api_base_url()
+
         from novel_downloader import NovelDownloader, get_api_manager
         novel_downloader = __import__('novel_downloader')
         api = NovelDownloader()
@@ -213,6 +243,154 @@ def init_modules():
     except Exception as e:
         print(t("msg_module_fail", e))
         return False
+
+
+def _get_api_sources() -> list:
+    """从配置获取可选 API 接口列表"""
+    try:
+        from config import CONFIG
+        sources = CONFIG.get('api_sources') or []
+        normalized = []
+        for s in sources:
+            if isinstance(s, dict):
+                base_url = _normalize_base_url(s.get('base_url') or s.get('api_base_url') or '')
+                if base_url:
+                    normalized.append({
+                        'name': s.get('name') or base_url,
+                        'base_url': base_url
+                    })
+            elif isinstance(s, str):
+                base_url = _normalize_base_url(s)
+                if base_url:
+                    normalized.append({'name': base_url, 'base_url': base_url})
+
+        # 回退：至少包含当前 base_url
+        base = _normalize_base_url(str(CONFIG.get('api_base_url', '') or ''))
+        if base and not any(x['base_url'] == base for x in normalized):
+            normalized.insert(0, {'name': base, 'base_url': base})
+
+        # 去重
+        seen = set()
+        deduped = []
+        for s in normalized:
+            if s['base_url'] in seen:
+                continue
+            seen.add(s['base_url'])
+            deduped.append(s)
+
+        return deduped
+    except Exception:
+        return []
+
+
+def _probe_api_source(base_url: str, timeout: float = 2.5) -> dict:
+    """HTTP 探活（基于 search 接口，避免 ICMP ping 限制）"""
+    import requests
+    from config import CONFIG
+
+    base_url = _normalize_base_url(base_url)
+    endpoints = CONFIG.get('endpoints') or {}
+    search_path = endpoints.get('search') or '/api/search'
+    url = f"{base_url}{search_path}"
+
+    params = {"key": "test", "tab_type": "3", "offset": "0"}
+    start = time.perf_counter()
+    try:
+        resp = requests.get(url, params=params, timeout=timeout)
+        latency_ms = int((time.perf_counter() - start) * 1000)
+
+        # 404 说明路径不对；5xx 认为不可用；其余认为可用（包含 4xx）
+        available = (resp.status_code != 404) and (resp.status_code < 500)
+        return {
+            'available': available,
+            'latency_ms': latency_ms,
+            'status_code': resp.status_code,
+            'error': None
+        }
+    except Exception as e:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return {
+            'available': False,
+            'latency_ms': latency_ms,
+            'status_code': None,
+            'error': str(e)
+        }
+
+
+def _apply_api_base_url(base_url: str) -> None:
+    """应用 API base_url 到运行时（CONFIG + APIManager）"""
+    from config import CONFIG
+
+    base_url = _normalize_base_url(base_url)
+    if not base_url:
+        return
+
+    CONFIG['api_base_url'] = base_url
+
+    global api_manager
+    if api_manager:
+        api_manager.base_url = base_url
+        # 重置线程局部 Session，避免连接复用导致的问题
+        if hasattr(api_manager, '_tls'):
+            api_manager._tls = threading.local()
+
+
+def _ensure_api_base_url(force_mode=None) -> str:
+    """
+    确保 CONFIG.api_base_url 已设置；若为空/不可用则自动选择。
+
+    Returns:
+        str: 当前/选中的 base_url（可能为空）
+    """
+    from config import CONFIG
+
+    sources = _get_api_sources()
+    if not sources:
+        return _normalize_base_url(str(CONFIG.get('api_base_url', '') or ''))
+
+    local_cfg = _read_local_config()
+    mode = str(local_cfg.get('api_base_url_mode', 'auto') or 'auto').lower()
+    if force_mode:
+        mode = str(force_mode).lower()
+
+    current = _normalize_base_url(str(CONFIG.get('api_base_url', '') or ''))
+
+    # 手动模式优先
+    if mode == 'manual':
+        manual_url = _normalize_base_url(str(local_cfg.get('api_base_url', '') or ''))
+        if manual_url:
+            probe = _probe_api_source(manual_url)
+            if probe.get('available'):
+                _apply_api_base_url(manual_url)
+                return manual_url
+
+    # 探测全部并选择延迟最低的可用项
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    timeout = min(float(CONFIG.get('request_timeout', 10) or 10), 3.0)
+    results = []
+    with ThreadPoolExecutor(max_workers=min(8, len(sources))) as ex:
+        fut_map = {ex.submit(_probe_api_source, s['base_url'], timeout): s for s in sources}
+        for fut in as_completed(fut_map):
+            src = fut_map[fut]
+            try:
+                probe = fut.result()
+            except Exception as e:
+                probe = {'available': False, 'latency_ms': None, 'status_code': None, 'error': str(e)}
+            results.append({**src, **probe})
+
+    available = [r for r in results if r.get('available')]
+    available.sort(key=lambda x: (x.get('latency_ms') is None, x.get('latency_ms', 999999)))
+
+    if available:
+        best = available[0]['base_url']
+        _apply_api_base_url(best)
+        # 记录自动模式选择结果（便于下次展示）
+        _write_local_config({'api_base_url_mode': 'auto', 'api_base_url': best})
+        return best
+
+    # 若没有可用项，仍返回当前（可能为空）
+    return current
 
 def get_status():
     """获取当前下载状态"""
@@ -253,7 +431,16 @@ def download_worker():
             start_chapter = task.get('start_chapter', None)
             end_chapter = task.get('end_chapter', None)
             selected_chapters = task.get('selected_chapters', None)
-            
+
+            # 如果是队列任务，更新当前序号
+            queue_current = 0
+            with status_lock:
+                queue_total = int(current_download_status.get('queue_total', 0) or 0)
+                queue_done = int(current_download_status.get('queue_done', 0) or 0)
+                if queue_total > 0:
+                    queue_current = min(queue_done + 1, queue_total)
+                    current_download_status['queue_current'] = queue_current
+
             update_status(is_downloading=True, progress=0, message=t('web_init'))
             
             if not api:
@@ -293,11 +480,59 @@ def download_worker():
                 # 执行下载
                 update_status(message=t('web_starting_engine'))
                 success = api.run_download(book_id, save_path, file_format, start_chapter, end_chapter, selected_chapters, progress_callback)
-                
+
+                # 更新队列进度
+                has_more = False
+                queue_total = 0
+                queue_done = 0
+                with status_lock:
+                    queue_total = int(current_download_status.get('queue_total', 0) or 0)
+                    if queue_total > 0:
+                        queue_done = int(current_download_status.get('queue_done', 0) or 0)
+                        queue_done = min(queue_done + 1, queue_total)
+                        current_download_status['queue_done'] = queue_done
+                        has_more = queue_done < queue_total
+
                 if success:
-                    update_status(progress=100, message=t('web_download_success_path', save_path), is_downloading=False)
+                    if has_more:
+                        update_status(
+                            progress=0,
+                            message=t('web_queue_next', queue_done, queue_total),
+                            is_downloading=True,
+                            queue_current=min(queue_done + 1, queue_total)
+                        )
+                    else:
+                        if queue_total > 0:
+                            update_status(
+                                progress=100,
+                                message=t('web_queue_complete', queue_total, save_path),
+                                is_downloading=False,
+                                queue_total=0,
+                                queue_done=0,
+                                queue_current=0
+                            )
+                        else:
+                            update_status(progress=100, message=t('web_download_success_path', save_path), is_downloading=False)
                 else:
-                    update_status(message=t('web_download_interrupted'), progress=0, is_downloading=False)
+                    if has_more:
+                        update_status(
+                            progress=0,
+                            message=t('web_queue_next_fail', queue_done, queue_total),
+                            is_downloading=True,
+                            queue_current=min(queue_done + 1, queue_total)
+                        )
+                    else:
+                        if queue_total > 0:
+                            update_status(
+                                progress=0,
+                                message=t('web_queue_complete_fail', queue_total, save_path),
+                                is_downloading=False,
+                                queue_total=0,
+                                queue_done=0,
+                                queue_current=0
+                            )
+                        else:
+                            update_status(message=t('web_download_interrupted'), progress=0, is_downloading=False)
                     
             except Exception as e:
                 import traceback
@@ -360,6 +595,63 @@ def api_version():
 def api_status():
     """获取下载状态"""
     return jsonify(get_status())
+
+
+@app.route('/api/api-sources', methods=['GET'])
+def api_api_sources():
+    """获取可用的下载接口列表，并返回可用性探测结果"""
+    from config import CONFIG
+
+    local_cfg = _read_local_config()
+    mode = str(local_cfg.get('api_base_url_mode', 'auto') or 'auto').lower()
+
+    current = _ensure_api_base_url(force_mode=mode if mode in ['auto', 'manual'] else None)
+    sources = _get_api_sources()
+
+    timeout = min(float(CONFIG.get('request_timeout', 10) or 10), 3.0)
+    probed = []
+    for s in sources:
+        probe = _probe_api_source(s['base_url'], timeout=timeout)
+        probed.append({**s, **probe})
+
+    return jsonify({
+        'success': True,
+        'mode': mode,
+        'current': current,
+        'sources': probed
+    })
+
+
+@app.route('/api/api-sources/select', methods=['POST'])
+def api_api_sources_select():
+    """选择下载接口（manual/auto），并在选择时自动探测可用性"""
+    data = request.get_json() or {}
+    mode = str(data.get('mode', 'auto') or 'auto').lower()
+
+    if mode not in ['auto', 'manual']:
+        mode = 'auto'
+
+    if mode == 'auto':
+        selected = _ensure_api_base_url(force_mode='auto')
+        if not selected:
+            return jsonify({'success': False, 'message': '未找到可用接口'}), 500
+        _write_local_config({'api_base_url_mode': 'auto', 'api_base_url': selected})
+        return jsonify({'success': True, 'mode': 'auto', 'current': selected})
+
+    # manual
+    base_url = _normalize_base_url(str(data.get('base_url', '') or ''))
+    if not base_url:
+        return jsonify({'success': False, 'message': 'base_url required'}), 400
+
+    probe = _probe_api_source(base_url)
+    if not probe.get('available'):
+        err = probe.get('error') or 'unavailable'
+        return jsonify({'success': False, 'message': f'接口不可用: {base_url} ({err})', 'probe': probe}), 400
+
+    _apply_api_base_url(base_url)
+    _write_local_config({'api_base_url_mode': 'manual', 'api_base_url': base_url})
+
+    return jsonify({'success': True, 'mode': 'manual', 'current': base_url, 'probe': probe})
 
 @app.route('/api/search', methods=['POST'])
 def api_search():
@@ -595,6 +887,112 @@ def api_download():
     update_status(is_downloading=True, progress=0, message=t('web_task_added'))
     
     return jsonify({'success': True, 'message': t('web_task_started')})
+
+
+@app.route('/api/queue/start', methods=['POST'])
+def api_queue_start():
+    """提交待下载队列并开始下载（批量入队）"""
+    data = request.get_json() or {}
+
+    if get_status()['is_downloading']:
+        return jsonify({'success': False, 'message': t('web_download_exists')}), 400
+
+    tasks = data.get('tasks', [])
+    save_path = str(data.get('save_path', get_default_download_path())).strip()
+    file_format = str(data.get('file_format', 'txt')).strip().lower()
+
+    if not tasks or not isinstance(tasks, list):
+        return jsonify({'success': False, 'message': t('web_provide_ids')}), 400
+
+    if file_format not in ['txt', 'epub']:
+        file_format = 'txt'
+
+    # 确保路径存在
+    try:
+        os.makedirs(save_path, exist_ok=True)
+    except Exception as e:
+        return jsonify({'success': False, 'message': t('web_save_path_error', str(e))}), 400
+
+    # 清空旧队列（安全起见）
+    try:
+        while True:
+            download_queue.get_nowait()
+    except queue.Empty:
+        pass
+
+    cleaned_tasks = []
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+
+        book_id = str(task.get('book_id', '')).strip()
+        if not book_id:
+            continue
+
+        # 从URL中提取ID
+        if 'fanqienovel.com' in book_id:
+            match = re.search(r'/page/(\d+)', book_id)
+            if match:
+                book_id = match.group(1)
+            else:
+                continue
+
+        if not book_id.isdigit():
+            continue
+
+        start_chapter = task.get('start_chapter')
+        end_chapter = task.get('end_chapter')
+        selected_chapters = task.get('selected_chapters')
+
+        # 章节范围为 1-based（与下载器保持一致）
+        try:
+            if start_chapter is not None:
+                start_chapter = int(start_chapter)
+                if start_chapter <= 0:
+                    start_chapter = None
+            if end_chapter is not None:
+                end_chapter = int(end_chapter)
+                if end_chapter <= 0:
+                    end_chapter = None
+        except Exception:
+            start_chapter = None
+            end_chapter = None
+
+        if selected_chapters is not None:
+            try:
+                if isinstance(selected_chapters, list):
+                    selected_chapters = [int(x) for x in selected_chapters]
+                else:
+                    selected_chapters = None
+            except Exception:
+                selected_chapters = None
+
+        cleaned_tasks.append({
+            'book_id': book_id,
+            'save_path': save_path,
+            'file_format': file_format,
+            'start_chapter': start_chapter,
+            'end_chapter': end_chapter,
+            'selected_chapters': selected_chapters
+        })
+
+    if not cleaned_tasks:
+        return jsonify({'success': False, 'message': t('web_no_valid_ids')}), 400
+
+    # 设置队列状态并批量入队
+    update_status(
+        is_downloading=True,
+        progress=0,
+        message=t('web_queue_submitted', len(cleaned_tasks)),
+        book_name='',
+        queue_total=len(cleaned_tasks),
+        queue_done=0,
+        queue_current=1
+    )
+    for task in cleaned_tasks:
+        download_queue.put(task)
+
+    return jsonify({'success': True, 'count': len(cleaned_tasks)})
 
 @app.route('/api/cancel', methods=['POST'])
 def api_cancel():

@@ -56,6 +56,12 @@
                             </span>
                             <span class="tab-label" data-i18n="tab_download">手动下载</span>
                         </button>
+                        <button class="tab-btn" data-tab="queue">
+                            <span class="tab-icon">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"></path><path d="M3 6h18"></path><path d="M3 18h18"></path></svg>
+                            </span>
+                            <span class="tab-label" data-i18n="tab_queue">待下载</span>
+                        </button>
                     </div>
 
                     <!-- 内容区域 -->
@@ -83,11 +89,20 @@
                         </div>
 
                         <!-- 下载面板 -->
-                        <div class="tab-pane" id="tab-download">
+                        <div class="tab-pane scrollable" id="tab-download">
                             <div class="download-form-container">
                                 <div class="form-header">
                                     <h3 data-i18n="download_config_title">手动下载</h3>
                                     <p class="text-muted" data-i18n="download_config_desc">输入书籍 ID 或链接进行下载</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" data-i18n="label_api_source">下载接口</label>
+                                    <div class="input-group">
+                                        <select id="apiSourceSelect" class="form-input"></select>
+                                        <button class="btn btn-secondary" id="refreshApiSourcesBtn" data-i18n="btn_check_api_sources">检测</button>
+                                    </div>
+                                    <div class="helper-text" id="apiSourceStatus"></div>
                                 </div>
 
                                 <div class="form-group">
@@ -118,13 +133,40 @@
                                 </div>
 
                                 <div class="form-actions">
-                                    <button class="btn btn-primary btn-xl" id="downloadBtn" data-i18n="btn_start_download">
-                                        开始下载
+                                    <button class="btn btn-primary btn-xl" id="downloadBtn" data-i18n="btn_add_to_queue">
+                                        加入待下载
                                     </button>
                                     <button class="btn btn-danger btn-xl" id="cancelBtn" style="display: none;" data-i18n="btn_cancel_download">
                                         取消下载
                                     </button>
                                     <button class="btn btn-secondary" id="clearBtn" data-i18n="btn_reset">重置</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 待下载队列 -->
+                        <div class="tab-pane" id="tab-queue">
+                            <div class="queue-container">
+                                <div class="queue-header">
+                                    <div class="queue-summary" id="queueSummary" data-i18n="queue_summary">
+                                        待下载：0 本
+                                    </div>
+                                    <div class="queue-actions">
+                                        <button class="btn btn-primary" id="startQueueBtn" data-i18n="btn_start_queue_download">
+                                            一键下载
+                                        </button>
+                                        <button class="btn btn-secondary" id="clearQueueBtn" data-i18n="btn_clear_queue">
+                                            清空队列
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="queue-list" id="queueList">
+                                    <div class="empty-state">
+                                        <div class="empty-state-icon">
+                                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M3 12h18"></path><path d="M3 18h18"></path></svg>
+                                        </div>
+                                        <div class="empty-state-text" data-i18n="queue_empty">暂无待下载任务</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

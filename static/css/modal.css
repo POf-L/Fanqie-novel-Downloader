@@ -234,6 +234,24 @@
     box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
 }
 
+/* 章节加载提示 */
+.chapter-loading-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-top: 12px;
+}
+
+.chapter-loading-hint.is-error {
+    background: rgba(255, 59, 48, 0.12);
+    color: var(--danger);
+}
+
 /* 手动选择模式 */
 .chapter-manual-container {
     margin-top: 16px;
