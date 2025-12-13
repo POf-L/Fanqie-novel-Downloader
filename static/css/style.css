@@ -725,18 +725,27 @@ select.form-input {
 }
 
 .queue-settings {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 1fr 1.5fr 1fr;
     gap: 16px;
     padding: 16px;
     background: var(--bg-body);
     border-radius: var(--radius-md);
     margin-bottom: 16px;
+    align-items: start;
 }
 
 .queue-settings .form-group {
-    flex: 1;
-    min-width: 200px;
+    min-width: 0;
+}
+
+.queue-settings .input-group {
+    flex-wrap: nowrap;
+}
+
+.queue-settings .input-group .btn {
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .queue-settings .format-selector {
@@ -919,6 +928,24 @@ select.form-input {
     .status-card, .log-card {
         flex: 1;
         min-width: 300px;
+    }
+    
+    .queue-settings {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .queue-settings .form-group:last-child {
+        grid-column: span 2;
+    }
+}
+
+@media (max-width: 700px) {
+    .queue-settings {
+        grid-template-columns: 1fr;
+    }
+    
+    .queue-settings .form-group:last-child {
+        grid-column: span 1;
     }
 }
 
