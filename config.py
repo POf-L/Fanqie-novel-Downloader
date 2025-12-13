@@ -84,6 +84,12 @@ def load_remote_config() -> Dict:
         "download_delay": 0.5,
         "retry_delay": 2,
         "status_file": ".download_status.json",
+        "download_enabled": True,
+        "verbose_logging": False,
+        "request_rate_limit": None,
+        "api_rate_limit": None,
+        "rate_limit_window": None,
+        "async_batch_size": None,
         "endpoints": {
             "search": "/api/search",
             "detail": "/api/detail",
@@ -113,11 +119,26 @@ def load_remote_config() -> Dict:
             # 更新基础配置
             default_config.update({
                 "api_base_url": remote_conf.get("api_base_url", ""),
-                "request_timeout": remote_conf.get("request_timeout", 10),
-                "max_retries": remote_conf.get("max_retries", 3),
-                "connection_pool_size": remote_conf.get("connection_pool_size", 100),
-                "max_workers": remote_conf.get("max_workers", 2),
+                "request_timeout": remote_conf.get("request_timeout", default_config["request_timeout"]),
+                "max_retries": remote_conf.get("max_retries", default_config["max_retries"]),
+                "connection_pool_size": remote_conf.get("connection_pool_size", default_config["connection_pool_size"]),
+                "max_workers": remote_conf.get("max_workers", default_config["max_workers"]),
+                "download_delay": remote_conf.get("download_delay", default_config["download_delay"]),
+                "retry_delay": remote_conf.get("retry_delay", default_config["retry_delay"]),
+                "download_enabled": remote_conf.get("download_enabled", default_config["download_enabled"]),
+                "verbose_logging": remote_conf.get("verbose_logging", default_config["verbose_logging"]),
+                "request_rate_limit": remote_conf.get("request_rate_limit", default_config["request_rate_limit"]),
+                "api_rate_limit": remote_conf.get("api_rate_limit", default_config["api_rate_limit"]),
+                "rate_limit_window": remote_conf.get("rate_limit_window", default_config["rate_limit_window"]),
+                "async_batch_size": remote_conf.get("async_batch_size", default_config["async_batch_size"]),
             })
+
+            # 如果仅提供 request_rate_limit，则同步为下载间隔
+            if default_config.get("request_rate_limit") is not None and "download_delay" not in remote_conf:
+                try:
+                    default_config["download_delay"] = float(default_config["request_rate_limit"])
+                except (TypeError, ValueError):
+                    pass
 
             # 兼容：api_base_url = "auto"
             if isinstance(default_config.get("api_base_url"), str) and default_config["api_base_url"].strip().lower() == "auto":
@@ -158,6 +179,12 @@ def load_remote_config() -> Dict:
             if mode == "manual" and pref_url:
                 default_config["api_base_url"] = pref_url
                 
+            # 记录远程元信息（若存在）
+            if isinstance(data.get("version"), str):
+                default_config["remote_version"] = data["version"]
+            if isinstance(data.get("update_time"), str):
+                default_config["remote_update_time"] = data["update_time"]
+
             print(t("config_success", default_config['api_base_url']))
             return default_config
             
