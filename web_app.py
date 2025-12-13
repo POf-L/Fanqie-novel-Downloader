@@ -1190,31 +1190,31 @@ def api_config_save_path():
 @app.route('/api/list-directory', methods=['POST'])
 def api_list_directory():
     """列出指定目录的内容"""
-    data = request.get_json() or {}
-    path = data.get('path', '')
-    
-    # 如果没有指定路径，使用默认下载路径
-    if not path:
-        path = get_default_download_path()
-    
-    # 规范化路径
-    path = os.path.normpath(os.path.expanduser(path))
-    
-    # 检查路径是否存在
-    if not os.path.exists(path):
-        return jsonify({
-            'success': False,
-            'message': t('web_dir_not_exist') if 'web_dir_not_exist' in dir(t) else '目录不存在'
-        })
-    
-    # 检查是否是目录
-    if not os.path.isdir(path):
-        return jsonify({
-            'success': False,
-            'message': t('web_not_directory') if 'web_not_directory' in dir(t) else '路径不是目录'
-        })
-    
     try:
+        data = request.get_json() or {}
+        path = data.get('path', '')
+        
+        # 如果没有指定路径，使用默认下载路径
+        if not path:
+            path = get_default_download_path()
+        
+        # 规范化路径
+        path = os.path.normpath(os.path.expanduser(path))
+    
+        # 检查路径是否存在
+        if not os.path.exists(path):
+            return jsonify({
+                'success': False,
+                'message': '目录不存在'
+            })
+        
+        # 检查是否是目录
+        if not os.path.isdir(path):
+            return jsonify({
+                'success': False,
+                'message': '路径不是目录'
+            })
+    
         # 获取目录列表
         directories = []
         for item in os.listdir(path):
@@ -1257,12 +1257,15 @@ def api_list_directory():
     except PermissionError:
         return jsonify({
             'success': False,
-            'message': t('web_permission_denied') if 'web_permission_denied' in dir(t) else '无权限访问该目录'
+            'message': '无权限访问该目录'
         })
     except Exception as e:
+        import traceback
+        print(f"[ERROR] list-directory: {e}")
+        traceback.print_exc()
         return jsonify({
             'success': False,
-            'message': str(e)
+            'message': f'加载目录失败: {str(e)}'
         })
 
 
@@ -1300,6 +1303,17 @@ def api_select_folder():
 def api_check_update():
     """检查更新"""
     try:
+        import sys
+        
+        # 源代码运行时不检查更新
+        if not getattr(sys, 'frozen', False):
+            return jsonify({
+                'success': True,
+                'has_update': False,
+                'is_source': True,
+                'message': '源代码运行模式，不检查更新'
+            })
+        
         from updater import check_and_notify
         from config import __version__, __github_repo__
         

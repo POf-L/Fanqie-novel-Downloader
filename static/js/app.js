@@ -193,11 +193,20 @@ class FolderBrowser {
                 listContainer.innerHTML = `<div class="folder-loading">${i18n.t('folder_loading') || '加载中...'}</div>`;
                 
                 try {
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (AppState.accessToken) {
+                        headers['X-Access-Token'] = AppState.accessToken;
+                    }
                     const response = await fetch('/api/list-directory', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ path })
+                        headers: headers,
+                        body: JSON.stringify({ path: path || '' })
                     });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
                     const result = await response.json();
                     
                     if (result.success) {
@@ -242,10 +251,12 @@ class FolderBrowser {
                             });
                         }
                     } else {
-                        listContainer.innerHTML = `<div class="folder-error">${result.message}</div>`;
+                        listContainer.innerHTML = `<div class="folder-error">${result.message || i18n.t('folder_load_error') || '加载失败'}</div>`;
                     }
                 } catch (e) {
-                    listContainer.innerHTML = `<div class="folder-error">${i18n.t('folder_load_error') || '加载失败'}: ${e.message}</div>`;
+                    console.error('Folder browser error:', e);
+                    const errorMsg = e.message || String(e) || '';
+                    listContainer.innerHTML = `<div class="folder-error">${i18n.t('folder_load_error') || '加载失败'}${errorMsg ? ': ' + errorMsg : ''}</div>`;
                 }
             };
 
@@ -266,9 +277,13 @@ class FolderBrowser {
                 if (currentPath) {
                     // 保存选择的路径
                     try {
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (AppState.accessToken) {
+                            headers['X-Access-Token'] = AppState.accessToken;
+                        }
                         await fetch('/api/select-folder', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: headers,
                             body: JSON.stringify({ path: currentPath })
                         });
                     } catch (e) {
@@ -455,20 +470,24 @@ class Logger {
             if (index < fullText.length) {
                 entry.textContent += fullText.charAt(index);
                 index++;
-                
-                // 自动滚动到底部
+                setTimeout(type, speed);
+            } else {
+                entry.classList.remove('typing-cursor');
+                // 打字完成后滚动到底部
                 const logSection = document.getElementById('logContainer');
                 if (logSection) {
                     logSection.scrollTop = logSection.scrollHeight;
                 }
-                
-                setTimeout(type, speed);
-            } else {
-                entry.classList.remove('typing-cursor');
             }
         };
         
         type();
+        
+        // 立即滚动一次，确保新条目可见
+        const logSection = document.getElementById('logContainer');
+        if (logSection) {
+            logSection.scrollTop = logSection.scrollHeight;
+        }
         
         // 限制日志数量
         const domEntries = this.container.querySelectorAll('.log-entry');

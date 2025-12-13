@@ -84,7 +84,22 @@ def load_remote_config() -> Dict:
         "download_delay": 0.5,
         "retry_delay": 2,
         "status_file": ".download_status.json",
-        "endpoints": {}
+        "endpoints": {
+            "search": "/api/search",
+            "detail": "/api/detail",
+            "book": "/api/book",
+            "directory": "/api/directory",
+            "content": "/api/content",
+            "chapter": "/api/chapter",
+            "raw_full": "/api/raw_full",
+            "comment": "/api/comment",
+            "multi_content": "/api/content",
+            "ios_content": "/api/ios/content",
+            "ios_register": "/api/ios/register",
+            "device_pool": "/api/device/pool",
+            "device_register": "/api/device/register",
+            "device_status": "/api/device/status"
+        }
     }
 
     try:

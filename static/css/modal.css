@@ -379,3 +379,105 @@
     margin-top: 2px;
     accent-color: var(--primary);
 }
+
+
+/* ===================== 文件夹浏览器 ===================== */
+
+.folder-browser-modal .modal-content {
+    max-width: 600px;
+    max-height: 80vh;
+}
+
+.folder-browser-path {
+    margin-bottom: 12px;
+}
+
+.folder-browser-path .path-input {
+    width: 100%;
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.folder-browser-nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.folder-browser-nav button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.folder-browser-drives {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.folder-browser-drives .drive-btn {
+    min-width: 50px;
+}
+
+.folder-browser-list {
+    min-height: 300px;
+    max-height: 400px;
+    overflow-y: auto;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px;
+}
+
+.folder-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-primary);
+}
+
+.folder-item:hover {
+    background: var(--bg-input);
+}
+
+.folder-item.selected {
+    background: rgba(0, 122, 255, 0.1);
+    border: 1px solid var(--primary);
+}
+
+.folder-item svg {
+    flex-shrink: 0;
+    color: var(--primary);
+}
+
+.folder-item span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+}
+
+.folder-loading,
+.folder-empty,
+.folder-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.folder-error {
+    color: var(--danger, #ff3b30);
+}

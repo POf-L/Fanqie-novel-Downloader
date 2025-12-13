@@ -218,9 +218,18 @@ class APIManager:
     def get_full_content(self, book_id: str) -> Optional[str]:
         """获取整本小说内容(纯文本)"""
         try:
-            url = f"{self.base_url}{self.endpoints['content']}"
-            # 使用 tab='下载' 获取整书内容
-            params = {"book_id": book_id, "tab": "下载"}
+            # 优先使用 raw_full 端点（整书下载专用）
+            endpoint = self.endpoints.get('raw_full') or self.endpoints.get('content')
+            if not endpoint:
+                return None
+                
+            url = f"{self.base_url}{endpoint}"
+            params = {"book_id": book_id}
+            
+            # 如果使用的是 content 端点，添加 tab 参数
+            if 'content' in endpoint and 'raw_full' not in endpoint:
+                params["tab"] = "下载"
+            
             response = self._get_session().get(url, params=params, headers=get_headers(), timeout=60, stream=True)
             
             if response.status_code == 200:

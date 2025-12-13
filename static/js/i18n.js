@@ -147,6 +147,15 @@ const translations = {
         "update_status_fail": "下载失败: ",
         "update_btn_default": "下载更新",
         
+        // Folder Browser
+        "folder_browser_title": "选择文件夹",
+        "folder_nav_up": "上级目录",
+        "folder_nav_home": "默认目录",
+        "folder_loading": "加载中...",
+        "folder_empty": "此目录为空",
+        "folder_load_error": "加载失败",
+        "btn_select": "选择此文件夹",
+        
         // Alerts
         "alert_input_keyword": "请输入搜索关键词",
         "alert_input_book_id": "请输入书籍ID或URL",
@@ -363,6 +372,15 @@ const translations = {
         "update_status_ready": "Ready to download...",
         "update_status_fail": "Download failed: ",
         "update_btn_default": "Download Update",
+        
+        // Folder Browser
+        "folder_browser_title": "Select Folder",
+        "folder_nav_up": "Parent",
+        "folder_nav_home": "Default",
+        "folder_loading": "Loading...",
+        "folder_empty": "This folder is empty",
+        "folder_load_error": "Load failed",
+        "btn_select": "Select This Folder",
         
         // Alerts
         "alert_input_keyword": "Please enter search keyword",

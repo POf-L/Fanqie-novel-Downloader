@@ -827,10 +827,20 @@ select.form-input {
     display: flex;
     flex-direction: column;
     gap: 24px;
+    min-height: 0;
+    overflow: hidden;
 }
 
-.status-card, .log-card {
+.status-card {
     padding: 20px;
+    flex-shrink: 0;
+}
+
+.log-card {
+    padding: 20px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .card-header {
@@ -888,31 +898,43 @@ select.form-input {
 
 /* 日志区域 */
 .log-card {
-    flex: 1;
-    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .log-container {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 12px;
+    padding-bottom: 16px;
     background: var(--bg-body);
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
     font-size: 12px;
+    min-height: 150px;
+    scroll-behavior: smooth;
+}
+
+#logContent {
+    display: flex;
+    flex-direction: column;
 }
 
 .log-entry {
-    margin-bottom: 6px;
-    line-height: 1.4;
+    margin-bottom: 8px;
+    line-height: 1.5;
     color: var(--text-secondary);
-    word-break: break-all;
+    word-break: break-word;
+    white-space: pre-wrap;
+    flex-shrink: 0;
 }
 
 .log-entry:last-child {
     color: var(--text-primary);
     font-weight: 500;
+    margin-bottom: 0;
 }
 
 /* ===================== 响应式适配 ===================== */
