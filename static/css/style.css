@@ -726,8 +726,8 @@ select.form-input {
 
 .queue-settings {
     display: grid;
-    grid-template-columns: 1fr 1.5fr 1fr;
-    gap: 16px;
+    grid-template-columns: minmax(180px, 1fr) minmax(200px, 1.5fr) minmax(160px, 1fr);
+    gap: 20px;
     padding: 16px;
     background: var(--bg-body);
     border-radius: var(--radius-md);
@@ -737,15 +737,24 @@ select.form-input {
 
 .queue-settings .form-group {
     min-width: 0;
+    overflow: hidden;
 }
 
 .queue-settings .input-group {
     flex-wrap: nowrap;
+    overflow: hidden;
+}
+
+.queue-settings .input-group .form-input {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .queue-settings .input-group .btn {
     white-space: nowrap;
     flex-shrink: 0;
+    padding: 10px 12px;
 }
 
 .queue-settings .format-selector {
@@ -908,6 +917,17 @@ select.form-input {
 
 /* ===================== 响应式适配 ===================== */
 
+@media (max-width: 1100px) {
+    .queue-settings {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .queue-settings .form-group:nth-child(2) {
+        grid-column: span 2;
+        order: 3;
+    }
+}
+
 @media (max-width: 900px) {
     .dashboard-grid {
         grid-template-columns: 1fr;
@@ -929,14 +949,6 @@ select.form-input {
         flex: 1;
         min-width: 300px;
     }
-    
-    .queue-settings {
-        grid-template-columns: 1fr 1fr;
-    }
-    
-    .queue-settings .form-group:last-child {
-        grid-column: span 2;
-    }
 }
 
 @media (max-width: 700px) {
@@ -944,8 +956,9 @@ select.form-input {
         grid-template-columns: 1fr;
     }
     
-    .queue-settings .form-group:last-child {
+    .queue-settings .form-group:nth-child(2) {
         grid-column: span 1;
+        order: 2;
     }
 }
 
