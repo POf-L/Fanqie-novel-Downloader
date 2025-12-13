@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 主入口 - 启动 Web 应用并用 PyWebView 显示
+支持多平台：Windows, macOS, Linux, Termux
 """
 
 import os
@@ -13,6 +14,13 @@ import secrets
 import socket
 from pathlib import Path
 from locales import t
+from platform_utils import (
+    detect_platform, 
+    get_window_config, 
+    is_feature_available,
+    get_feature_status_report,
+    get_unavailable_feature_message
+)
 
 def find_free_port():
     """查找一个可用的随机端口"""
@@ -94,15 +102,18 @@ def open_web_interface(port, access_token):
             def on_closed():
                 print(t("main_app_closed"))
             
-            # 创建窗口 (无边框模式)
+            # 获取平台适配的窗口配置
+            window_config = get_window_config()
+            
+            # 创建窗口 (使用平台适配配置)
             _window = webview.create_window(
-                title='番茄小说下载器',
+                title=window_config['title'],
                 url=url,
-                width=1200,
-                height=800,
-                min_size=(1000, 700),
-                background_color='#0a0a0a',
-                frameless=True,
+                width=window_config['width'],
+                height=window_config['height'],
+                min_size=window_config['min_size'],
+                background_color=window_config['background_color'],
+                frameless=window_config['frameless'],
                 js_api=api
             )
             
@@ -150,6 +161,15 @@ def main():
     print("=" * 50)
     print(t("main_title"))
     print("=" * 50)
+    
+    # 检测平台信息
+    platform_info = detect_platform()
+    print(f"\n平台: {platform_info.os_name} ({platform_info.os_version})")
+    if platform_info.desktop_env:
+        print(f"桌面环境: {platform_info.desktop_env}")
+    if platform_info.is_termux:
+        print("运行环境: Termux (Android)")
+        print("\n提示: Termux 环境请使用 CLI 模式: python cli.py --help")
     
     # 显示版本信息
     from config import __version__, __github_repo__
@@ -231,9 +251,45 @@ def main():
                 print(t("main_server_timeout"))
                 sys.exit(1)
     
-    # 打开 Web 界面
-    print("\n" + t("main_opening_interface"))
-    open_web_interface(port, access_token)
+    # 检查 GUI 可用性并选择合适的界面模式
+    if platform_info.is_termux:
+        # Termux 环境：提示使用 CLI
+        print("\n" + "=" * 50)
+        print("Termux 环境不支持 GUI，请使用命令行模式:")
+        print("  python cli.py search <关键词>")
+        print("  python cli.py download <书籍ID>")
+        print("  python cli.py info <书籍ID>")
+        print("=" * 50)
+        print(f"\n服务器已启动: http://127.0.0.1:{port}")
+        print("您也可以在浏览器中访问上述地址使用 Web 界面")
+        
+        # 保持运行
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n" + t("main_app_closed"))
+            sys.exit(0)
+    elif not platform_info.is_gui_available:
+        # GUI 不可用：使用浏览器模式
+        print("\n" + get_unavailable_feature_message('gui_webview'))
+        print("将使用浏览器模式...")
+        
+        import webbrowser
+        time.sleep(1)
+        webbrowser.open(url)
+        
+        # 保持运行
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n" + t("main_app_closed"))
+            sys.exit(0)
+    else:
+        # 正常 GUI 模式
+        print("\n" + t("main_opening_interface"))
+        open_web_interface(port, access_token)
 
 if __name__ == '__main__':
     main()

@@ -788,9 +788,17 @@ def api_config_save_path():
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 500
 
-@app.route('/api/select-folder', methods=['POST'])
-def api_select_folder():
-    """弹出文件夹选择对话框"""
+def select_folder_with_fallback(current_path: str) -> dict:
+    """
+    尝试打开文件夹选择对话框，失败时返回回退标志
+    
+    Args:
+        current_path: 当前路径
+    
+    Returns:
+        {'success': True, 'path': selected_path} 或
+        {'success': False, 'message': error_msg, 'fallback': True}
+    """
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -798,8 +806,6 @@ def api_select_folder():
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
-        
-        current_path = request.get_json().get('current_path', get_default_download_path())
         
         folder_path = filedialog.askdirectory(
             title='选择小说保存目录',
@@ -809,26 +815,50 @@ def api_select_folder():
         root.destroy()
         
         if folder_path:
-            try:
-                if os.path.exists(CONFIG_FILE):
-                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                        config = json.load(f)
-                else:
-                    config = {}
-                
-                config['save_path'] = folder_path
-                
-                with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, ensure_ascii=False, indent=2)
-                
-                return jsonify({'success': True, 'path': folder_path})
-            except Exception as e:
-                return jsonify({'success': False, 'message': str(e)}), 500
+            return {'success': True, 'path': folder_path}
         else:
-            return jsonify({'success': False, 'message': t('web_folder_unselected')})
+            return {'success': False, 'message': t('web_folder_unselected'), 'fallback': False}
             
+    except ImportError:
+        # Tkinter 不可用
+        return {
+            'success': False, 
+            'message': '文件夹选择对话框不可用，请手动输入路径',
+            'fallback': True
+        }
     except Exception as e:
-        return jsonify({'success': False, 'message': t('web_folder_select_fail', str(e))}), 500
+        # 其他错误（如无显示器）
+        return {
+            'success': False,
+            'message': t('web_folder_select_fail', str(e)),
+            'fallback': True
+        }
+
+
+@app.route('/api/select-folder', methods=['POST'])
+def api_select_folder():
+    """弹出文件夹选择对话框"""
+    current_path = request.get_json().get('current_path', get_default_download_path())
+    
+    result = select_folder_with_fallback(current_path)
+    
+    if result.get('success') and result.get('path'):
+        # 保存选择的路径到配置
+        try:
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+            
+            config['save_path'] = result['path']
+            
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)}), 500
+    
+    return jsonify(result)
 
 @app.route('/api/check-update', methods=['GET'])
 def api_check_update():

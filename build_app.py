@@ -227,12 +227,105 @@ def get_hidden_imports():
     return hidden_imports
 
 
-def build_executable(variant="release", executable_name=None):
+def get_platform_config(target_platform: str = None) -> dict:
+    """
+    获取目标平台的构建配置
+    
+    Args:
+        target_platform: 'windows', 'linux', 'darwin'，默认为当前平台
+    
+    Returns:
+        包含 hidden_imports, data_files, options 的配置字典
+    """
+    if target_platform is None:
+        if sys.platform == 'win32':
+            target_platform = 'windows'
+        elif sys.platform == 'darwin':
+            target_platform = 'darwin'
+        else:
+            target_platform = 'linux'
+    
+    config = {
+        'platform': target_platform,
+        'hidden_imports': get_hidden_imports(),
+        'data_files': [
+            ('static', 'static'),
+            ('templates', 'templates'),
+        ],
+        'options': [],
+    }
+    
+    # 平台特定配置
+    if target_platform == 'windows':
+        config['hidden_imports'].extend([
+            'win32api',
+            'win32con',
+            'pywintypes',
+        ])
+        # Windows 使用分号作为路径分隔符
+        config['path_separator'] = ';'
+    elif target_platform == 'linux':
+        config['hidden_imports'].extend([
+            'gi',
+            'gi.repository.Gtk',
+        ])
+        config['path_separator'] = ':'
+        # Linux 不需要 tkinter 相关的 Windows 模块
+        config['exclude_modules'] = ['win32api', 'win32con', 'pywintypes']
+    elif target_platform == 'darwin':
+        config['hidden_imports'].extend([
+            'AppKit',
+            'Foundation',
+        ])
+        config['path_separator'] = ':'
+    
+    # 添加新的平台检测模块
+    config['hidden_imports'].extend([
+        'platform_utils',
+        'cli',
+    ])
+    
+    # 去重
+    config['hidden_imports'] = sorted(set(config['hidden_imports']))
+    
+    return config
+
+
+def get_executable_name(base_name: str, platform: str, variant: str) -> str:
+    """
+    生成平台适配的可执行文件名
+    
+    Args:
+        base_name: 基础名称
+        platform: 目标平台
+        variant: 构建变体
+    
+    Returns:
+        完整的可执行文件名（不含扩展名）
+    """
+    name = base_name
+    
+    # 添加变体后缀
+    if variant == 'debug':
+        name = f"{name}-debug"
+    
+    # 添加平台后缀
+    if platform == 'linux':
+        name = f"{name}-linux"
+    elif platform == 'darwin':
+        name = f"{name}-macos"
+    # Windows 不添加后缀，保持兼容性
+    
+    return name
+
+
+def build_executable(variant="release", executable_name=None, target_platform=None):
     """编译可执行文件
     
     Args:
         variant: 构建变体 ('release' 或 'debug')
         executable_name: 自定义可执行文件名称（不包含扩展名）
+        target_platform: 目标平台 ('windows', 'linux', 'darwin')，默认为当前平台
     
     Returns:
         tuple: (success, built_name, target_name)
@@ -240,13 +333,17 @@ def build_executable(variant="release", executable_name=None):
             - built_name: spec文件中定义的原始名称
             - target_name: 期望的最终名称
     """
-    print(f"Starting build process for {variant} variant...")
+    # 获取平台配置
+    platform_config = get_platform_config(target_platform)
+    current_platform = platform_config['platform']
+    
+    print(f"Starting build process for {variant} variant on {current_platform}...")
     
     # 确定目标可执行文件名称
     if executable_name:
         target_name = executable_name
     else:
-        target_name = "TomatoNovelDownloader-debug" if variant == "debug" else "TomatoNovelDownloader"
+        target_name = get_executable_name("TomatoNovelDownloader", current_platform, variant)
     
     # Web版本使用 main.py 作为入口
     print("Building Web version with main.py as entry point")
@@ -264,19 +361,18 @@ def build_executable(variant="release", executable_name=None):
     else:
         cmd.append("--windowed")
     
-    # 添加隐藏导入（自动从 requirements.txt 读取）
-    hidden_imports = get_hidden_imports()
-    
-    for import_name in hidden_imports:
+    # 添加隐藏导入（使用平台配置）
+    for import_name in platform_config['hidden_imports']:
         cmd.extend(["--hidden-import", import_name])
     
     # 添加数据收集
     cmd.extend(["--collect-data", "fake_useragent"])
     cmd.extend(["--collect-submodules", "PIL"])
     
-    # 添加静态文件和模板
-    cmd.extend(["--add-data", "static:static"])
-    cmd.extend(["--add-data", "templates:templates"])
+    # 添加静态文件和模板（使用平台适配的路径分隔符）
+    sep = platform_config['path_separator']
+    for src, dst in platform_config['data_files']:
+        cmd.extend(["--add-data", f"{src}{sep}{dst}"])
     
     # 添加入口文件（Web版）
     cmd.append("main.py")

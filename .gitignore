@@ -175,3 +175,15 @@ Desktop.ini
 
 # Linux
 *~
+
+
+# Kiro IDE
+.kiro/
+
+# Test artifacts
+.hypothesis/
+.pytest_cache/
+
+# Local development
+*.local
+*.local.*

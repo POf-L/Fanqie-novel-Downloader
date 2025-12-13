@@ -1,13 +1,71 @@
 # -*- coding: utf-8 -*-
 """
 自动更新检查模块 - 从GitHub检查新版本
+支持多平台：Windows, Linux, macOS
 """
 
+import sys
+import os
 import requests
 import re
 from packaging import version as pkg_version
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, List
 from locales import t
+
+
+def get_current_platform() -> str:
+    """
+    获取当前平台标识符用于更新过滤
+    
+    Returns:
+        平台标识符: 'windows', 'linux', 'macos', 'termux', 'unknown'
+    """
+    # 检查 Termux
+    prefix = os.environ.get('PREFIX', '')
+    if 'com.termux' in prefix:
+        return 'termux'
+    
+    if sys.platform == 'win32':
+        return 'windows'
+    elif sys.platform == 'darwin':
+        return 'macos'
+    elif sys.platform.startswith('linux'):
+        return 'linux'
+    else:
+        return 'unknown'
+
+
+def filter_assets_for_platform(assets: List[dict], platform: str) -> List[dict]:
+    """
+    过滤适合指定平台的更新资源
+    
+    Args:
+        assets: GitHub release assets 列表
+        platform: 目标平台 ('windows', 'linux', 'macos')
+    
+    Returns:
+        过滤后的 assets 列表
+    """
+    if not assets:
+        return []
+    
+    filtered = []
+    
+    for asset in assets:
+        name = asset.get('name', '').lower()
+        
+        if platform == 'windows':
+            if name.endswith('.exe'):
+                filtered.append(asset)
+        elif platform == 'linux':
+            if 'linux' in name and not name.endswith('.exe'):
+                filtered.append(asset)
+        elif platform == 'macos':
+            if ('macos' in name or 'darwin' in name) and not name.endswith('.exe'):
+                filtered.append(asset)
+        # termux 和 unknown 不返回任何资源
+    
+    return filtered
 
 def parse_version(ver_str: str) -> Optional[pkg_version.Version]:
     """解析版本号字符串"""
