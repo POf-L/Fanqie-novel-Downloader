@@ -97,39 +97,8 @@
                                 </div>
 
                                 <div class="form-group">
-                                    <label class="form-label" data-i18n="label_api_source">下载接口</label>
-                                    <div class="input-group">
-                                        <select id="apiSourceSelect" class="form-input"></select>
-                                        <button class="btn btn-secondary" id="refreshApiSourcesBtn" data-i18n="btn_check_api_sources">检测</button>
-                                    </div>
-                                    <div class="helper-text" id="apiSourceStatus"></div>
-                                </div>
-
-                                <div class="form-group">
                                     <label class="form-label" data-i18n="label_book_id">书籍 ID / URL</label>
                                     <input type="text" id="bookId" class="form-input" placeholder="例如：12345678 或 https://fanqienovel.com/..." data-i18n="placeholder_book_id">
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label" data-i18n="label_save_path">保存路径</label>
-                                    <div class="input-group">
-                                        <input type="text" id="savePath" class="form-input" placeholder="选择保存目录" readonly data-i18n="placeholder_save_path">
-                                        <button class="btn btn-secondary" id="browseBtn" data-i18n="btn_browse">浏览...</button>
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label" data-i18n="label_format">文件格式</label>
-                                    <div class="format-selector">
-                                        <label class="format-option-card">
-                                            <input type="radio" name="format" value="txt" id="formatTxt" checked>
-                                            <span class="format-name">TXT</span>
-                                        </label>
-                                        <label class="format-option-card">
-                                            <input type="radio" name="format" value="epub" id="formatEpub">
-                                            <span class="format-name">EPUB</span>
-                                        </label>
-                                    </div>
                                 </div>
 
                                 <div class="form-actions">
@@ -160,6 +129,41 @@
                                         </button>
                                     </div>
                                 </div>
+
+                                <!-- 下载设置区域 -->
+                                <div class="queue-settings">
+                                    <div class="form-group">
+                                        <label class="form-label" data-i18n="label_api_source">下载接口</label>
+                                        <div class="input-group">
+                                            <select id="apiSourceSelect" class="form-input"></select>
+                                            <button class="btn btn-secondary" id="refreshApiSourcesBtn" data-i18n="btn_check_api_sources">检测</button>
+                                        </div>
+                                        <div class="helper-text" id="apiSourceStatus"></div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label" data-i18n="label_save_path">保存路径</label>
+                                        <div class="input-group">
+                                            <input type="text" id="savePath" class="form-input" placeholder="选择保存目录" readonly data-i18n="placeholder_save_path">
+                                            <button class="btn btn-secondary" id="browseBtn" data-i18n="btn_browse">浏览...</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label" data-i18n="label_format">文件格式</label>
+                                        <div class="format-selector">
+                                            <label class="format-option-card">
+                                                <input type="radio" name="format" value="txt" id="formatTxt" checked>
+                                                <span class="format-name">TXT</span>
+                                            </label>
+                                            <label class="format-option-card">
+                                                <input type="radio" name="format" value="epub" id="formatEpub">
+                                                <span class="format-name">EPUB</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="queue-list" id="queueList">
                                     <div class="empty-state">
                                         <div class="empty-state-icon">

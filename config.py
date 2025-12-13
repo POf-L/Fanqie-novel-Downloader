@@ -133,7 +133,8 @@ def load_remote_config() -> Dict:
                 if api_base.lower() != "auto":
                     sources.append({"name": api_base, "base_url": api_base})
 
-            default_config["api_sources"] = _dedupe_sources(default_config.get("api_sources", []) + sources)
+            # 远程配置优先，这样远程的友好名称会覆盖默认的 URL 名称
+            default_config["api_sources"] = _dedupe_sources(sources + default_config.get("api_sources", []))
 
             # 读取本地偏好（手动指定优先）
             local_pref = _load_local_pref()

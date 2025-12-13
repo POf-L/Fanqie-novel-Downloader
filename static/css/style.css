@@ -691,6 +691,35 @@ select.form-input {
     align-items: center;
 }
 
+.queue-settings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 16px;
+    background: var(--bg-body);
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+}
+
+.queue-settings .form-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+.queue-settings .format-selector {
+    display: flex;
+    gap: 12px;
+}
+
+.queue-settings .format-option-card {
+    flex: 1;
+}
+
+.queue-settings .format-name {
+    padding: 10px 16px;
+    font-size: 13px;
+}
+
 .queue-list {
     flex: 1;
     min-height: 0;
