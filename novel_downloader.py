@@ -231,12 +231,46 @@ class APIManager:
                 params["tab"] = "下载"
             
             response = self._get_session().get(url, params=params, headers=get_headers(), timeout=60, stream=True)
+            if response.status_code != 200:
+                return None
             
-            if response.status_code == 200:
-                # 手动解码，防止编码问题
-                response.encoding = 'utf-8'
-                return response.text
-            return None
+            raw_content = response.content
+            content_type = (response.headers.get('content-type') or '').lower()
+            
+            def _extract_text(payload):
+                if isinstance(payload, str):
+                    return payload
+                if isinstance(payload, dict):
+                    # 先看嵌套 data，再看常见文本字段
+                    nested = payload.get('data')
+                    if isinstance(nested, str):
+                        return nested
+                    if isinstance(nested, dict):
+                        for key in ("content", "text", "raw", "raw_text", "full_text"):
+                            val = nested.get(key)
+                            if isinstance(val, str):
+                                return val
+                    for key in ("content", "text", "raw", "raw_text", "full_text"):
+                        val = payload.get(key)
+                        if isinstance(val, str):
+                            return val
+                return None
+            
+            # 优先解析 JSON 返回（新接口可能返回 {code,data:{content:...}}）
+            is_json_like = 'application/json' in content_type or raw_content[:1] in (b'{', b'[')
+            if is_json_like:
+                try:
+                    data = json.loads(raw_content.decode('utf-8', errors='ignore'))
+                except Exception:
+                    data = None
+                text_from_json = _extract_text(data) if data is not None else None
+                if text_from_json:
+                    return text_from_json
+            
+            # 回退到纯文本解码
+            if not response.encoding:
+                response.encoding = response.apparent_encoding or 'utf-8'
+            return raw_content.decode(response.encoding or 'utf-8', errors='replace')
         except Exception as e:
             with print_lock:
                 print(t("dl_full_content_error", str(e)))
