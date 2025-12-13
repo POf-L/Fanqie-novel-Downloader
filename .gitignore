@@ -120,7 +120,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+# .env # Removed by Orchids to allow .env files
 .venv
 env/
 venv/
