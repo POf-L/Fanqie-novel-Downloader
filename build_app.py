@@ -135,13 +135,8 @@ PACKAGE_SUBMODULES = {
 }
 
 # 标准库模块（需要显式导入的）
+# 注意: tkinter 相关模块已移除，文件夹选择改为前端实现
 STDLIB_MODULES = [
-    'tkinter',
-    'tkinter.ttk',
-    'tkinter.messagebox',
-    'tkinter.filedialog',
-    'tkinter.font',
-    'tkinter.scrolledtext',
     'threading',
     'json',
     'os',

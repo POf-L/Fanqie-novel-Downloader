@@ -546,10 +546,32 @@ select.form-input {
     font-size: 13px;
     color: var(--text-muted);
     line-height: 1.4;
+}
+
+.search-desc.collapsed {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+.search-desc.expanded {
+    display: block;
+}
+
+.desc-toggle {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--primary);
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.desc-toggle:hover {
+    text-decoration: underline;
 }
 
 .status-badge {
@@ -668,6 +690,17 @@ select.form-input {
     height: 100%;
     min-height: 0;
     overflow: hidden;
+}
+
+/* 确保队列标签页可以正确滚动 */
+#tab-queue {
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#tab-queue .queue-container {
+    min-height: auto;
+    overflow: visible;
 }
 
 .queue-header {
@@ -917,4 +950,245 @@ select.form-input {
 }
 .typing-cursor {
     animation: none !important;
+}
+
+
+/* ===================== Toast 消息组件 ===================== */
+
+.toast-container {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    backdrop-filter: blur(20px);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border);
+    min-width: 280px;
+    max-width: 400px;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.toast-show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast-hide {
+    opacity: 0;
+    transform: translateX(100%);
+}
+
+.toast-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.toast-message {
+    flex: 1;
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.toast-close {
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.toast-close:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.toast-success .toast-icon { color: var(--success); }
+.toast-error .toast-icon { color: var(--danger); }
+.toast-warning .toast-icon { color: var(--warning); }
+.toast-info .toast-icon { color: var(--primary); }
+
+.toast-success { border-left: 3px solid var(--success); }
+.toast-error { border-left: 3px solid var(--danger); }
+.toast-warning { border-left: 3px solid var(--warning); }
+.toast-info { border-left: 3px solid var(--primary); }
+
+/* ===================== 确认对话框组件 ===================== */
+
+.confirm-dialog {
+    max-width: 400px;
+}
+
+.confirm-message {
+    font-size: 15px;
+    color: var(--text-primary);
+    line-height: 1.6;
+    margin: 0;
+}
+
+.confirm-danger .confirm-btn {
+    background: var(--danger);
+}
+
+.confirm-danger .confirm-btn:hover {
+    background: #e0342b;
+}
+
+.confirm-warning .modal-header h3 {
+    color: var(--warning);
+}
+
+
+/* ===================== 文件夹浏览器组件 ===================== */
+
+.folder-browser-dialog {
+    max-width: 600px;
+    width: 90%;
+}
+
+.folder-browser-path {
+    margin-bottom: 12px;
+}
+
+.folder-browser-path .path-input {
+    width: 100%;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+}
+
+.folder-browser-nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.folder-browser-drives {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.drive-btn {
+    min-width: 50px;
+}
+
+.folder-browser-list {
+    min-height: 300px;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-body);
+}
+
+.folder-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 1px solid var(--border);
+}
+
+.folder-item:last-child {
+    border-bottom: none;
+}
+
+.folder-item:hover {
+    background: var(--bg-input);
+}
+
+.folder-item.selected {
+    background: rgba(0, 122, 255, 0.1);
+    color: var(--primary);
+}
+
+.folder-item svg {
+    flex-shrink: 0;
+    color: var(--warning);
+}
+
+.folder-item span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.folder-loading,
+.folder-empty,
+.folder-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.folder-error {
+    color: var(--danger);
+}
+
+
+/* ===================== 更新进度条样式 ===================== */
+
+.update-progress-card {
+    margin-top: 16px;
+    padding: 20px;
+    background: var(--bg-body);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+}
+
+.update-progress-title {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    color: var(--text-primary);
+}
+
+.update-progress-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.update-progress-info #updateProgressPercent {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.update-progress-hint {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
 }

@@ -1,3 +1,289 @@
+/* ===================== Toast 消息组件 ===================== */
+
+class Toast {
+    static container = null;
+    static toasts = new Map();
+    static idCounter = 0;
+
+    static init() {
+        if (this.container) return;
+        this.container = document.createElement('div');
+        this.container.className = 'toast-container';
+        document.body.appendChild(this.container);
+    }
+
+    static show(message, type = 'info', duration = 5000) {
+        this.init();
+        const id = ++this.idCounter;
+        
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `
+            <div class="toast-icon">${this.getIcon(type)}</div>
+            <div class="toast-message">${message}</div>
+            <button class="toast-close" onclick="Toast.dismiss(${id})">×</button>
+        `;
+        
+        this.container.appendChild(toast);
+        this.toasts.set(id, toast);
+        
+        // 触发动画
+        requestAnimationFrame(() => toast.classList.add('toast-show'));
+        
+        // 自动消失
+        if (duration > 0) {
+            setTimeout(() => this.dismiss(id), duration);
+        }
+        
+        return id;
+    }
+
+    static success(message, duration = 5000) {
+        return this.show(message, 'success', duration);
+    }
+
+    static error(message, duration = 5000) {
+        return this.show(message, 'error', duration);
+    }
+
+    static warning(message, duration = 5000) {
+        return this.show(message, 'warning', duration);
+    }
+
+    static info(message, duration = 5000) {
+        return this.show(message, 'info', duration);
+    }
+
+    static dismiss(id) {
+        const toast = this.toasts.get(id);
+        if (!toast) return;
+        
+        toast.classList.remove('toast-show');
+        toast.classList.add('toast-hide');
+        
+        setTimeout(() => {
+            toast.remove();
+            this.toasts.delete(id);
+        }, 300);
+    }
+
+    static getIcon(type) {
+        const icons = {
+            success: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+            error: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>',
+            warning: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+            info: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>'
+        };
+        return icons[type] || icons.info;
+    }
+}
+
+/* ===================== 确认对话框组件 ===================== */
+
+class ConfirmDialog {
+    static show(options = {}) {
+        return new Promise((resolve) => {
+            const {
+                title = i18n.t('confirm_title') || '确认',
+                message = '',
+                confirmText = i18n.t('btn_confirm') || '确定',
+                cancelText = i18n.t('btn_cancel') || '取消',
+                type = 'info' // info, warning, danger
+            } = options;
+
+            const modal = document.createElement('div');
+            modal.className = 'modal confirm-modal';
+            modal.innerHTML = `
+                <div class="modal-content confirm-dialog confirm-${type}">
+                    <div class="modal-header">
+                        <h3>${title}</h3>
+                        <button class="modal-close" type="button">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="confirm-message">${message}</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary cancel-btn" type="button">${cancelText}</button>
+                        <button class="btn btn-primary confirm-btn ${type === 'danger' ? 'btn-danger' : ''}" type="button">${confirmText}</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            modal.style.display = 'flex';
+
+            const close = (result) => {
+                modal.remove();
+                resolve(result);
+            };
+
+            modal.querySelector('.modal-close').addEventListener('click', () => close(false));
+            modal.querySelector('.cancel-btn').addEventListener('click', () => close(false));
+            modal.querySelector('.confirm-btn').addEventListener('click', () => close(true));
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) close(false);
+            });
+        });
+    }
+}
+
+/* ===================== 文件夹浏览器组件 ===================== */
+
+class FolderBrowser {
+    static async show(options = {}) {
+        return new Promise((resolve) => {
+            const {
+                title = i18n.t('folder_browser_title') || '选择文件夹',
+                initialPath = ''
+            } = options;
+
+            const modal = document.createElement('div');
+            modal.className = 'modal folder-browser-modal';
+            modal.innerHTML = `
+                <div class="modal-content folder-browser-dialog">
+                    <div class="modal-header">
+                        <h3>${title}</h3>
+                        <button class="modal-close" type="button">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="folder-browser-path">
+                            <input type="text" class="form-input path-input" readonly>
+                        </div>
+                        <div class="folder-browser-nav">
+                            <button class="btn btn-sm btn-secondary nav-up" type="button" disabled>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+                                ${i18n.t('folder_nav_up') || '上级目录'}
+                            </button>
+                            <button class="btn btn-sm btn-secondary nav-home" type="button">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                                ${i18n.t('folder_nav_home') || '默认目录'}
+                            </button>
+                        </div>
+                        <div class="folder-browser-drives" style="display: none;"></div>
+                        <div class="folder-browser-list">
+                            <div class="folder-loading">${i18n.t('folder_loading') || '加载中...'}</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary cancel-btn" type="button">${i18n.t('btn_cancel') || '取消'}</button>
+                        <button class="btn btn-primary select-btn" type="button">${i18n.t('btn_select') || '选择此文件夹'}</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            modal.style.display = 'flex';
+
+            const pathInput = modal.querySelector('.path-input');
+            const navUp = modal.querySelector('.nav-up');
+            const navHome = modal.querySelector('.nav-home');
+            const drivesContainer = modal.querySelector('.folder-browser-drives');
+            const listContainer = modal.querySelector('.folder-browser-list');
+            const selectBtn = modal.querySelector('.select-btn');
+
+            let currentPath = initialPath;
+            let parentPath = null;
+
+            const close = (result) => {
+                modal.remove();
+                resolve(result);
+            };
+
+            const loadDirectory = async (path) => {
+                listContainer.innerHTML = `<div class="folder-loading">${i18n.t('folder_loading') || '加载中...'}</div>`;
+                
+                try {
+                    const response = await fetch('/api/list-directory', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path })
+                    });
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        currentPath = result.data.current_path;
+                        parentPath = result.data.parent_path;
+                        pathInput.value = currentPath;
+                        navUp.disabled = result.data.is_root;
+                        
+                        // 显示驱动器列表 (Windows)
+                        if (result.data.drives && result.data.drives.length > 0) {
+                            drivesContainer.style.display = 'flex';
+                            drivesContainer.innerHTML = result.data.drives.map(d => 
+                                `<button class="btn btn-sm btn-secondary drive-btn" data-path="${d.path}">${d.name}</button>`
+                            ).join('');
+                            
+                            drivesContainer.querySelectorAll('.drive-btn').forEach(btn => {
+                                btn.addEventListener('click', () => loadDirectory(btn.dataset.path));
+                            });
+                        } else {
+                            drivesContainer.style.display = 'none';
+                        }
+                        
+                        // 显示目录列表
+                        if (result.data.directories.length === 0) {
+                            listContainer.innerHTML = `<div class="folder-empty">${i18n.t('folder_empty') || '此目录为空'}</div>`;
+                        } else {
+                            listContainer.innerHTML = result.data.directories.map(d => `
+                                <div class="folder-item" data-path="${d.path}">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                                    </svg>
+                                    <span>${d.name}</span>
+                                </div>
+                            `).join('');
+                            
+                            listContainer.querySelectorAll('.folder-item').forEach(item => {
+                                item.addEventListener('dblclick', () => loadDirectory(item.dataset.path));
+                                item.addEventListener('click', () => {
+                                    listContainer.querySelectorAll('.folder-item').forEach(i => i.classList.remove('selected'));
+                                    item.classList.add('selected');
+                                });
+                            });
+                        }
+                    } else {
+                        listContainer.innerHTML = `<div class="folder-error">${result.message}</div>`;
+                    }
+                } catch (e) {
+                    listContainer.innerHTML = `<div class="folder-error">${i18n.t('folder_load_error') || '加载失败'}: ${e.message}</div>`;
+                }
+            };
+
+            // 事件绑定
+            modal.querySelector('.modal-close').addEventListener('click', () => close(null));
+            modal.querySelector('.cancel-btn').addEventListener('click', () => close(null));
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) close(null);
+            });
+
+            navUp.addEventListener('click', () => {
+                if (parentPath) loadDirectory(parentPath);
+            });
+
+            navHome.addEventListener('click', () => loadDirectory(''));
+
+            selectBtn.addEventListener('click', async () => {
+                if (currentPath) {
+                    // 保存选择的路径
+                    try {
+                        await fetch('/api/select-folder', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ path: currentPath })
+                        });
+                    } catch (e) {
+                        console.error('保存路径失败:', e);
+                    }
+                    close(currentPath);
+                }
+            });
+
+            // 初始加载
+            loadDirectory(initialPath);
+        });
+    }
+}
+
 /* ===================== 全局状态管理 ===================== */
 
 const AppState = {
@@ -696,19 +982,19 @@ function renderQueue() {
 
 async function handleStartQueueDownload() {
     if (AppState.isDownloading) {
-        alert(i18n.t('alert_download_in_progress'));
+        Toast.warning(i18n.t('alert_download_in_progress'));
         return;
     }
 
     const tasks = Array.isArray(AppState.downloadQueue) ? AppState.downloadQueue : [];
     if (tasks.length === 0) {
-        alert(i18n.t('alert_queue_empty'));
+        Toast.warning(i18n.t('alert_queue_empty'));
         return;
     }
 
     const savePath = document.getElementById('savePath').value.trim();
     if (!savePath) {
-        alert(i18n.t('alert_select_path'));
+        Toast.warning(i18n.t('alert_select_path'));
         switchTab('download');
         return;
     }
@@ -733,14 +1019,19 @@ async function handleStartQueueDownload() {
 
     const message = result?.message || i18n.t('msg_start_download_fail', '');
     logger.log(message);
-    alert(message);
+    Toast.error(message);
 }
 
-function handleClearQueue() {
+async function handleClearQueue() {
     const tasks = Array.isArray(AppState.downloadQueue) ? AppState.downloadQueue : [];
     if (tasks.length === 0) return;
 
-    if (!confirm(i18n.t('confirm_clear_queue'))) return;
+    const confirmed = await ConfirmDialog.show({
+        title: i18n.t('confirm_title') || '确认',
+        message: i18n.t('confirm_clear_queue'),
+        type: 'warning'
+    });
+    if (!confirmed) return;
 
     AppState.clearQueue();
     logger.logKey('msg_queue_cleared');
@@ -848,7 +1139,7 @@ function initApiSourceControls() {
         if (value === '__auto__') {
             const res = await api.selectApiSource('auto');
             if (!res.success) {
-                alert(res.message || i18n.t('api_select_failed'));
+                Toast.error(res.message || i18n.t('api_select_failed'));
             }
             await refreshApiSourcesUI();
             return;
@@ -856,7 +1147,7 @@ function initApiSourceControls() {
 
         const res = await api.selectApiSource('manual', value);
         if (!res.success) {
-            alert(res.message || i18n.t('api_select_failed'));
+            Toast.error(res.message || i18n.t('api_select_failed'));
         }
         await refreshApiSourcesUI();
     });
@@ -993,7 +1284,7 @@ let currentSearchKeyword = '';
 async function handleSearch() {
     const keyword = document.getElementById('searchKeyword').value.trim();
     if (!keyword) {
-        alert(i18n.t('alert_input_keyword'));
+        Toast.warning(i18n.t('alert_input_keyword'));
         return;
     }
     
@@ -1095,6 +1386,9 @@ function displaySearchResults(books, append = false) {
             displayStatus = i18n.t('status_ongoing');
         }
         
+        const abstractText = book.abstract || i18n.t('label_no_desc');
+        const needsExpand = abstractText.length > 100;
+        
         item.innerHTML = `
             <img class="search-cover" src="${book.cover_url || ''}" alt="" onerror="this.style.display='none'">
             <div class="search-info">
@@ -1103,12 +1397,28 @@ function displaySearchResults(books, append = false) {
                     ${status ? `<span class="status-badge ${statusClass}">${displayStatus}</span>` : ''}
                 </div>
                 <div class="search-meta">${book.author} · ${wordCount}${chapterCount ? ' · ' + chapterCount : ''}</div>
-                <div class="search-desc">${book.abstract || i18n.t('label_no_desc')}</div>
+                <div class="search-desc-wrapper">
+                    <div class="search-desc ${needsExpand ? 'collapsed' : ''}">${abstractText}</div>
+                    ${needsExpand ? `<button class="desc-toggle" type="button">${i18n.t('btn_expand') || '展开'}</button>` : ''}
+                </div>
             </div>
             <div class="search-actions">
                 <button class="btn btn-sm btn-primary" type="button">${i18n.t('btn_add_to_queue')}</button>
             </div>
         `;
+        
+        // 展开/收起按钮事件
+        const toggleBtn = item.querySelector('.desc-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const desc = item.querySelector('.search-desc');
+                const isCollapsed = desc.classList.contains('collapsed');
+                desc.classList.toggle('collapsed', !isCollapsed);
+                desc.classList.toggle('expanded', isCollapsed);
+                toggleBtn.textContent = isCollapsed ? (i18n.t('btn_collapse') || '收起') : (i18n.t('btn_expand') || '展开');
+            });
+        }
         
         const addBtn = item.querySelector('.search-actions button');
         if (addBtn) {
@@ -1152,7 +1462,7 @@ function clearSearchResults() {
 async function handleSelectChapters() {
     const bookId = document.getElementById('bookId').value.trim();
     if (!bookId) {
-        alert(i18n.t('alert_input_book_id'));
+        Toast.warning(i18n.t('alert_input_book_id'));
         return;
     }
     
@@ -1161,9 +1471,9 @@ async function handleSelectChapters() {
     if (bookId.includes('fanqienovel.com')) {
         const match = bookId.match(/\/page\/(\d+)/);
         if (match) validId = match[1];
-        else { alert(i18n.t('alert_url_format_error')); return; }
+        else { Toast.error(i18n.t('alert_url_format_error')); return; }
     } else if (!/^\d+$/.test(bookId)) {
-        alert(i18n.t('alert_id_number'));
+        Toast.error(i18n.t('alert_id_number'));
         return;
     }
     
@@ -1444,7 +1754,7 @@ async function showUpdateModal(updateInfo) {
             downloadUpdateBtn.onclick = async () => {
                 const selectedRadio = document.querySelector('input[name="version"]:checked');
                 if (!selectedRadio) {
-                    alert(i18n.t('alert_select_version'));
+                    Toast.warning(i18n.t('alert_select_version'));
                     return;
                 }
                 
@@ -1466,20 +1776,20 @@ async function showUpdateModal(updateInfo) {
                         progressContainer = document.createElement('div');
                         progressContainer.id = 'updateProgressContainer';
                         progressContainer.innerHTML = `
-                            <div style="margin-top: 16px; padding: 12px; background: #0f0f23; border: 2px solid #00ff00; box-shadow: 4px 4px 0 #000000;">
-                                <h4 style="margin: 0 0 12px 0; color: #00ff00; text-align: center; font-family: 'Press Start 2P', monospace; font-size: 10px;">${i18n.t('update_progress_title')}</h4>
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-family: 'Press Start 2P', monospace; font-size: 9px;">
-                                    <span id="updateProgressText" style="color: #00cc00;">${i18n.t('update_status_connecting')}</span>
-                                    <span id="updateProgressPercent" style="color: #00ff00;">0%</span>
+                            <div class="update-progress-card">
+                                <h4 class="update-progress-title">${i18n.t('update_progress_title')}</h4>
+                                <div class="update-progress-info">
+                                    <span id="updateProgressText">${i18n.t('update_status_connecting')}</span>
+                                    <span id="updateProgressPercent">0%</span>
                                 </div>
-                                <div style="background: #1a1a2e; border: 2px solid #006600; height: 16px; position: relative; padding: 2px;">
-                                    <div id="updateProgressBar" style="background: #00ff00; height: 100%; width: 0%; transition: width 0.2s steps(4);"></div>
+                                <div class="progress-track">
+                                    <div id="updateProgressBar" class="progress-bar"></div>
                                 </div>
-                                <div style="margin-top: 12px; font-size: 10px; color: #008800; text-align: center; font-family: 'Press Start 2P', monospace; line-height: 1.5;">
+                                <div class="update-progress-hint">
                                     ${i18n.t('update_warn_dont_close')}
                                 </div>
                             </div>
-                            <button id="installUpdateBtn" style="display: none; margin-top: 16px; width: 100%; padding: 14px; background: #00ff00; color: #000000; border: 2px solid #006600; cursor: pointer; font-size: 12px; font-family: 'Press Start 2P', monospace; box-shadow: 4px 4px 0 #000000;">
+                            <button id="installUpdateBtn" class="btn btn-primary btn-xl" style="display: none; margin-top: 16px; width: 100%;">
                                 ${i18n.t('update_btn_install')}
                             </button>
                         `;
@@ -1548,12 +1858,12 @@ async function showUpdateModal(updateInfo) {
                                                 installBtn.textContent = i18n.t('update_btn_restarting');
                                                 progressText.textContent = applyResult.message;
                                             } else {
-                                                alert(i18n.t('alert_apply_update_fail') + applyResult.message);
+                                                Toast.error(i18n.t('alert_apply_update_fail') + applyResult.message);
                                                 installBtn.disabled = false;
                                                 installBtn.textContent = i18n.t('update_btn_install');
                                             }
                                         } catch (e) {
-                                            alert(i18n.t('alert_apply_update_fail') + e.message);
+                                            Toast.error(i18n.t('alert_apply_update_fail') + e.message);
                                             installBtn.disabled = false;
                                             installBtn.textContent = i18n.t('update_btn_install');
                                         }
@@ -1576,7 +1886,7 @@ async function showUpdateModal(updateInfo) {
                         setTimeout(pollProgress, 500);
                         
                     } catch (e) {
-                        alert(i18n.t('alert_download_fail') + e.message);
+                        Toast.error(i18n.t('alert_download_fail') + e.message);
                         downloadUpdateBtn.disabled = false;
                         downloadUpdateBtn.textContent = i18n.t('update_btn_default');
                     }
@@ -1636,7 +1946,7 @@ async function handleAddToQueue(bookIdOverride = null, prefill = null) {
     const bookId = (bookIdOverride ?? document.getElementById('bookId').value).trim();
 
     if (!bookId) {
-        alert(i18n.t('alert_input_book_id'));
+        Toast.warning(i18n.t('alert_input_book_id'));
         return;
     }
 
@@ -1645,12 +1955,12 @@ async function handleAddToQueue(bookIdOverride = null, prefill = null) {
     if (bookId.includes('fanqienovel.com')) {
         const match = bookId.match(/\/page\/(\d+)/);
         if (!match) {
-            alert(i18n.t('alert_url_error'));
+            Toast.error(i18n.t('alert_url_error'));
             return;
         }
         normalizedId = match[1];
     } else if (!/^\d+$/.test(bookId)) {
-        alert(i18n.t('alert_id_number'));
+        Toast.error(i18n.t('alert_id_number'));
         return;
     }
 
@@ -1923,7 +2233,7 @@ function showConfirmDialog(bookId, prefill = null) {
                 const startIdx = parseInt(startSelect.value, 10);
                 const endIdx = parseInt(endSelect.value, 10);
                 if (Number.isNaN(startIdx) || Number.isNaN(endIdx) || startIdx > endIdx) {
-                    alert(i18n.t('alert_chapter_range_error'));
+                    Toast.error(i18n.t('alert_chapter_range_error'));
                     return;
                 }
                 startChapter = startIdx + 1;
@@ -1939,7 +2249,7 @@ function showConfirmDialog(bookId, prefill = null) {
                     .filter(n => !Number.isNaN(n));
 
                 if (selectedChapters.length === 0) {
-                    alert(i18n.t('alert_select_one_chapter'));
+                    Toast.warning(i18n.t('alert_select_one_chapter'));
                     return;
                 }
                 logger.logKey('log_mode_manual', selectedChapters.length);
@@ -2011,7 +2321,7 @@ function showConfirmDialog(bookId, prefill = null) {
     } catch (e) {
         console.error('Error showing confirm dialog:', e);
         logger.logKey('log_show_dialog_fail', e.message);
-        alert(i18n.t('alert_show_dialog_fail'));
+        Toast.error(i18n.t('alert_show_dialog_fail'));
     }
 }
 
@@ -2155,7 +2465,7 @@ function showConfirmDialogLegacy(bookInfo) {
                     endChapter = parseInt(modal.querySelector('#endChapter').value);
                     
                     if (startChapter > endChapter) {
-                        alert(i18n.t('alert_chapter_range_error'));
+                        Toast.error(i18n.t('alert_chapter_range_error'));
                         return;
                     }
 
@@ -2171,7 +2481,7 @@ function showConfirmDialogLegacy(bookInfo) {
                     selectedChapters = Array.from(checkboxes).map(cb => parseInt(cb.value));
                     
                     if (selectedChapters.length === 0) {
-                        alert(i18n.t('alert_select_one_chapter'));
+                        Toast.warning(i18n.t('alert_select_one_chapter'));
                         return;
                     }
                     
@@ -2205,13 +2515,18 @@ function showConfirmDialogLegacy(bookInfo) {
     } catch (e) {
         console.error('Error showing confirm dialog:', e);
         logger.logKey('log_show_dialog_fail', e.message);
-        alert(i18n.t('alert_show_dialog_fail'));
+        Toast.error(i18n.t('alert_show_dialog_fail'));
     }
 }
 
 
 async function handleCancel() {
-    if (confirm(i18n.t('confirm_cancel_download'))) {
+    const confirmed = await ConfirmDialog.show({
+        title: i18n.t('confirm_title') || '确认',
+        message: i18n.t('confirm_cancel_download'),
+        type: 'warning'
+    });
+    if (confirmed) {
         await api.cancelDownload();
     }
 }
@@ -2254,8 +2569,13 @@ window.reSelectChapters = function() {
     handleAddToQueue();
 };
 
-function handleClear() {
-    if (confirm(i18n.t('confirm_clear_settings'))) {
+async function handleClear() {
+    const confirmed = await ConfirmDialog.show({
+        title: i18n.t('confirm_title') || '确认',
+        message: i18n.t('confirm_clear_settings'),
+        type: 'warning'
+    });
+    if (confirmed) {
         document.getElementById('bookId').value = '';
         document.getElementById('savePath').value = '';
         document.querySelector('input[name="format"]').checked = true;
@@ -2273,13 +2593,14 @@ async function handleBrowse() {
     
     logger.logKey('msg_open_folder_dialog');
     
-    const result = await api.selectFolder(currentPath);
+    const selectedPath = await FolderBrowser.show({
+        title: i18n.t('folder_browser_title') || '选择保存目录',
+        initialPath: currentPath
+    });
     
-    if (result.success && result.path) {
-        AppState.setSavePath(result.path);
-        logger.logKey('msg_save_path_updated', result.path);
-    } else if (result.message && result.message !== '未选择文件夹') {
-        logger.log(result.message);
+    if (selectedPath) {
+        AppState.setSavePath(selectedPath);
+        logger.logKey('msg_save_path_updated', selectedPath);
     }
 }
 

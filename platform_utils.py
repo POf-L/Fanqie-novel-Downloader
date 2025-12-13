@@ -107,12 +107,7 @@ def check_gui_dependencies() -> Tuple[bool, List[str]]:
     except ImportError:
         missing.append('pywebview')
     
-    # 检查 Tkinter (用于文件夹选择)
-    try:
-        import tkinter
-        _ = tkinter
-    except ImportError:
-        missing.append('tkinter')
+    # 注意: tkinter 检查已移除，文件夹选择改为前端实现
     
     is_available = len(missing) == 0
     return is_available, missing
@@ -200,13 +195,8 @@ def _get_available_features() -> List[str]:
     # 浏览器回退模式在有网络的环境都可用
     features.append('gui_browser')
     
-    # 检查 Tkinter
-    try:
-        import tkinter
-        _ = tkinter
-        features.append('folder_dialog')
-    except ImportError:
-        pass
+    # 文件夹选择现在通过前端实现，始终可用
+    features.append('folder_dialog')
     
     # 自动更新仅在打包后的程序中可用
     if getattr(sys, 'frozen', False) and os_name != 'termux':

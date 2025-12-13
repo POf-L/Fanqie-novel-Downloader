@@ -1186,77 +1186,115 @@ def api_config_save_path():
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 500
 
-def select_folder_with_fallback(current_path: str) -> dict:
-    """
-    尝试打开文件夹选择对话框，失败时返回回退标志
+
+@app.route('/api/list-directory', methods=['POST'])
+def api_list_directory():
+    """列出指定目录的内容"""
+    data = request.get_json() or {}
+    path = data.get('path', '')
     
-    Args:
-        current_path: 当前路径
+    # 如果没有指定路径，使用默认下载路径
+    if not path:
+        path = get_default_download_path()
     
-    Returns:
-        {'success': True, 'path': selected_path} 或
-        {'success': False, 'message': error_msg, 'fallback': True}
-    """
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-        
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-        
-        folder_path = filedialog.askdirectory(
-            title='选择小说保存目录',
-            initialdir=current_path if os.path.exists(current_path) else get_default_download_path()
-        )
-        
-        root.destroy()
-        
-        if folder_path:
-            return {'success': True, 'path': folder_path}
-        else:
-            return {'success': False, 'message': t('web_folder_unselected'), 'fallback': False}
-            
-    except ImportError:
-        # Tkinter 不可用
-        return {
-            'success': False, 
-            'message': '文件夹选择对话框不可用，请手动输入路径',
-            'fallback': True
-        }
-    except Exception as e:
-        # 其他错误（如无显示器）
-        return {
+    # 规范化路径
+    path = os.path.normpath(os.path.expanduser(path))
+    
+    # 检查路径是否存在
+    if not os.path.exists(path):
+        return jsonify({
             'success': False,
-            'message': t('web_folder_select_fail', str(e)),
-            'fallback': True
-        }
+            'message': t('web_dir_not_exist') if 'web_dir_not_exist' in dir(t) else '目录不存在'
+        })
+    
+    # 检查是否是目录
+    if not os.path.isdir(path):
+        return jsonify({
+            'success': False,
+            'message': t('web_not_directory') if 'web_not_directory' in dir(t) else '路径不是目录'
+        })
+    
+    try:
+        # 获取目录列表
+        directories = []
+        for item in os.listdir(path):
+            item_path = os.path.join(path, item)
+            if os.path.isdir(item_path):
+                directories.append({
+                    'name': item,
+                    'path': item_path
+                })
+        
+        # 按名称排序
+        directories.sort(key=lambda x: x['name'].lower())
+        
+        # 获取父目录
+        parent_path = os.path.dirname(path)
+        is_root = (parent_path == path) or (path in ['/', '\\'])
+        
+        # Windows 驱动器列表
+        drives = []
+        if os.name == 'nt':
+            import string
+            for letter in string.ascii_uppercase:
+                drive = f'{letter}:\\'
+                if os.path.exists(drive):
+                    drives.append({
+                        'name': f'{letter}:',
+                        'path': drive
+                    })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'current_path': path,
+                'parent_path': parent_path if not is_root else None,
+                'directories': directories,
+                'is_root': is_root,
+                'drives': drives if os.name == 'nt' else None
+            }
+        })
+    except PermissionError:
+        return jsonify({
+            'success': False,
+            'message': t('web_permission_denied') if 'web_permission_denied' in dir(t) else '无权限访问该目录'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        })
 
 
 @app.route('/api/select-folder', methods=['POST'])
 def api_select_folder():
-    """弹出文件夹选择对话框"""
-    current_path = request.get_json().get('current_path', get_default_download_path())
+    """保存选择的文件夹路径"""
+    data = request.get_json() or {}
+    selected_path = data.get('path', '')
     
-    result = select_folder_with_fallback(current_path)
+    if not selected_path:
+        return jsonify({'success': False, 'message': '未选择文件夹'})
     
-    if result.get('success') and result.get('path'):
-        # 保存选择的路径到配置
-        try:
-            if os.path.exists(CONFIG_FILE):
-                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-            else:
-                config = {}
-            
-            config['save_path'] = result['path']
-            
-            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump(config, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            return jsonify({'success': False, 'message': str(e)}), 500
+    # 验证路径存在且是目录
+    if not os.path.exists(selected_path) or not os.path.isdir(selected_path):
+        return jsonify({'success': False, 'message': '无效的目录路径'})
     
-    return jsonify(result)
+    # 保存选择的路径到配置
+    try:
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        else:
+            config = {}
+        
+        config['save_path'] = selected_path
+        
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True, 'path': selected_path})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/check-update', methods=['GET'])
 def api_check_update():
