@@ -115,19 +115,8 @@ body {
     gap: 12px;
 }
 
-.app-logo {
-    width: 40px;
-    height: 40px;
-    background: linear-gradient(135deg, #ff6b6b, #ff8e53);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-}
-
-.app-logo::after {
-    content: '🍅';
+.app-logo-icon {
+    font-size: 32px;
 }
 
 .app-title {
@@ -438,12 +427,16 @@ select.form-input {
 }
 
 .icon-btn {
-    padding: 10px;
-    min-width: 40px;
+    padding: 8px 10px;
+    min-width: 38px;
 }
 
 .icon-btn iconify-icon {
-    font-size: 18px;
+    font-size: 16px;
+}
+
+.btn iconify-icon {
+    vertical-align: middle;
 }
 
 iconify-icon {
@@ -489,13 +482,14 @@ iconify-icon {
 
 .search-item {
     display: flex;
-    gap: 14px;
-    padding: 14px;
+    gap: 12px;
+    padding: 12px;
     background: var(--bg-input);
     border-radius: var(--radius-md);
     transition: var(--transition);
     cursor: pointer;
     border: 1px solid transparent;
+    align-items: flex-start;
 }
 
 .search-item:hover {
@@ -503,12 +497,17 @@ iconify-icon {
     border-color: var(--border);
 }
 
-.search-cover {
-    width: 56px;
-    height: 75px;
-    object-fit: cover;
-    border-radius: 6px;
+.search-item .btn {
     flex-shrink: 0;
+}
+
+.search-cover {
+    width: 48px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+    background: var(--bg-card);
 }
 
 .search-info {
@@ -520,20 +519,21 @@ iconify-icon {
 }
 
 .search-title {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
-    margin-bottom: 4px;
+    margin-bottom: 2px;
+    line-height: 1.3;
 }
 
 .search-meta {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
-    margin-bottom: 6px;
+    margin-bottom: 4px;
 }
 
 .search-desc {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-muted);
     line-height: 1.4;
 }
@@ -593,7 +593,7 @@ iconify-icon {
 
 .format-selector {
     display: flex;
-    gap: 12px;
+    gap: 8px;
 }
 
 .format-option-card {
@@ -611,18 +611,19 @@ iconify-icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 12px;
-    background: var(--bg-input);
+    padding: 8px 16px;
+    background: var(--bg-card);
     border-radius: var(--radius-md);
     font-weight: 500;
+    font-size: 13px;
     color: var(--text-secondary);
     transition: var(--transition);
-    border: 2px solid transparent;
+    border: 1px solid var(--border);
 }
 
 .format-option-card input:checked + .format-name {
-    background: var(--primary-light);
-    color: var(--primary);
+    background: var(--primary);
+    color: white;
     border-color: var(--primary);
 }
 
@@ -666,8 +667,8 @@ iconify-icon {
 
 .queue-settings {
     display: grid;
-    grid-template-columns: 1fr 1.5fr 1fr;
-    gap: 16px;
+    grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.5fr) minmax(120px, 0.8fr);
+    gap: 12px;
     padding: 14px;
     background: var(--bg-input);
     border-radius: var(--radius-md);
@@ -676,6 +677,20 @@ iconify-icon {
 
 .queue-settings .form-group {
     min-width: 0;
+    overflow: hidden;
+}
+
+.queue-settings .input-group {
+    flex-wrap: nowrap;
+}
+
+.queue-settings .form-input {
+    min-width: 0;
+    text-overflow: ellipsis;
+}
+
+.queue-settings .icon-btn {
+    flex-shrink: 0;
 }
 
 .queue-settings .format-selector {
@@ -683,8 +698,8 @@ iconify-icon {
 }
 
 .queue-settings .format-name {
-    padding: 8px 12px;
-    font-size: 13px;
+    padding: 6px 12px;
+    font-size: 12px;
 }
 
 .queue-list {

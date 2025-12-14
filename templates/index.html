@@ -13,12 +13,13 @@
         <!-- 顶部栏 -->
         <header class="dashboard-header">
             <div class="brand">
-                <div class="app-logo"></div>
+                <iconify-icon icon="noto:tomato" class="app-logo-icon"></iconify-icon>
                 <h1 class="app-title" data-i18n="app_title">番茄小说下载器</h1>
             </div>
             <div class="header-actions">
-                <button class="btn btn-sm btn-secondary icon-btn" id="langToggle" title="切换语言">
+                <button class="btn btn-sm btn-secondary" id="langToggle" title="切换语言">
                     <iconify-icon icon="line-md:translate"></iconify-icon>
+                    <span id="langLabel">EN</span>
                 </button>
                 <a href="https://github.com/POf-L/Fanqie-novel-Downloader" target="_blank" class="btn btn-sm btn-secondary icon-btn" title="GitHub">
                     <iconify-icon icon="line-md:github-loop"></iconify-icon>
@@ -227,7 +228,6 @@
     <!-- 隐藏元素 -->
     <div id="tab-progress" style="display: none;"></div>
     <span id="progressBadge" style="display: none;"></span>
-    <span id="langLabel" style="display: none;"></span>
 
     <!-- 章节选择弹窗 -->
     <div class="modal" id="chapterModal" style="display: none;">
