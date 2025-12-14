@@ -1,0 +1,15 @@
+{
+  "pages": {
+    "/_not-found/page": [
+      "static/chunks/45749_next_dist_69ef9e6f._.js",
+      "static/chunks/user_app_src_app_layout_tsx_5a9f65b4._.js",
+      "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_090c3021._.js",
+      "static/chunks/45749_next_dist_compiled_19d9bb24._.js",
+      "static/chunks/45749_next_dist_client_9dc14bf5._.js",
+      "static/chunks/45749_next_dist_30bf4b43._.js",
+      "static/chunks/45749_@swc_helpers_cjs_2b065c8a._.js",
+      "static/chunks/user_app_e69f0d32._.js",
+      "static/chunks/user_app_de86b217._.js"
+    ]
+  }
+}
