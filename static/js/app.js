@@ -334,8 +334,13 @@ const AppState = {
     setSavePath(path) {
         this.savePath = path;
         const input = document.getElementById('savePath');
-        input.value = path;
-        adjustPathFontSize(input);
+        if (input) {
+            input.value = path;
+            // 延迟执行确保 DOM 已渲染
+            requestAnimationFrame(() => {
+                adjustPathFontSize(input);
+            });
+        }
     },
     
     setAccessToken(token) {
@@ -914,30 +919,56 @@ const api = new APIClient();
 /* ===================== 路径字体自适应 ===================== */
 
 function adjustPathFontSize(input) {
-    if (!input) return;
+    if (!input || !input.value) return;
     
     const maxFontSize = 12;
-    const minFontSize = 8;
+    const minFontSize = 7;
     
-    // 重置为最大字体
-    input.style.fontSize = maxFontSize + 'px';
+    // 创建临时测量元素
+    const measureSpan = document.createElement('span');
+    measureSpan.style.cssText = `
+        position: absolute;
+        visibility: hidden;
+        white-space: nowrap;
+        font-family: monospace;
+    `;
+    document.body.appendChild(measureSpan);
     
-    // 检查是否溢出
-    if (input.scrollWidth <= input.clientWidth) return;
+    // 获取输入框可用宽度（减去 padding）
+    const inputStyle = window.getComputedStyle(input);
+    const paddingLeft = parseFloat(inputStyle.paddingLeft) || 0;
+    const paddingRight = parseFloat(inputStyle.paddingRight) || 0;
+    const availableWidth = input.clientWidth - paddingLeft - paddingRight;
     
-    // 逐步减小字体直到不溢出
-    for (let size = maxFontSize - 1; size >= minFontSize; size--) {
-        input.style.fontSize = size + 'px';
-        if (input.scrollWidth <= input.clientWidth) break;
+    // 从最大字体开始测试
+    for (let size = maxFontSize; size >= minFontSize; size--) {
+        measureSpan.style.fontSize = size + 'px';
+        measureSpan.textContent = input.value;
+        
+        if (measureSpan.offsetWidth <= availableWidth) {
+            input.style.fontSize = size + 'px';
+            break;
+        }
+        
+        // 如果到最小字体还是放不下，就用最小字体
+        if (size === minFontSize) {
+            input.style.fontSize = minFontSize + 'px';
+        }
     }
+    
+    document.body.removeChild(measureSpan);
 }
 
 // 窗口大小变化时重新调整
+let resizeTimeout;
 window.addEventListener('resize', () => {
-    const pathInput = document.getElementById('savePath');
-    if (pathInput && pathInput.value) {
-        adjustPathFontSize(pathInput);
-    }
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        const pathInput = document.getElementById('savePath');
+        if (pathInput && pathInput.value) {
+            adjustPathFontSize(pathInput);
+        }
+    }, 100);
 });
 
 /* ===================== 标签页系统 ===================== */
@@ -1287,6 +1318,14 @@ function initializeUI(skipApiSources = false) {
             logger.refresh();
             renderQueue();
             if (apiSourcesCache) renderApiSourcesUI(apiSourcesCache);
+            
+            // 语言切换后重新调整路径字体大小
+            requestAnimationFrame(() => {
+                const pathInput = document.getElementById('savePath');
+                if (pathInput && pathInput.value) {
+                    adjustPathFontSize(pathInput);
+                }
+            });
         });
     }
 

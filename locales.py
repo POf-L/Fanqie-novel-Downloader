@@ -47,6 +47,8 @@ MESSAGES = {
         "config_success": "成功加载配置，API 地址: {}",
         "config_fail": "获取远程配置失败: {}",
         "config_server_error": "警告: 无法连接配置服务器，程序可能无法正常工作",
+        "config_invalid_format": "警告: 远程配置格式无效",
+        "config_json_error": "警告: 远程配置 JSON 解析失败: {}",
         
         # main.py
         "main_app_closed": "应用已关闭",
@@ -204,6 +206,8 @@ MESSAGES = {
         "config_success": "Config loaded, API base URL: {}",
         "config_fail": "Failed to fetch remote config: {}",
         "config_server_error": "Warning: Cannot connect to config server, app may not work properly",
+        "config_invalid_format": "Warning: Remote config format is invalid",
+        "config_json_error": "Warning: Failed to parse remote config JSON: {}",
         
         # main.py
         "main_app_closed": "Application closed",
