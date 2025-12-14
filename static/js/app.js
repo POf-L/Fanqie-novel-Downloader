@@ -1785,6 +1785,9 @@ async function showUpdateModal(updateInfo) {
                     downloadUpdateBtn.disabled = true;
                     downloadUpdateBtn.textContent = i18n.t('update_btn_downloading');
                     
+                    // 下载开始后禁止关闭弹窗
+                    if (modal.setDownloading) modal.setDownloading(true);
+                    
                     // 隐藏不需要的元素以腾出空间
                     updateDescription.parentNode.style.display = 'none'; // 隐藏更新说明区域
                     versionSelector.style.display = 'none'; // 隐藏版本选择
@@ -1808,9 +1811,6 @@ async function showUpdateModal(updateInfo) {
                                     ${i18n.t('update_warn_dont_close')}
                                 </div>
                             </div>
-                            <button id="installUpdateBtn" class="btn btn-primary btn-xl" style="display: none; margin-top: 16px; width: 100%;">
-                                ${i18n.t('update_btn_install')}
-                            </button>
                         `;
                         // 插入到版本选择器原来的位置（现在隐藏了）
                         versionSelector.parentNode.insertBefore(progressContainer, versionSelector.nextSibling);
@@ -1856,15 +1856,12 @@ async function showUpdateModal(updateInfo) {
                                     progressText.textContent = i18n.t('update_status_complete');
                                     progressPercent.textContent = '100%';
                                     
-                                    // 隐藏底部按钮区域，避免干扰
-                                    const modalFooter = document.querySelector('.modal-footer');
-                                    if (modalFooter) modalFooter.style.display = 'none';
-                                    
-                                    // 显示安装按钮
-                                    installBtn.style.display = 'block';
-                                    installBtn.onclick = async () => {
-                                        installBtn.disabled = true;
-                                        installBtn.textContent = i18n.t('update_btn_preparing');
+                                    // 下载完成后，将原来的下载按钮变成安装按钮
+                                    downloadUpdateBtn.disabled = false;
+                                    downloadUpdateBtn.textContent = i18n.t('update_btn_install');
+                                    downloadUpdateBtn.onclick = async () => {
+                                        downloadUpdateBtn.disabled = true;
+                                        downloadUpdateBtn.textContent = i18n.t('update_btn_preparing');
                                         
                                         try {
                                             const applyRes = await fetch('/api/apply-update', { 
@@ -1874,17 +1871,17 @@ async function showUpdateModal(updateInfo) {
                                             const applyResult = await applyRes.json();
                                             
                                             if (applyResult.success) {
-                                                installBtn.textContent = i18n.t('update_btn_restarting');
+                                                downloadUpdateBtn.textContent = i18n.t('update_btn_restarting');
                                                 progressText.textContent = applyResult.message;
                                             } else {
                                                 Toast.error(i18n.t('alert_apply_update_fail') + applyResult.message);
-                                                installBtn.disabled = false;
-                                                installBtn.textContent = i18n.t('update_btn_install');
+                                                downloadUpdateBtn.disabled = false;
+                                                downloadUpdateBtn.textContent = i18n.t('update_btn_install');
                                             }
                                         } catch (e) {
                                             Toast.error(i18n.t('alert_apply_update_fail') + e.message);
-                                            installBtn.disabled = false;
-                                            installBtn.textContent = i18n.t('update_btn_install');
+                                            downloadUpdateBtn.disabled = false;
+                                            downloadUpdateBtn.textContent = i18n.t('update_btn_install');
                                         }
                                     };
                                 } else if (status.error) {
@@ -1946,17 +1943,35 @@ async function showUpdateModal(updateInfo) {
     
     modal.style.display = 'flex';
     
-    closeUpdateBtn.onclick = () => {
+    // 用于跟踪是否正在下载更新
+    let isUpdateDownloading = false;
+    
+    const tryCloseModal = () => {
+        if (isUpdateDownloading) {
+            Toast.warning(i18n.t('update_warn_dont_close'));
+            return;
+        }
         modal.style.display = 'none';
     };
     
-    updateModalClose.onclick = () => {
-        modal.style.display = 'none';
-    };
+    closeUpdateBtn.onclick = tryCloseModal;
+    updateModalClose.onclick = tryCloseModal;
     
     modal.onclick = (e) => {
         if (e.target === modal) {
-            modal.style.display = 'none';
+            tryCloseModal();
+        }
+    };
+    
+    // 暴露设置下载状态的方法
+    modal.setDownloading = (value) => {
+        isUpdateDownloading = value;
+        if (value) {
+            closeUpdateBtn.style.display = 'none';
+            updateModalClose.style.display = 'none';
+        } else {
+            closeUpdateBtn.style.display = '';
+            updateModalClose.style.display = '';
         }
     };
 }
