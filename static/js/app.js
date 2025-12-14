@@ -2022,9 +2022,11 @@ async function showUpdateModal(updateInfo) {
                                     downloadUpdateBtn.disabled = false;
                                     downloadUpdateBtn.textContent = i18n.t('update_btn_retry');
                                 } else {
-                                    // 初始状态，线程可能还未开始，继续轮询
-                                    progressText.textContent = i18n.t('update_status_ready');
-                                    setTimeout(pollProgress, 500);
+                                    // 初始状态或等待状态，继续轮询
+                                    if (!status.is_downloading && !status.completed && !status.error) {
+                                        progressText.textContent = status.message || i18n.t('update_status_ready');
+                                    }
+                                    setTimeout(pollProgress, 300);
                                 }
                             } catch (e) {
                                 console.error('获取下载状态失败:', e);
