@@ -33,6 +33,8 @@ const translations = {
         "meta_word_count_suffix": "万字",
         "meta_chapter_count_suffix": "章",
         "label_no_desc": "暂无简介",
+        "btn_expand": "展开",
+        "btn_collapse": "收起",
         
         // Download Pane
         "download_config_title": "手动下载配置",
@@ -259,6 +261,8 @@ const translations = {
         "meta_word_count_suffix": "0k words",
         "meta_chapter_count_suffix": " chapters",
         "label_no_desc": "No description available",
+        "btn_expand": "More",
+        "btn_collapse": "Less",
         
         // Download Pane
         "download_config_title": "Download Config",
