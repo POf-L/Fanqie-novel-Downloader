@@ -577,7 +577,12 @@ class APIClient {
                 throw new Error(`HTTP ${response.status}`);
             }
             
-            return await response.json();
+            // 使用自定义解析器处理大整数，避免 JavaScript Number 精度丢失
+            // book_id 等字段可能超过 Number.MAX_SAFE_INTEGER (9007199254740991)
+            const text = await response.text();
+            // 将超过安全整数范围的数字转换为字符串（匹配 16 位及以上的纯数字）
+            const safeText = text.replace(/:(\s*)(\d{16,})(\s*[,}\]])/g, ':"$2"$3');
+            return JSON.parse(safeText);
         } catch (error) {
             logger.logKey('msg_request_fail', error.message);
             throw error;

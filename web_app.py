@@ -11,6 +11,7 @@ import queue
 import tempfile
 import subprocess
 import re
+import requests
 from locales import t
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -142,8 +143,12 @@ def download_chunk(url, start, end, chunk_id, temp_files, progress_list, total_s
     """下载文件的一个分块"""
     headers = {'Range': f'bytes={start}-{end}'}
     try:
-        response = requests.get(url, headers=headers, stream=True, timeout=60)
+        response = requests.get(url, headers=headers, stream=True, timeout=120, allow_redirects=True)
         response.raise_for_status()
+        
+        # 检查是否真的返回了部分内容
+        if response.status_code != 206:
+            print(f'[DEBUG] Chunk {chunk_id}: Expected 206, got {response.status_code}')
         
         chunk_size = 8192
         downloaded = 0
@@ -202,10 +207,19 @@ def update_download_worker(url, save_path, filename):
         import tempfile
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
-        # 获取文件大小
-        head_response = requests.head(url, timeout=30)
+        # 获取文件大小 - 使用 GET 请求跟随重定向后获取真实信息
+        # GitHub releases 会重定向到 CDN，HEAD 请求可能无法获取正确信息
+        print(f'[DEBUG] Getting file info from: {url}')
+        head_response = requests.get(url, stream=True, timeout=30, allow_redirects=True)
+        head_response.raise_for_status()
+        
+        # 获取最终的 URL（重定向后的）
+        final_url = head_response.url
+        print(f'[DEBUG] Final URL after redirect: {final_url}')
+        
         total_size = int(head_response.headers.get('content-length', 0))
         supports_range = head_response.headers.get('accept-ranges', '').lower() == 'bytes'
+        head_response.close()  # 关闭连接，不下载内容
         
         print(f'[DEBUG] Total size: {total_size} bytes, supports_range: {supports_range}')
         
