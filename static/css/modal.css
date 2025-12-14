@@ -481,3 +481,47 @@
 .folder-error {
     color: var(--danger, #ff3b30);
 }
+
+
+/* ===================== 内嵌确认区域 ===================== */
+
+.inline-confirm-container {
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+    overflow: hidden;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.inline-confirm-content {
+    padding: 16px;
+}
+
+.inline-confirm-content .book-info {
+    margin-bottom: 16px;
+}
+
+.inline-confirm-content .chapter-selection {
+    margin-bottom: 16px;
+}
+
+.inline-confirm-content .chapter-selection h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.inline-confirm-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}

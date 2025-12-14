@@ -109,6 +109,71 @@
                                     <span data-i18n="btn_reset">重置</span>
                                 </button>
                             </div>
+                            
+                            <!-- 内嵌书籍确认区域 -->
+                            <div class="inline-confirm-container" id="inlineConfirmContainer" style="display: none;">
+                                <div class="inline-confirm-content">
+                                    <div class="book-info">
+                                        <img id="inlineCover" class="book-cover" alt="封面" style="display:none;" />
+                                        <div class="book-details">
+                                            <h3 class="book-title" id="inlineBookTitle"></h3>
+                                            <p class="book-author" id="inlineBookAuthor"></p>
+                                            <p class="book-abstract collapsed" id="inlineBookAbstract"></p>
+                                            <p class="book-chapters" id="inlineBookChapters"></p>
+                                        </div>
+                                    </div>
+
+                                    <div class="chapter-selection">
+                                        <h3 data-i18n="title_chapter_selection">章节选择</h3>
+
+                                        <div class="chapter-range">
+                                            <label>
+                                                <input type="radio" name="inlineChapterMode" value="all" checked>
+                                                <span data-i18n="radio_all_chapters">全部章节</span>
+                                            </label>
+                                            <label>
+                                                <input type="radio" name="inlineChapterMode" value="range">
+                                                <span data-i18n="radio_range_chapters">范围选择</span>
+                                            </label>
+                                            <label>
+                                                <input type="radio" name="inlineChapterMode" value="manual">
+                                                <span data-i18n="radio_manual_chapters">手动选择</span>
+                                            </label>
+                                        </div>
+
+                                        <div class="chapter-loading-hint" id="inlineChapterLoadingHint" style="display:none;">
+                                            <iconify-icon icon="line-md:loading-twotone-loop" class="spin"></iconify-icon>
+                                            <span id="inlineChapterLoadingText"></span>
+                                        </div>
+
+                                        <div class="chapter-inputs" id="inlineChapterInputs" style="display:none;">
+                                            <div class="input-row">
+                                                <label data-i18n="label_start_chapter">起始章节</label>
+                                                <select id="inlineStartChapter" class="chapter-select" disabled></select>
+                                            </div>
+                                            <div class="input-row">
+                                                <label data-i18n="label_end_chapter">结束章节</label>
+                                                <select id="inlineEndChapter" class="chapter-select" disabled></select>
+                                            </div>
+                                        </div>
+
+                                        <div class="chapter-manual-container" id="inlineChapterManualContainer" style="display:none;">
+                                            <div class="chapter-actions">
+                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectAllBtn" data-i18n="btn_select_all">全选</button>
+                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectNoneBtn" data-i18n="btn_select_none">全不选</button>
+                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectInvertBtn" data-i18n="btn_invert_selection">反选</button>
+                                                <span id="inlineSelectedCount" style="margin-left: auto; font-size: 13px; color: var(--text-secondary);">0</span>
+                                            </div>
+                                            <div class="chapter-list" id="inlineChapterList"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="inline-confirm-footer">
+                                        <button class="btn btn-secondary" type="button" id="inlineCancelBtn" data-i18n="btn_cancel">取消</button>
+                                        <button class="btn btn-primary" type="button" id="inlineConfirmAddQueueBtn" data-i18n="btn_confirm_add_to_queue">确认添加</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- 待下载队列 -->

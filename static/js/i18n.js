@@ -59,6 +59,7 @@ const translations = {
         "text_fetch_chapter_fail": "获取章节失败",
         "text_no_changelog": "暂无更新说明",
         "label_selected_count": "已选: {0} / {1} 章",
+        "label_dialog_selected": "已选 {0} 章",
         "btn_selected_count": "已选 {0} 章",
         "btn_select_chapters": "选择章节",
         
@@ -172,6 +173,7 @@ const translations = {
         "text_fetch_chapter_fail": "Failed to fetch chapters",
         "text_no_changelog": "No changelog available",
         "label_selected_count": "Selected: {0} / {1}",
+        "label_dialog_selected": "Selected {0} ch",
         "btn_selected_count": "Selected {0} ch",
         "btn_select_chapters": "Select Chapters",
         

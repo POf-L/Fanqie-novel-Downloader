@@ -398,7 +398,7 @@ const AppState = {
             if (clearQueueBtn) clearQueueBtn.disabled = true;
             if (apiSourceSelect) apiSourceSelect.disabled = true;
         } else {
-            downloadBtn.style.display = 'none';
+            downloadBtn.style.display = 'inline-block';
             cancelBtn.style.display = 'none';
             bookIdInput.disabled = false;
             browseBtn.disabled = false;
@@ -2019,123 +2019,63 @@ async function handleAddToQueue(bookIdOverride = null, prefill = null) {
     }
 
     logger.logKey('log_prepare_download', normalizedId);
-    showConfirmDialog(normalizedId, prefill);
+    
+    // 切换到下载标签页以显示内嵌确认区域
+    switchTab('download');
+    
+    showInlineConfirm(normalizedId, prefill);
 }
 
-function showConfirmDialog(bookId, prefill = null) {
+// 内嵌确认区域状态
+const InlineConfirmState = {
+    loading: true,
+    error: null,
+    bookInfo: null,
+    chapters: [],
+    bookId: null,
+    prefill: null
+};
+
+function showInlineConfirm(bookId, prefill = null) {
     try {
-        const modal = document.createElement('div');
-        modal.className = 'modal';
+        const container = document.getElementById('inlineConfirmContainer');
+        if (!container) return;
 
-        modal.innerHTML = `
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>${i18n.t('title_confirm_download')}</h3>
-                    <button class="modal-close" type="button" aria-label="Close">×</button>
-                </div>
+        // 保存状态
+        InlineConfirmState.bookId = bookId;
+        InlineConfirmState.prefill = prefill;
+        InlineConfirmState.loading = true;
+        InlineConfirmState.error = null;
+        InlineConfirmState.bookInfo = null;
+        InlineConfirmState.chapters = [];
 
-                <div class="modal-body">
-                    <div class="book-info">
-                        <img id="dialogCover" class="book-cover" alt="封面" style="display:none;" />
-                        <div class="book-details">
-                            <h3 class="book-title" id="dialogBookTitle"></h3>
-                            <p class="book-author" id="dialogBookAuthor"></p>
-                            <p class="book-abstract" id="dialogBookAbstract"></p>
-                            <p class="book-chapters" id="dialogBookChapters"></p>
-                        </div>
-                    </div>
-
-                    <div class="chapter-selection">
-                        <h3>${i18n.t('title_chapter_selection')}</h3>
-
-                        <div class="chapter-range">
-                            <label>
-                                <input type="radio" name="chapterMode" value="all" checked>
-                                ${i18n.t('radio_all_chapters')}
-                            </label>
-                            <label>
-                                <input type="radio" name="chapterMode" value="range">
-                                ${i18n.t('radio_range_chapters')}
-                            </label>
-                            <label>
-                                <input type="radio" name="chapterMode" value="manual">
-                                ${i18n.t('radio_manual_chapters')}
-                            </label>
-                        </div>
-
-                        <div class="chapter-loading-hint" id="chapterLoadingHint" style="display:none;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
-                            <span id="chapterLoadingText"></span>
-                        </div>
-
-                        <div class="chapter-inputs" id="chapterInputs" style="display:none;">
-                            <div class="input-row">
-                                <label>${i18n.t('label_start_chapter')}</label>
-                                <select id="startChapter" class="chapter-select" disabled></select>
-                            </div>
-                            <div class="input-row">
-                                <label>${i18n.t('label_end_chapter')}</label>
-                                <select id="endChapter" class="chapter-select" disabled></select>
-                            </div>
-                        </div>
-
-                        <div class="chapter-manual-container" id="chapterManualContainer" style="display:none;">
-                            <div class="chapter-actions">
-                                <button class="btn btn-sm btn-secondary" type="button" id="dialogSelectAllBtn">${i18n.t('btn_select_all')}</button>
-                                <button class="btn btn-sm btn-secondary" type="button" id="dialogSelectNoneBtn">${i18n.t('btn_select_none')}</button>
-                                <button class="btn btn-sm btn-secondary" type="button" id="dialogSelectInvertBtn">${i18n.t('btn_invert_selection')}</button>
-                                <span id="dialogSelectedCount" style="margin-left: auto; font-size: 13px; color: var(--text-secondary);">${i18n.t('label_dialog_selected', 0)}</span>
-                            </div>
-                            <div class="chapter-list" id="dialogChapterList"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" type="button" id="dialogCancelBtn">${i18n.t('btn_cancel')}</button>
-                    <button class="btn btn-primary" type="button" id="confirmAddQueueBtn">${i18n.t('btn_confirm_add_to_queue')}</button>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-        modal.style.display = 'flex';
-
-        const close = () => modal.remove();
-
-        // Close controls
-        modal.querySelector('.modal-close').addEventListener('click', close);
-        modal.querySelector('#dialogCancelBtn').addEventListener('click', close);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) close();
-        });
+        // 显示容器
+        container.style.display = 'block';
 
         // Elements
-        const coverEl = modal.querySelector('#dialogCover');
-        const titleEl = modal.querySelector('#dialogBookTitle');
-        const authorEl = modal.querySelector('#dialogBookAuthor');
-        const abstractEl = modal.querySelector('#dialogBookAbstract');
-        const chaptersEl = modal.querySelector('#dialogBookChapters');
+        const coverEl = document.getElementById('inlineCover');
+        const titleEl = document.getElementById('inlineBookTitle');
+        const authorEl = document.getElementById('inlineBookAuthor');
+        const abstractEl = document.getElementById('inlineBookAbstract');
+        const chaptersEl = document.getElementById('inlineBookChapters');
 
-        const loadingHint = modal.querySelector('#chapterLoadingHint');
-        const loadingText = modal.querySelector('#chapterLoadingText');
+        const loadingHint = document.getElementById('inlineChapterLoadingHint');
+        const loadingText = document.getElementById('inlineChapterLoadingText');
 
-        const chapterInputs = modal.querySelector('#chapterInputs');
-        const startSelect = modal.querySelector('#startChapter');
-        const endSelect = modal.querySelector('#endChapter');
+        const chapterInputs = document.getElementById('inlineChapterInputs');
+        const startSelect = document.getElementById('inlineStartChapter');
+        const endSelect = document.getElementById('inlineEndChapter');
 
-        const manualContainer = modal.querySelector('#chapterManualContainer');
-        const manualList = modal.querySelector('#dialogChapterList');
-        const selectedCountEl = modal.querySelector('#dialogSelectedCount');
+        const manualContainer = document.getElementById('inlineChapterManualContainer');
+        const manualList = document.getElementById('inlineChapterList');
+        const selectedCountEl = document.getElementById('inlineSelectedCount');
 
-        const confirmBtn = modal.querySelector('#confirmAddQueueBtn');
+        const confirmBtn = document.getElementById('inlineConfirmAddQueueBtn');
+        const cancelBtn = document.getElementById('inlineCancelBtn');
 
-        const state = {
-            loading: true,
-            error: null,
-            bookInfo: null,
-            chapters: []
-        };
+        // Reset radio buttons
+        const allRadio = container.querySelector('input[name="inlineChapterMode"][value="all"]');
+        if (allRadio) allRadio.checked = true;
 
         // Prefill (search results / user input)
         const preTitle = prefill?.book_name || bookId;
@@ -2150,9 +2090,11 @@ function showConfirmDialog(bookId, prefill = null) {
             coverEl.src = coverUrl;
             coverEl.style.display = '';
             coverEl.onerror = () => { coverEl.style.display = 'none'; };
+        } else {
+            coverEl.style.display = 'none';
         }
 
-        const getMode = () => modal.querySelector('input[name="chapterMode"]:checked')?.value || 'all';
+        const getMode = () => container.querySelector('input[name="inlineChapterMode"]:checked')?.value || 'all';
 
         const setHint = (text, showSpinner = true) => {
             if (!text) {
@@ -2162,16 +2104,17 @@ function showConfirmDialog(bookId, prefill = null) {
             loadingHint.style.display = 'flex';
             loadingText.textContent = text;
             loadingHint.classList.toggle('is-error', !showSpinner);
-            loadingHint.querySelector('svg').style.display = showSpinner ? 'inline-block' : 'none';
+            const icon = loadingHint.querySelector('iconify-icon');
+            if (icon) icon.style.display = showSpinner ? 'inline-block' : 'none';
         };
 
         const updateSelectedCount = () => {
-            const checked = manualList.querySelectorAll('input[type=\"checkbox\"]:checked').length;
+            const checked = manualList.querySelectorAll('input[type="checkbox"]:checked').length;
             selectedCountEl.textContent = i18n.t('label_dialog_selected', checked);
         };
 
         const renderChaptersControls = () => {
-            const chapters = state.chapters || [];
+            const chapters = InlineConfirmState.chapters || [];
 
             // Range selects
             startSelect.innerHTML = '';
@@ -2235,15 +2178,15 @@ function showConfirmDialog(bookId, prefill = null) {
                 return;
             }
 
-            if (state.loading) {
+            if (InlineConfirmState.loading) {
                 setHint(i18n.t('text_fetching_chapters'), true);
                 showLoadingChapters();
                 confirmBtn.disabled = true;
                 return;
             }
 
-            if (state.error) {
-                setHint(state.error, false);
+            if (InlineConfirmState.error) {
+                setHint(InlineConfirmState.error, false);
                 confirmBtn.disabled = true;
                 return;
             }
@@ -2252,111 +2195,141 @@ function showConfirmDialog(bookId, prefill = null) {
             confirmBtn.disabled = false;
         };
 
+        // Remove old event listeners by cloning elements
+        const cloneAndReplace = (selector) => {
+            const el = container.querySelector(selector);
+            if (el) {
+                const clone = el.cloneNode(true);
+                el.parentNode.replaceChild(clone, el);
+                return clone;
+            }
+            return null;
+        };
+
         // Mode change handlers
-        modal.querySelectorAll('input[name=\"chapterMode\"]').forEach(input => {
-            input.addEventListener('change', updateModeUI);
+        container.querySelectorAll('input[name="inlineChapterMode"]').forEach(input => {
+            const clone = input.cloneNode(true);
+            input.parentNode.replaceChild(clone, input);
+            clone.addEventListener('change', updateModeUI);
         });
 
         // Manual action buttons
-        modal.querySelector('#dialogSelectAllBtn').addEventListener('click', () => {
-            manualList.querySelectorAll('input[type=\"checkbox\"]').forEach(cb => cb.checked = true);
-            updateSelectedCount();
-        });
-        modal.querySelector('#dialogSelectNoneBtn').addEventListener('click', () => {
-            manualList.querySelectorAll('input[type=\"checkbox\"]').forEach(cb => cb.checked = false);
-            updateSelectedCount();
-        });
-        modal.querySelector('#dialogSelectInvertBtn').addEventListener('click', () => {
-            manualList.querySelectorAll('input[type=\"checkbox\"]').forEach(cb => cb.checked = !cb.checked);
-            updateSelectedCount();
-        });
+        const selectAllBtn = cloneAndReplace('#inlineSelectAllBtn');
+        const selectNoneBtn = cloneAndReplace('#inlineSelectNoneBtn');
+        const selectInvertBtn = cloneAndReplace('#inlineSelectInvertBtn');
 
-        // Confirm
-        confirmBtn.addEventListener('click', () => {
-            const mode = getMode();
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', () => {
+                manualList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+                updateSelectedCount();
+            });
+        }
+        if (selectNoneBtn) {
+            selectNoneBtn.addEventListener('click', () => {
+                manualList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+                updateSelectedCount();
+            });
+        }
+        if (selectInvertBtn) {
+            selectInvertBtn.addEventListener('click', () => {
+                manualList.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = !cb.checked);
+                updateSelectedCount();
+            });
+        }
 
-            let startChapter = null;
-            let endChapter = null;
-            let selectedChapters = null;
+        // Cancel button
+        const newCancelBtn = cloneAndReplace('#inlineCancelBtn');
+        if (newCancelBtn) {
+            newCancelBtn.addEventListener('click', hideInlineConfirm);
+        }
 
-            if (mode === 'range') {
-                if (state.loading) {
-                    updateModeUI();
-                    return;
+        // Confirm button
+        const newConfirmBtn = cloneAndReplace('#inlineConfirmAddQueueBtn');
+        if (newConfirmBtn) {
+            newConfirmBtn.addEventListener('click', () => {
+                const mode = getMode();
+
+                let startChapter = null;
+                let endChapter = null;
+                let selectedChapters = null;
+
+                if (mode === 'range') {
+                    if (InlineConfirmState.loading) {
+                        updateModeUI();
+                        return;
+                    }
+                    const startIdx = parseInt(startSelect.value, 10);
+                    const endIdx = parseInt(endSelect.value, 10);
+                    if (Number.isNaN(startIdx) || Number.isNaN(endIdx) || startIdx > endIdx) {
+                        Toast.error(i18n.t('alert_chapter_range_error'));
+                        return;
+                    }
+                    startChapter = startIdx + 1;
+                    endChapter = endIdx + 1;
+                    logger.logKey('log_chapter_range', startChapter, endChapter);
+                } else if (mode === 'manual') {
+                    if (InlineConfirmState.loading) {
+                        updateModeUI();
+                        return;
+                    }
+                    selectedChapters = Array.from(manualList.querySelectorAll('input[type="checkbox"]:checked'))
+                        .map(cb => parseInt(cb.value, 10))
+                        .filter(n => !Number.isNaN(n));
+
+                    if (selectedChapters.length === 0) {
+                        Toast.warning(i18n.t('alert_select_one_chapter'));
+                        return;
+                    }
+                    logger.logKey('log_mode_manual', selectedChapters.length);
                 }
-                const startIdx = parseInt(startSelect.value, 10);
-                const endIdx = parseInt(endSelect.value, 10);
-                if (Number.isNaN(startIdx) || Number.isNaN(endIdx) || startIdx > endIdx) {
-                    Toast.error(i18n.t('alert_chapter_range_error'));
-                    return;
-                }
-                startChapter = startIdx + 1;
-                endChapter = endIdx + 1;
-                logger.logKey('log_chapter_range', startChapter, endChapter);
-            } else if (mode === 'manual') {
-                if (state.loading) {
-                    updateModeUI();
-                    return;
-                }
-                selectedChapters = Array.from(manualList.querySelectorAll('input[type=\"checkbox\"]:checked'))
-                    .map(cb => parseInt(cb.value, 10))
-                    .filter(n => !Number.isNaN(n));
 
-                if (selectedChapters.length === 0) {
-                    Toast.warning(i18n.t('alert_select_one_chapter'));
-                    return;
-                }
-                logger.logKey('log_mode_manual', selectedChapters.length);
-            } else {
-                logger.logKey('log_download_all', preTitle);
-            }
+                const info = InlineConfirmState.bookInfo;
+                const task = {
+                    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+                    book_id: info?.book_id || bookId,
+                    book_name: info?.book_name || preTitle,
+                    author: info?.author || prefill?.author || '',
+                    cover_url: info?.cover_url || prefill?.cover_url || '',
+                    abstract: info?.abstract || prefill?.abstract || '',
+                    chapter_count: (info?.chapters?.length || prefill?.chapter_count || 0),
+                    start_chapter: startChapter,
+                    end_chapter: endChapter,
+                    selected_chapters: selectedChapters,
+                    added_at: new Date().toISOString()
+                };
 
-            const info = state.bookInfo;
-            const task = {
-                id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-                book_id: info?.book_id || bookId,
-                book_name: info?.book_name || preTitle,
-                author: info?.author || prefill?.author || '',
-                cover_url: info?.cover_url || prefill?.cover_url || '',
-                abstract: info?.abstract || prefill?.abstract || '',
-                chapter_count: (info?.chapters?.length || prefill?.chapter_count || 0),
-                start_chapter: startChapter,
-                end_chapter: endChapter,
-                selected_chapters: selectedChapters,
-                added_at: new Date().toISOString()
-            };
-
-            AppState.addToQueue(task);
-            logger.logKey('msg_added_to_queue', task.book_name || task.book_id);
-            close();
-            switchTab('queue');
-        });
+                AppState.addToQueue(task);
+                logger.logKey('msg_added_to_queue', task.book_name || task.book_id);
+                hideInlineConfirm();
+                switchTab('queue');
+            });
+        }
 
         // Initial mode UI
         updateModeUI();
 
-        // Start fetching book info & chapters after modal is shown
+        // Start fetching book info & chapters
         (async () => {
             showLoadingChapters();
             try {
                 const info = await api.getBookInfo(bookId);
                 if (!info) {
-                    state.loading = false;
-                    state.error = i18n.t('text_fetch_chapter_fail');
+                    InlineConfirmState.loading = false;
+                    InlineConfirmState.error = i18n.t('text_fetch_chapter_fail');
                     updateModeUI();
                     return;
                 }
 
-                state.bookInfo = info;
-                state.chapters = Array.isArray(info.chapters) ? info.chapters : [];
-                state.loading = false;
-                state.error = null;
+                InlineConfirmState.bookInfo = info;
+                InlineConfirmState.chapters = Array.isArray(info.chapters) ? info.chapters : [];
+                InlineConfirmState.loading = false;
+                InlineConfirmState.error = null;
 
                 // Update book info block
                 titleEl.textContent = info.book_name || preTitle;
                 authorEl.textContent = `${i18n.t('text_author')}${info.author || prefill?.author || ''}`;
                 abstractEl.textContent = info.abstract || prefill?.abstract || '';
-                chaptersEl.textContent = i18n.t('label_total_chapters', state.chapters.length);
+                chaptersEl.textContent = i18n.t('label_total_chapters', InlineConfirmState.chapters.length);
 
                 if (info.cover_url) {
                     coverEl.src = info.cover_url;
@@ -2367,15 +2340,27 @@ function showConfirmDialog(bookId, prefill = null) {
                 renderChaptersControls();
                 updateModeUI();
             } catch (e) {
-                state.loading = false;
-                state.error = e?.message || i18n.t('text_fetch_chapter_fail');
+                InlineConfirmState.loading = false;
+                InlineConfirmState.error = e?.message || i18n.t('text_fetch_chapter_fail');
                 updateModeUI();
             }
         })();
     } catch (e) {
-        console.error('Error showing confirm dialog:', e);
+        console.error('Error showing inline confirm:', e);
         logger.logKey('log_show_dialog_fail', e.message);
         Toast.error(i18n.t('alert_show_dialog_fail'));
+    }
+}
+
+function hideInlineConfirm() {
+    const container = document.getElementById('inlineConfirmContainer');
+    if (container) {
+        container.style.display = 'none';
+    }
+    // Clear input
+    const bookIdInput = document.getElementById('bookId');
+    if (bookIdInput) {
+        bookIdInput.value = '';
     }
 }
 
