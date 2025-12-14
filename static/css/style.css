@@ -240,19 +240,23 @@ body {
 }
 
 .tab-btn {
-    padding: 10px 20px;
+    padding: 10px 16px;
     background: transparent;
     border: none;
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: var(--transition);
     border-radius: var(--radius-md) var(--radius-md) 0 0;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     position: relative;
+}
+
+.tab-btn iconify-icon {
+    font-size: 18px;
 }
 
 .tab-btn:hover {
@@ -313,6 +317,14 @@ body {
     font-size: 13px;
     font-weight: 500;
     color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.form-label iconify-icon {
+    font-size: 14px;
+    opacity: 0.7;
 }
 
 .input-group {
@@ -423,6 +435,19 @@ select.form-input {
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.icon-btn {
+    padding: 10px;
+    min-width: 40px;
+}
+
+.icon-btn iconify-icon {
+    font-size: 18px;
+}
+
+iconify-icon {
+    vertical-align: middle;
 }
 
 /* ===================== 搜索区域 ===================== */
@@ -712,13 +737,20 @@ select.form-input {
     color: var(--text-muted);
 }
 
-.empty-state-icon {
+.empty-state .empty-icon {
+    font-size: 48px;
     opacity: 0.3;
     margin-bottom: 12px;
 }
 
 .empty-state-text {
-    font-size: 14px;
+    font-size: 13px;
+}
+
+.selected-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted);
 }
 
 /* ===================== 侧边栏 ===================== */
@@ -754,6 +786,14 @@ select.form-input {
 .card-header h3 {
     font-size: 15px;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-header h3 iconify-icon {
+    font-size: 16px;
+    opacity: 0.7;
 }
 
 .book-preview {
@@ -773,9 +813,15 @@ select.form-input {
 .progress-info {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     margin-bottom: 8px;
     font-size: 13px;
     color: var(--text-secondary);
+}
+
+.progress-info iconify-icon {
+    font-size: 16px;
+    opacity: 0.6;
 }
 
 .progress-percent {

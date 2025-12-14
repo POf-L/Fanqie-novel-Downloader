@@ -6,6 +6,7 @@
     <title>番茄小说下载器</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/modal.css">
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
 </head>
 <body>
     <div class="dashboard-container">
@@ -16,24 +17,17 @@
                 <h1 class="app-title" data-i18n="app_title">番茄小说下载器</h1>
             </div>
             <div class="header-actions">
-                <!-- 移除风格切换按钮，固定为 Apple Flow -->
-                <!-- <button class="btn btn-sm btn-secondary" id="styleToggle" ...> -->
-                
-                <button class="btn btn-sm btn-secondary" id="langToggle">
-                    <span class="icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                    </span> <span id="langLabel">EN</span>
+                <button class="btn btn-sm btn-secondary icon-btn" id="langToggle" title="切换语言">
+                    <iconify-icon icon="line-md:translate"></iconify-icon>
                 </button>
-                <a href="https://github.com/POf-L/Fanqie-novel-Downloader" target="_blank" class="github-link" data-i18n="github_link">
-                    <svg height="16" viewBox="0 0 16 16" width="16" class="github-icon"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
-                    GitHub
+                <a href="https://github.com/POf-L/Fanqie-novel-Downloader" target="_blank" class="btn btn-sm btn-secondary icon-btn" title="GitHub">
+                    <iconify-icon icon="line-md:github-loop"></iconify-icon>
                 </a>
                 <span class="version-tag">v<span id="version">{{ version }}</span></span>
-                <!-- 窗口控制按钮 -->
                 <div class="window-controls">
-                    <button class="win-btn win-minimize" id="winMinimize" title="最小化" data-i18n="title_minimize"></button>
-                    <button class="win-btn win-maximize" id="winMaximize" title="最大化" data-i18n="title_maximize"></button>
-                    <button class="win-btn win-close" id="winClose" title="关闭" data-i18n="title_close"></button>
+                    <button class="win-btn win-minimize" id="winMinimize"></button>
+                    <button class="win-btn win-maximize" id="winMaximize"></button>
+                    <button class="win-btn win-close" id="winClose"></button>
                 </div>
             </div>
         </header>
@@ -44,23 +38,17 @@
                 <div class="card content-card">
                     <!-- 导航标签 -->
                     <div class="tab-nav">
-                <button class="tab-btn active" data-tab="search">
-                            <span class="tab-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                            </span>
-                            <span class="tab-label" data-i18n="tab_search">搜索书籍</span>
+                        <button class="tab-btn active" data-tab="search" title="搜索">
+                            <iconify-icon icon="line-md:search"></iconify-icon>
+                            <span class="tab-label" data-i18n="tab_search">搜索</span>
                         </button>
-                        <button class="tab-btn" data-tab="download">
-                            <span class="tab-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                            </span>
-                            <span class="tab-label" data-i18n="tab_download">手动下载</span>
+                        <button class="tab-btn" data-tab="download" title="下载">
+                            <iconify-icon icon="line-md:download-loop"></iconify-icon>
+                            <span class="tab-label" data-i18n="tab_download">下载</span>
                         </button>
-                        <button class="tab-btn" data-tab="queue">
-                            <span class="tab-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"></path><path d="M3 6h18"></path><path d="M3 18h18"></path></svg>
-                            </span>
-                            <span class="tab-label" data-i18n="tab_queue">待下载</span>
+                        <button class="tab-btn" data-tab="queue" title="队列">
+                            <iconify-icon icon="line-md:list-3"></iconify-icon>
+                            <span class="tab-label" data-i18n="tab_queue">队列</span>
                         </button>
                     </div>
 
@@ -70,20 +58,26 @@
                         <div class="tab-pane active" id="tab-search">
                             <div class="search-bar-container">
                                 <div class="input-group">
-                                    <input type="text" id="searchKeyword" class="form-input" placeholder="输入书名或作者名搜索..." data-i18n="search_placeholder">
-                                    <button class="btn btn-primary" id="searchBtn" data-i18n="btn_search">搜索</button>
+                                    <input type="text" id="searchKeyword" class="form-input" placeholder="搜索书名或作者..." data-i18n="search_placeholder">
+                                    <button class="btn btn-primary icon-btn" id="searchBtn" title="搜索">
+                                        <iconify-icon icon="line-md:search"></iconify-icon>
+                                    </button>
                                 </div>
                             </div>
                             
-                            <!-- 搜索结果 -->
                             <div id="searchResults" class="search-results-area">
                                 <div class="search-header" id="searchHeader" style="display: none;">
-                                    <span class="search-count" id="searchResultCount" data-i18n="search_result_count">找到 0 本书籍</span>
-                                    <button class="btn btn-sm btn-text" id="clearSearchBtn" data-i18n="btn_clear">清除结果</button>
+                                    <span class="search-count" id="searchResultCount">0</span>
+                                    <button class="btn btn-sm btn-text icon-btn" id="clearSearchBtn" title="清除">
+                                        <iconify-icon icon="line-md:close"></iconify-icon>
+                                    </button>
                                 </div>
                                 <div id="searchResultList" class="search-grid"></div>
-                                <div id="loadMoreContainer" class="load-more-container" style="display: none; text-align: center; margin-top: 20px;">
-                                    <button class="btn btn-secondary" id="loadMoreBtn" data-i18n="btn_load_more">加载更多</button>
+                                <div id="loadMoreContainer" class="load-more-container" style="display: none;">
+                                    <button class="btn btn-secondary" id="loadMoreBtn">
+                                        <iconify-icon icon="line-md:chevron-double-down"></iconify-icon>
+                                        <span data-i18n="btn_load_more">加载更多</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -91,25 +85,21 @@
                         <!-- 下载面板 -->
                         <div class="tab-pane scrollable" id="tab-download">
                             <div class="download-form-container">
-                                <div class="form-header">
-                                    <h3 data-i18n="download_config_title">手动下载</h3>
-                                    <p class="text-muted" data-i18n="download_config_desc">输入书籍 ID 或链接进行下载</p>
-                                </div>
-
                                 <div class="form-group">
-                                    <label class="form-label" data-i18n="label_book_id">书籍 ID / URL</label>
-                                    <input type="text" id="bookId" class="form-input" placeholder="例如：12345678 或 https://fanqienovel.com/..." data-i18n="placeholder_book_id">
+                                    <div class="input-group">
+                                        <input type="text" id="bookId" class="form-input" placeholder="书籍ID或链接" data-i18n="placeholder_book_id">
+                                        <button class="btn btn-primary" id="downloadBtn" data-i18n="btn_add_to_queue">
+                                            <iconify-icon icon="line-md:plus"></iconify-icon>
+                                        </button>
+                                        <button class="btn btn-danger" id="cancelBtn" style="display: none;">
+                                            <iconify-icon icon="line-md:close"></iconify-icon>
+                                        </button>
+                                    </div>
                                 </div>
-
-                                <div class="form-actions">
-                                    <button class="btn btn-primary btn-xl" id="downloadBtn" data-i18n="btn_add_to_queue">
-                                        加入待下载
-                                    </button>
-                                    <button class="btn btn-danger btn-xl" id="cancelBtn" style="display: none;" data-i18n="btn_cancel_download">
-                                        取消下载
-                                    </button>
-                                    <button class="btn btn-secondary" id="clearBtn" data-i18n="btn_reset">重置</button>
-                                </div>
+                                <button class="btn btn-text btn-sm" id="clearBtn">
+                                    <iconify-icon icon="line-md:backup-restore"></iconify-icon>
+                                    <span data-i18n="btn_reset">重置</span>
+                                </button>
                             </div>
                         </div>
 
@@ -117,40 +107,51 @@
                         <div class="tab-pane" id="tab-queue">
                             <div class="queue-container">
                                 <div class="queue-header">
-                                    <div class="queue-summary" id="queueSummary" data-i18n="queue_summary">
-                                        待下载：0 本
-                                    </div>
+                                    <div class="queue-summary" id="queueSummary">0</div>
                                     <div class="queue-actions">
-                                        <button class="btn btn-primary" id="startQueueBtn" data-i18n="btn_start_queue_download">
-                                            一键下载
+                                        <button class="btn btn-primary" id="startQueueBtn" title="开始下载">
+                                            <iconify-icon icon="line-md:play"></iconify-icon>
                                         </button>
-                                        <button class="btn btn-secondary" id="clearQueueBtn" data-i18n="btn_clear_queue">
-                                            清空队列
+                                        <button class="btn btn-secondary" id="clearQueueBtn" title="清空">
+                                            <iconify-icon icon="line-md:remove"></iconify-icon>
                                         </button>
                                     </div>
                                 </div>
 
-                                <!-- 下载设置区域 -->
+                                <!-- 下载设置 -->
                                 <div class="queue-settings">
                                     <div class="form-group">
-                                        <label class="form-label" data-i18n="label_api_source">下载接口</label>
+                                        <label class="form-label">
+                                            <iconify-icon icon="line-md:cloud-download-outline-loop"></iconify-icon>
+                                            <span data-i18n="label_api_source">接口</span>
+                                        </label>
                                         <div class="input-group">
                                             <select id="apiSourceSelect" class="form-input"></select>
-                                            <button class="btn btn-secondary" id="refreshApiSourcesBtn" data-i18n="btn_check_api_sources">检测</button>
+                                            <button class="btn btn-secondary icon-btn" id="refreshApiSourcesBtn" title="检测">
+                                                <iconify-icon icon="line-md:speedometer"></iconify-icon>
+                                            </button>
                                         </div>
                                         <div class="helper-text" id="apiSourceStatus"></div>
                                     </div>
 
                                     <div class="form-group">
-                                        <label class="form-label" data-i18n="label_save_path">保存路径</label>
+                                        <label class="form-label">
+                                            <iconify-icon icon="line-md:folder-open-twotone"></iconify-icon>
+                                            <span data-i18n="label_save_path">路径</span>
+                                        </label>
                                         <div class="input-group">
-                                            <input type="text" id="savePath" class="form-input" placeholder="选择保存目录" readonly data-i18n="placeholder_save_path">
-                                            <button class="btn btn-secondary" id="browseBtn" data-i18n="btn_browse">浏览...</button>
+                                            <input type="text" id="savePath" class="form-input" readonly>
+                                            <button class="btn btn-secondary icon-btn" id="browseBtn" title="浏览">
+                                                <iconify-icon icon="line-md:folder-plus-twotone"></iconify-icon>
+                                            </button>
                                         </div>
                                     </div>
 
                                     <div class="form-group">
-                                        <label class="form-label" data-i18n="label_format">文件格式</label>
+                                        <label class="form-label">
+                                            <iconify-icon icon="line-md:document"></iconify-icon>
+                                            <span data-i18n="label_format">格式</span>
+                                        </label>
                                         <div class="format-selector">
                                             <label class="format-option-card">
                                                 <input type="radio" name="format" value="txt" id="formatTxt" checked>
@@ -166,10 +167,8 @@
 
                                 <div class="queue-list" id="queueList">
                                     <div class="empty-state">
-                                        <div class="empty-state-icon">
-                                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M3 12h18"></path><path d="M3 18h18"></path></svg>
-                                        </div>
-                                        <div class="empty-state-text" data-i18n="queue_empty">暂无待下载任务</div>
+                                        <iconify-icon icon="line-md:coffee-half-empty-twotone-loop" class="empty-icon"></iconify-icon>
+                                        <div class="empty-state-text" data-i18n="queue_empty">空</div>
                                     </div>
                                 </div>
                             </div>
@@ -183,16 +182,21 @@
                 <!-- 状态卡片 -->
                 <div class="card status-card">
                     <div class="card-header">
-                        <h3 data-i18n="card_current_task">当前任务</h3>
-                        <span class="status-badge" id="statusText" data-i18n="status_ready">准备就绪</span>
+                        <h3>
+                            <iconify-icon icon="line-md:downloading-loop"></iconify-icon>
+                            <span data-i18n="card_current_task">任务</span>
+                        </h3>
+                        <span class="status-badge" id="statusText">
+                            <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
+                        </span>
                     </div>
                     <div class="card-body">
                         <div class="book-preview">
-                            <div class="book-name" id="bookName" data-i18n="book_no_task">暂无任务</div>
+                            <div class="book-name" id="bookName" data-i18n="book_no_task">-</div>
                         </div>
                         <div class="progress-section">
                             <div class="progress-info">
-                                <span data-i18n="label_progress">下载进度</span>
+                                <iconify-icon icon="line-md:loading-twotone-loop"></iconify-icon>
                                 <span class="progress-percent" id="progressPercent">0%</span>
                             </div>
                             <div class="progress-track">
@@ -205,11 +209,14 @@
                 <!-- 日志卡片 -->
                 <div class="card log-card">
                     <div class="card-header">
-                        <h3 data-i18n="card_log">运行日志</h3>
+                        <h3>
+                            <iconify-icon icon="line-md:text-box"></iconify-icon>
+                            <span data-i18n="card_log">日志</span>
+                        </h3>
                     </div>
                     <div class="log-container" id="logContainer">
                         <div id="logContent">
-                            <div class="log-entry text-muted" data-i18n="log_system_started">系统已启动...</div>
+                            <div class="log-entry" data-i18n="log_system_started">...</div>
                         </div>
                     </div>
                 </div>
@@ -217,60 +224,79 @@
         </div>
     </div>
 
-    <!-- 隐藏的元素，保持兼容性 -->
+    <!-- 隐藏元素 -->
     <div id="tab-progress" style="display: none;"></div>
     <span id="progressBadge" style="display: none;"></span>
+    <span id="langLabel" style="display: none;"></span>
 
     <!-- 章节选择弹窗 -->
     <div class="modal" id="chapterModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 data-i18n="modal_chapter_title">选择章节</h3>
-                <button class="modal-close" id="chapterModalClose">×</button>
+                <h3>
+                    <iconify-icon icon="line-md:list-3"></iconify-icon>
+                    <span data-i18n="modal_chapter_title">章节</span>
+                </h3>
+                <button class="modal-close" id="chapterModalClose">
+                    <iconify-icon icon="line-md:close"></iconify-icon>
+                </button>
             </div>
             <div class="modal-body">
                 <div class="chapter-actions">
-                    <button class="btn btn-sm btn-secondary" id="selectAllBtn" data-i18n="btn_select_all">全选</button>
-                    <button class="btn btn-sm btn-secondary" id="selectNoneBtn" data-i18n="btn_select_none">全不选</button>
-                    <button class="btn btn-sm btn-secondary" id="selectInvertBtn" data-i18n="btn_invert_selection">反选</button>
-                    <span id="selectedCount" style="margin-left: auto; font-size: 13px; color: var(--text-secondary);">
-                        <span data-i18n="selected_count_prefix">已选: </span>0<span data-i18n="selected_count_suffix"> 章</span>
-                    </span>
+                    <button class="btn btn-sm btn-secondary" id="selectAllBtn" title="全选">
+                        <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
+                    </button>
+                    <button class="btn btn-sm btn-secondary" id="selectNoneBtn" title="全不选">
+                        <iconify-icon icon="line-md:circle"></iconify-icon>
+                    </button>
+                    <button class="btn btn-sm btn-secondary" id="selectInvertBtn" title="反选">
+                        <iconify-icon icon="line-md:switch"></iconify-icon>
+                    </button>
+                    <span id="selectedCount" class="selected-count">0</span>
                 </div>
                 <div class="chapter-list" id="chapterList">
                     <div class="empty-state">
-                        <div class="empty-state-text" data-i18n="empty_chapter_list">请先获取章节列表</div>
+                        <div class="empty-state-text">-</div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelChaptersBtn" data-i18n="btn_cancel">取消</button>
-                <button class="btn btn-primary" id="confirmChaptersBtn" data-i18n="btn_confirm">确定</button>
+                <button class="btn btn-secondary" id="cancelChaptersBtn">
+                    <iconify-icon icon="line-md:close"></iconify-icon>
+                </button>
+                <button class="btn btn-primary" id="confirmChaptersBtn">
+                    <iconify-icon icon="line-md:confirm"></iconify-icon>
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- 更新提示弹窗 -->
+    <!-- 更新弹窗 -->
     <div class="modal" id="updateModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 data-i18n="modal_update_title">发现新版本</h3>
-                <button class="modal-close" id="updateModalClose">×</button>
+                <h3>
+                    <iconify-icon icon="line-md:upload-loop"></iconify-icon>
+                    <span data-i18n="modal_update_title">更新</span>
+                </h3>
+                <button class="modal-close" id="updateModalClose">
+                    <iconify-icon icon="line-md:close"></iconify-icon>
+                </button>
             </div>
             <div class="modal-body">
                 <div class="update-info">
-                    <p><strong data-i18n="label_current_version">当前版本：</strong><span id="currentVersion"></span></p>
-                    <p><strong data-i18n="label_latest_version">最新版本：</strong><span id="latestVersion"></span></p>
-                    <div class="update-description">
-                        <strong data-i18n="label_update_desc">更新说明：</strong>
-                        <div id="updateDescription"></div>
-                    </div>
+                    <p><span id="currentVersion"></span> → <span id="latestVersion"></span></p>
+                    <div class="update-description" id="updateDescription"></div>
                     <div id="versionSelector" style="display: none;"></div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-primary" id="downloadUpdateBtn" data-i18n="btn_download_update">立即下载</button>
-                <button class="btn btn-secondary" id="closeUpdateBtn" data-i18n="btn_later">稍后提醒</button>
+                <button class="btn btn-secondary" id="closeUpdateBtn">
+                    <iconify-icon icon="line-md:close"></iconify-icon>
+                </button>
+                <button class="btn btn-primary" id="downloadUpdateBtn">
+                    <iconify-icon icon="line-md:download-loop"></iconify-icon>
+                </button>
             </div>
         </div>
     </div>
