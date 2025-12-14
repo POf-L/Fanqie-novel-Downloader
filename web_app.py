@@ -283,23 +283,21 @@ def _get_api_sources() -> list:
 
 
 def _probe_api_source(base_url: str, timeout: float = 2.5) -> dict:
-    """HTTP 探活（基于 search 接口，避免 ICMP ping 限制）"""
+    """HTTP 探活（仅 ping 域名根路径）"""
     import requests
-    from config import CONFIG
+    from urllib.parse import urlparse
 
     base_url = _normalize_base_url(base_url)
-    endpoints = CONFIG.get('endpoints') or {}
-    search_path = endpoints.get('search') or '/api/search'
-    url = f"{base_url}{search_path}"
+    parsed = urlparse(base_url)
+    ping_url = f"{parsed.scheme}://{parsed.netloc}/"
 
-    params = {"key": "test", "tab_type": "3", "offset": "0"}
     start = time.perf_counter()
     try:
-        resp = requests.get(url, params=params, timeout=timeout)
+        resp = requests.head(ping_url, timeout=timeout, allow_redirects=True)
         latency_ms = int((time.perf_counter() - start) * 1000)
 
-        # 404 说明路径不对；5xx 认为不可用；其余认为可用（包含 4xx）
-        available = (resp.status_code != 404) and (resp.status_code < 500)
+        # 只要能连上就认为可用
+        available = resp.status_code < 500
         return {
             'available': available,
             'latency_ms': latency_ms,
