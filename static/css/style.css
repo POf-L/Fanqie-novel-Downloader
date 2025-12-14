@@ -323,8 +323,8 @@ body {
 
 .form-input {
     flex: 1;
-    padding: 10px 14px;
-    font-size: 14px;
+    padding: 12px 16px;
+    font-size: 15px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--bg-input);
@@ -358,7 +358,7 @@ select.form-input {
 /* ===================== 按钮 ===================== */
 
 .btn {
-    padding: 10px 18px;
+    padding: 12px 20px;
     border-radius: var(--radius-md);
     border: none;
     font-size: 14px;
@@ -427,17 +427,17 @@ select.form-input {
 }
 
 .icon-btn {
-    padding: 8px 12px;
-    min-width: 40px;
+    padding: 12px 14px;
+    min-width: 44px;
 }
 
 .icon-btn iconify-icon {
-    font-size: 18px;
+    font-size: 20px;
 }
 
 .btn iconify-icon {
     vertical-align: middle;
-    font-size: 16px;
+    font-size: 18px;
 }
 
 iconify-icon {
