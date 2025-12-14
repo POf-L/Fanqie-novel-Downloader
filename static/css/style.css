@@ -1121,6 +1121,21 @@ iconify-icon {
     margin-bottom: 12px;
 }
 
+.folder-browser-quick {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.folder-browser-quick .quick-btn {
+    padding: 8px 10px;
+}
+
+.folder-browser-quick .quick-btn iconify-icon {
+    font-size: 18px;
+}
+
 .folder-browser-drives {
     display: flex;
     gap: 8px;
@@ -1160,9 +1175,10 @@ iconify-icon {
     color: var(--primary);
 }
 
-.folder-item svg {
+.folder-item iconify-icon {
     flex-shrink: 0;
-    color: var(--warning);
+    font-size: 20px;
+    color: var(--primary);
 }
 
 .folder-item span {
@@ -1181,6 +1197,13 @@ iconify-icon {
     min-height: 180px;
     color: var(--text-muted);
     font-size: 13px;
+    gap: 8px;
+}
+
+.folder-loading iconify-icon,
+.folder-empty iconify-icon,
+.folder-error iconify-icon {
+    font-size: 24px;
 }
 
 .folder-error {

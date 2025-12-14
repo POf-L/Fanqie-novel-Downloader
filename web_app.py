@@ -1261,6 +1261,47 @@ def api_list_directory():
                         'path': drive
                     })
         
+        # 快捷路径（用户常用文件夹）
+        quick_paths = []
+        home = os.path.expanduser('~')
+        
+        # Windows 特殊文件夹
+        if os.name == 'nt':
+            shell_folders = [
+                ('Desktop', 'Desktop', 'line-md:computer'),
+                ('Downloads', 'Downloads', 'line-md:download-loop'),
+                ('Documents', 'Documents', 'line-md:document'),
+                ('Pictures', 'Pictures', 'line-md:image'),
+                ('Music', 'Music', 'line-md:play'),
+                ('Videos', 'Videos', 'line-md:play-filled'),
+            ]
+            for name, folder, icon in shell_folders:
+                folder_path = os.path.join(home, folder)
+                if os.path.exists(folder_path):
+                    quick_paths.append({
+                        'name': name,
+                        'path': folder_path,
+                        'icon': icon
+                    })
+        else:
+            # Linux/macOS
+            unix_folders = [
+                ('Desktop', 'Desktop', 'line-md:computer'),
+                ('Downloads', 'Downloads', 'line-md:download-loop'),
+                ('Documents', 'Documents', 'line-md:document'),
+                ('Pictures', 'Pictures', 'line-md:image'),
+                ('Music', 'Music', 'line-md:play'),
+                ('Videos', 'Videos', 'line-md:play-filled'),
+            ]
+            for name, folder, icon in unix_folders:
+                folder_path = os.path.join(home, folder)
+                if os.path.exists(folder_path):
+                    quick_paths.append({
+                        'name': name,
+                        'path': folder_path,
+                        'icon': icon
+                    })
+        
         return jsonify({
             'success': True,
             'data': {
@@ -1268,7 +1309,8 @@ def api_list_directory():
                 'parent_path': parent_path if not is_root else None,
                 'directories': directories,
                 'is_root': is_root,
-                'drives': drives if os.name == 'nt' else None
+                'drives': drives if os.name == 'nt' else None,
+                'quick_paths': quick_paths
             }
         })
     except PermissionError:

@@ -142,8 +142,8 @@ class FolderBrowser {
             modal.innerHTML = `
                 <div class="modal-content folder-browser-dialog">
                     <div class="modal-header">
-                        <h3>${title}</h3>
-                        <button class="modal-close" type="button">×</button>
+                        <h3><iconify-icon icon="line-md:folder-open-twotone"></iconify-icon> ${title}</h3>
+                        <button class="modal-close" type="button"><iconify-icon icon="line-md:close"></iconify-icon></button>
                     </div>
                     <div class="modal-body">
                         <div class="folder-browser-path">
@@ -151,22 +151,21 @@ class FolderBrowser {
                         </div>
                         <div class="folder-browser-nav">
                             <button class="btn btn-sm btn-secondary nav-up" type="button" disabled>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-                                ${i18n.t('folder_nav_up') || '上级目录'}
+                                <iconify-icon icon="line-md:chevron-left"></iconify-icon>
                             </button>
                             <button class="btn btn-sm btn-secondary nav-home" type="button">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-                                ${i18n.t('folder_nav_home') || '默认目录'}
+                                <iconify-icon icon="line-md:home-md"></iconify-icon>
                             </button>
                         </div>
+                        <div class="folder-browser-quick" style="display: none;"></div>
                         <div class="folder-browser-drives" style="display: none;"></div>
                         <div class="folder-browser-list">
-                            <div class="folder-loading">${i18n.t('folder_loading') || '加载中...'}</div>
+                            <div class="folder-loading"><iconify-icon icon="line-md:loading-twotone-loop"></iconify-icon></div>
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-secondary cancel-btn" type="button">${i18n.t('btn_cancel') || '取消'}</button>
-                        <button class="btn btn-primary select-btn" type="button">${i18n.t('btn_select') || '选择此文件夹'}</button>
+                        <button class="btn btn-secondary cancel-btn" type="button"><iconify-icon icon="line-md:close"></iconify-icon></button>
+                        <button class="btn btn-primary select-btn" type="button"><iconify-icon icon="line-md:confirm"></iconify-icon></button>
                     </div>
                 </div>
             `;
@@ -177,6 +176,7 @@ class FolderBrowser {
             const pathInput = modal.querySelector('.path-input');
             const navUp = modal.querySelector('.nav-up');
             const navHome = modal.querySelector('.nav-home');
+            const quickContainer = modal.querySelector('.folder-browser-quick');
             const drivesContainer = modal.querySelector('.folder-browser-drives');
             const listContainer = modal.querySelector('.folder-browser-list');
             const selectBtn = modal.querySelector('.select-btn');
@@ -190,7 +190,7 @@ class FolderBrowser {
             };
 
             const loadDirectory = async (path) => {
-                listContainer.innerHTML = `<div class="folder-loading">${i18n.t('folder_loading') || '加载中...'}</div>`;
+                listContainer.innerHTML = `<div class="folder-loading"><iconify-icon icon="line-md:loading-twotone-loop"></iconify-icon></div>`;
                 
                 try {
                     const headers = { 'Content-Type': 'application/json' };
@@ -204,7 +204,7 @@ class FolderBrowser {
                     });
                     
                     if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        throw new Error(`HTTP ${response.status}`);
                     }
                     
                     const result = await response.json();
@@ -214,6 +214,20 @@ class FolderBrowser {
                         parentPath = result.data.parent_path;
                         pathInput.value = currentPath;
                         navUp.disabled = result.data.is_root;
+                        
+                        // 显示快捷路径
+                        if (result.data.quick_paths && result.data.quick_paths.length > 0) {
+                            quickContainer.style.display = 'flex';
+                            quickContainer.innerHTML = result.data.quick_paths.map(q => 
+                                `<button class="btn btn-sm btn-secondary quick-btn" data-path="${q.path}" title="${q.name}">
+                                    <iconify-icon icon="${q.icon}"></iconify-icon>
+                                </button>`
+                            ).join('');
+                            
+                            quickContainer.querySelectorAll('.quick-btn').forEach(btn => {
+                                btn.addEventListener('click', () => loadDirectory(btn.dataset.path));
+                            });
+                        }
                         
                         // 显示驱动器列表 (Windows)
                         if (result.data.drives && result.data.drives.length > 0) {
@@ -231,13 +245,11 @@ class FolderBrowser {
                         
                         // 显示目录列表
                         if (result.data.directories.length === 0) {
-                            listContainer.innerHTML = `<div class="folder-empty">${i18n.t('folder_empty') || '此目录为空'}</div>`;
+                            listContainer.innerHTML = `<div class="folder-empty"><iconify-icon icon="line-md:folder-off-twotone"></iconify-icon></div>`;
                         } else {
                             listContainer.innerHTML = result.data.directories.map(d => `
                                 <div class="folder-item" data-path="${d.path}">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                                    </svg>
+                                    <iconify-icon icon="line-md:folder-twotone"></iconify-icon>
                                     <span>${d.name}</span>
                                 </div>
                             `).join('');
@@ -251,12 +263,11 @@ class FolderBrowser {
                             });
                         }
                     } else {
-                        listContainer.innerHTML = `<div class="folder-error">${result.message || i18n.t('folder_load_error') || '加载失败'}</div>`;
+                        listContainer.innerHTML = `<div class="folder-error"><iconify-icon icon="line-md:alert"></iconify-icon> ${result.message || 'Error'}</div>`;
                     }
                 } catch (e) {
                     console.error('Folder browser error:', e);
-                    const errorMsg = e.message || String(e) || '';
-                    listContainer.innerHTML = `<div class="folder-error">${i18n.t('folder_load_error') || '加载失败'}${errorMsg ? ': ' + errorMsg : ''}</div>`;
+                    listContainer.innerHTML = `<div class="folder-error"><iconify-icon icon="line-md:alert"></iconify-icon></div>`;
                 }
             };
 
@@ -275,7 +286,6 @@ class FolderBrowser {
 
             selectBtn.addEventListener('click', async () => {
                 if (currentPath) {
-                    // 保存选择的路径
                     try {
                         const headers = { 'Content-Type': 'application/json' };
                         if (AppState.accessToken) {
@@ -287,7 +297,7 @@ class FolderBrowser {
                             body: JSON.stringify({ path: currentPath })
                         });
                     } catch (e) {
-                        console.error('保存路径失败:', e);
+                        console.error('Save path failed:', e);
                     }
                     close(currentPath);
                 }
