@@ -967,6 +967,29 @@ iconify-icon {
     transition: width 0.3s ease;
 }
 
+/* 多线程下载进度条 */
+.multi-thread-progress {
+    display: flex;
+    height: 12px;
+    background: var(--bg-input);
+    border-radius: 6px;
+    overflow: hidden;
+    gap: 2px;
+}
+
+.thread-segment {
+    height: 100%;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.thread-info {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    text-align: center;
+}
+
 /* 日志 */
 .log-container {
     flex: 1;

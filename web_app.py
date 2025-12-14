@@ -109,7 +109,7 @@ current_download_status = {
 }
 status_lock = threading.Lock()
 
-# 更新下载状态
+# 更新下载状态 - 支持多线程下载
 update_download_status = {
     'is_downloading': False,
     'progress': 0,
@@ -120,7 +120,9 @@ update_download_status = {
     'completed': False,
     'error': None,
     'save_path': '',
-    'temp_file_path': ''  # 临时下载文件路径
+    'temp_file_path': '',
+    'thread_count': 4,
+    'thread_progress': []  # 每个线程的进度 [{'start': 0, 'end': 100, 'downloaded': 50}, ...]
 }
 update_lock = threading.Lock()
 
@@ -136,12 +138,53 @@ def set_update_status(**kwargs):
             if key in update_download_status:
                 update_download_status[key] = value
 
+def download_chunk(url, start, end, chunk_id, temp_files, progress_list, total_size):
+    """下载文件的一个分块"""
+    headers = {'Range': f'bytes={start}-{end}'}
+    try:
+        response = requests.get(url, headers=headers, stream=True, timeout=60)
+        response.raise_for_status()
+        
+        chunk_size = 8192
+        downloaded = 0
+        chunk_total = end - start + 1
+        
+        with open(temp_files[chunk_id], 'wb') as f:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if not get_update_status()['is_downloading']:
+                    return False
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    progress_list[chunk_id] = {
+                        'start': start,
+                        'end': end,
+                        'downloaded': downloaded,
+                        'total': chunk_total,
+                        'percent': int((downloaded / chunk_total) * 100) if chunk_total > 0 else 0
+                    }
+                    # 更新总进度
+                    total_downloaded = sum(p.get('downloaded', 0) for p in progress_list)
+                    overall_progress = int((total_downloaded / total_size) * 100) if total_size > 0 else 0
+                    set_update_status(
+                        progress=overall_progress,
+                        downloaded_size=total_downloaded,
+                        thread_progress=progress_list.copy(),
+                        message=t('web_update_status_dl', overall_progress)
+                    )
+        return True
+    except Exception as e:
+        print(f'[DEBUG] Chunk {chunk_id} download error: {e}')
+        return False
+
 def update_download_worker(url, save_path, filename):
-    """更新下载工作线程 - 下载到临时文件避免权限问题"""
-    print(f'[DEBUG] update_download_worker started')
+    """更新下载工作线程 - 多线程下载"""
+    print(f'[DEBUG] update_download_worker started (multi-threaded)')
     print(f'[DEBUG]   url: {url}')
     print(f'[DEBUG]   save_path: {save_path}')
     print(f'[DEBUG]   filename: {filename}')
+    
+    thread_count = 4
     
     try:
         set_update_status(
@@ -151,51 +194,106 @@ def update_download_worker(url, save_path, filename):
             filename=filename,
             completed=False,
             error=None,
-            save_path=save_path
+            save_path=save_path,
+            thread_count=thread_count,
+            thread_progress=[]
         )
         
-        import requests
         import tempfile
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         
-        # 下载到临时目录的 .new 文件，避免覆盖正在运行的程序
+        # 获取文件大小
+        head_response = requests.head(url, timeout=30)
+        total_size = int(head_response.headers.get('content-length', 0))
+        supports_range = head_response.headers.get('accept-ranges', '').lower() == 'bytes'
+        
+        print(f'[DEBUG] Total size: {total_size} bytes, supports_range: {supports_range}')
+        
         temp_dir = tempfile.gettempdir()
         temp_filename = filename + '.new'
         full_path = os.path.join(temp_dir, temp_filename)
-        print(f'[DEBUG]   temp_path: {full_path}')
         
-        print(f'[DEBUG] Sending GET request...')
-        response = requests.get(url, stream=True, timeout=30)
-        print(f'[DEBUG] Response status: {response.status_code}')
-        response.raise_for_status()
-        
-        total_size = int(response.headers.get('content-length', 0))
-        print(f'[DEBUG] Total size: {total_size} bytes')
-        set_update_status(total_size=total_size, message=t('web_update_status_start'))
-        
-        downloaded = 0
-        chunk_size = 8192
-        
-        with open(full_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=chunk_size):
-                if not get_update_status()['is_downloading']: # 检查是否取消
-                    break
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
-                    set_update_status(
-                        progress=progress, 
-                        downloaded_size=downloaded,
-                        message=t('web_update_status_dl', progress)
-                    )
+        # 如果不支持分块下载或文件太小，使用单线程
+        if not supports_range or total_size < 1024 * 1024:  # 小于1MB用单线程
+            print(f'[DEBUG] Using single-threaded download')
+            set_update_status(thread_count=1, message=t('web_update_status_start'))
+            
+            response = requests.get(url, stream=True, timeout=60)
+            response.raise_for_status()
+            
+            downloaded = 0
+            with open(full_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if not get_update_status()['is_downloading']:
+                        break
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
+                        set_update_status(
+                            progress=progress,
+                            downloaded_size=downloaded,
+                            thread_progress=[{'start': 0, 'end': total_size, 'downloaded': downloaded, 'total': total_size, 'percent': progress}],
+                            message=t('web_update_status_dl', progress)
+                        )
+        else:
+            # 多线程下载
+            print(f'[DEBUG] Using {thread_count}-threaded download')
+            set_update_status(total_size=total_size, message=t('web_update_status_start'))
+            
+            chunk_size = total_size // thread_count
+            temp_files = []
+            progress_list = [{} for _ in range(thread_count)]
+            
+            # 创建临时文件
+            for i in range(thread_count):
+                temp_files.append(os.path.join(temp_dir, f'{filename}.part{i}'))
+            
+            # 计算每个线程的下载范围
+            ranges = []
+            for i in range(thread_count):
+                start = i * chunk_size
+                end = (i + 1) * chunk_size - 1 if i < thread_count - 1 else total_size - 1
+                ranges.append((start, end))
+                progress_list[i] = {'start': start, 'end': end, 'downloaded': 0, 'total': end - start + 1, 'percent': 0}
+            
+            set_update_status(thread_progress=progress_list)
+            
+            # 启动多线程下载
+            success = True
+            with ThreadPoolExecutor(max_workers=thread_count) as executor:
+                futures = []
+                for i, (start, end) in enumerate(ranges):
+                    future = executor.submit(download_chunk, url, start, end, i, temp_files, progress_list, total_size)
+                    futures.append(future)
+                
+                for future in as_completed(futures):
+                    if not future.result():
+                        success = False
+            
+            if success and get_update_status()['is_downloading']:
+                # 合并文件
+                print(f'[DEBUG] Merging {thread_count} chunks...')
+                with open(full_path, 'wb') as outfile:
+                    for temp_file in temp_files:
+                        if os.path.exists(temp_file):
+                            with open(temp_file, 'rb') as infile:
+                                outfile.write(infile.read())
+                            os.remove(temp_file)
+            else:
+                # 清理临时文件
+                for temp_file in temp_files:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                if not get_update_status()['is_downloading']:
+                    print(f'[DEBUG] Download was cancelled')
+                    return
         
         if get_update_status()['is_downloading']:
             print(f'[DEBUG] Download completed successfully!')
             print(f'[DEBUG] File saved to: {full_path}')
-            print(f'[DEBUG] File exists: {os.path.exists(full_path)}')
             if os.path.exists(full_path):
                 print(f'[DEBUG] File size: {os.path.getsize(full_path)} bytes')
-            # 保存临时文件路径供后续应用更新使用
             set_update_status(
                 is_downloading=False, 
                 completed=True, 
@@ -204,7 +302,6 @@ def update_download_worker(url, save_path, filename):
                 temp_file_path=full_path
             )
         else:
-            # 被取消
             print(f'[DEBUG] Download was cancelled')
             if os.path.exists(full_path):
                 os.remove(full_path)

@@ -1905,9 +1905,9 @@ async function showUpdateModal(updateInfo) {
                                     <span id="updateProgressText">${i18n.t('update_status_connecting')}</span>
                                     <span id="updateProgressPercent">0%</span>
                                 </div>
-                                <div class="progress-track">
-                                    <div id="updateProgressBar" class="progress-bar"></div>
+                                <div class="progress-track multi-thread-progress" id="multiThreadProgress">
                                 </div>
+                                <div id="threadInfo" class="thread-info"></div>
                                 <div class="update-progress-hint">
                                     ${i18n.t('update_warn_dont_close')}
                                 </div>
@@ -1948,12 +1948,32 @@ async function showUpdateModal(updateInfo) {
                                 const installBtn = document.getElementById('installUpdateBtn');
                                 
                                 if (status.is_downloading) {
-                                    progressBar.style.width = status.progress + '%';
+                                    // 更新多线程进度条
+                                    const multiProgress = document.getElementById('multiThreadProgress');
+                                    const threadInfo = document.getElementById('threadInfo');
+                                    
+                                    if (status.thread_progress && status.thread_progress.length > 0) {
+                                        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+                                        let html = '';
+                                        status.thread_progress.forEach((tp, idx) => {
+                                            const color = colors[idx % colors.length];
+                                            const width = (tp.total / status.total_size) * 100;
+                                            const filled = tp.percent || 0;
+                                            html += `<div class="thread-segment" style="width:${width}%;background:linear-gradient(to right, ${color} ${filled}%, rgba(255,255,255,0.1) ${filled}%);"></div>`;
+                                        });
+                                        multiProgress.innerHTML = html;
+                                        threadInfo.textContent = `${status.thread_count || 1} ${i18n.t('update_threads')}`;
+                                    } else {
+                                        multiProgress.innerHTML = `<div class="thread-segment" style="width:100%;background:linear-gradient(to right, #3b82f6 ${status.progress}%, rgba(255,255,255,0.1) ${status.progress}%);"></div>`;
+                                        threadInfo.textContent = '';
+                                    }
+                                    
                                     progressText.textContent = status.message || i18n.t('update_btn_downloading');
                                     progressPercent.textContent = status.progress + '%';
-                                    setTimeout(pollProgress, 500);
+                                    setTimeout(pollProgress, 300);
                                 } else if (status.completed) {
-                                    progressBar.style.width = '100%';
+                                    const multiProgress = document.getElementById('multiThreadProgress');
+                                    multiProgress.innerHTML = `<div class="thread-segment" style="width:100%;background:#10b981;"></div>`;
                                     progressText.textContent = i18n.t('update_status_complete');
                                     progressPercent.textContent = '100%';
                                     
