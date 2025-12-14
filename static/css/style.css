@@ -739,7 +739,8 @@ iconify-icon {
     align-items: center;
     gap: 8px;
     flex: 1;
-    min-width: 200px;
+    min-width: 150px;
+    overflow: hidden;
 }
 
 .queue-path-group .path-input {
@@ -748,6 +749,9 @@ iconify-icon {
     padding: 8px 12px;
     font-size: 12px;
     font-family: monospace;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .queue-path-group .icon-btn {
@@ -775,10 +779,11 @@ iconify-icon {
 }
 
 .queue-summary {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-secondary);
     font-weight: 500;
     white-space: nowrap;
+    min-width: fit-content;
 }
 
 .queue-actions {
