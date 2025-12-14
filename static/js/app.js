@@ -2260,6 +2260,22 @@ function showInlineConfirm(bookId, prefill = null) {
             let isDragging = false;
             let dragStartIndex = -1;
             let dragSelectState = true; // true = select, false = deselect
+            let originalStates = []; // 保存拖动开始前的状态
+
+            // 选择范围的辅助函数
+            const selectRange = (start, end, state) => {
+                const checkboxes = manualList.querySelectorAll('input[type="checkbox"]');
+                const minIdx = Math.min(start, end);
+                const maxIdx = Math.max(start, end);
+                // 先恢复原始状态
+                checkboxes.forEach((cb, i) => {
+                    cb.checked = originalStates[i] || false;
+                });
+                // 再设置范围内的状态
+                for (let i = minIdx; i <= maxIdx; i++) {
+                    checkboxes[i].checked = state;
+                }
+            };
 
             chapters.forEach((ch, idx) => {
                 const label = document.createElement('label');
@@ -2271,7 +2287,7 @@ function showInlineConfirm(bookId, prefill = null) {
 
                 // Shift + Click for range selection
                 label.addEventListener('click', (e) => {
-                    if (e.target === checkbox) return; // Let checkbox handle its own click
+                    if (e.target === checkbox) return;
                     
                     e.preventDefault();
                     const currentIndex = idx;
@@ -2295,16 +2311,23 @@ function showInlineConfirm(bookId, prefill = null) {
                 // Drag selection - mousedown
                 label.addEventListener('mousedown', (e) => {
                     if (e.target === checkbox) return;
+                    // 保存当前所有checkbox的状态
+                    const checkboxes = manualList.querySelectorAll('input[type="checkbox"]');
+                    originalStates = Array.from(checkboxes).map(cb => cb.checked);
+                    
                     isDragging = true;
                     dragStartIndex = idx;
-                    dragSelectState = !checkbox.checked; // Toggle based on current state
+                    dragSelectState = !checkbox.checked;
+                    // 立即选中/取消当前项
+                    checkbox.checked = dragSelectState;
                     e.preventDefault();
+                    updateSelectedCount();
                 });
 
-                // Drag selection - mouseenter
+                // Drag selection - mouseenter: 选择从起点到当前的范围
                 label.addEventListener('mouseenter', () => {
-                    if (isDragging) {
-                        checkbox.checked = dragSelectState;
+                    if (isDragging && dragStartIndex !== -1) {
+                        selectRange(dragStartIndex, idx, dragSelectState);
                         updateSelectedCount();
                     }
                 });
@@ -2323,11 +2346,12 @@ function showInlineConfirm(bookId, prefill = null) {
             const handleMouseUp = () => {
                 if (isDragging) {
                     isDragging = false;
+                    dragStartIndex = -1;
+                    originalStates = [];
                     updateSelectedCount();
                 }
             };
             document.addEventListener('mouseup', handleMouseUp, { once: false });
-            // Store cleanup function
             manualList._cleanupDrag = () => document.removeEventListener('mouseup', handleMouseUp);
 
             updateSelectedCount();
