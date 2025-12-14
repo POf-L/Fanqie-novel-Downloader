@@ -154,9 +154,6 @@ class FolderBrowser {
                                 <button class="btn btn-sm btn-secondary nav-up" type="button" disabled>
                                     <iconify-icon icon="line-md:chevron-left"></iconify-icon>
                                 </button>
-                                <button class="btn btn-sm btn-secondary nav-home" type="button">
-                                    <iconify-icon icon="line-md:home-md"></iconify-icon>
-                                </button>
                             </div>
                             <div class="folder-browser-quick" style="display: none;"></div>
                             <div class="folder-browser-drives" style="display: none;"></div>
@@ -177,7 +174,6 @@ class FolderBrowser {
 
             const pathInput = modal.querySelector('.path-input');
             const navUp = modal.querySelector('.nav-up');
-            const navHome = modal.querySelector('.nav-home');
             const quickContainer = modal.querySelector('.folder-browser-quick');
             const drivesContainer = modal.querySelector('.folder-browser-drives');
             const listContainer = modal.querySelector('.folder-browser-list');
@@ -284,8 +280,6 @@ class FolderBrowser {
                 if (parentPath) loadDirectory(parentPath);
             });
 
-            navHome.addEventListener('click', () => loadDirectory(''));
-
             selectBtn.addEventListener('click', async () => {
                 if (currentPath) {
                     try {
@@ -336,10 +330,12 @@ const AppState = {
         const input = document.getElementById('savePath');
         if (input) {
             input.value = path;
-            // 延迟执行确保 DOM 已渲染
-            requestAnimationFrame(() => {
-                adjustPathFontSize(input);
-            });
+            // 延迟执行确保 DOM 已完全渲染
+            setTimeout(() => {
+                requestAnimationFrame(() => {
+                    adjustPathFontSize(input);
+                });
+            }, 50);
         }
     },
     
@@ -922,7 +918,19 @@ function adjustPathFontSize(input) {
     if (!input || !input.value) return;
     
     const maxFontSize = 12;
-    const minFontSize = 7;
+    const minFontSize = 9;
+    
+    // 获取输入框可用宽度（减去 padding）
+    const inputStyle = window.getComputedStyle(input);
+    const paddingLeft = parseFloat(inputStyle.paddingLeft) || 0;
+    const paddingRight = parseFloat(inputStyle.paddingRight) || 0;
+    const availableWidth = input.clientWidth - paddingLeft - paddingRight;
+    
+    // 如果可用宽度太小（DOM 未完全渲染），使用默认字体
+    if (availableWidth < 100) {
+        input.style.fontSize = maxFontSize + 'px';
+        return;
+    }
     
     // 创建临时测量元素
     const measureSpan = document.createElement('span');
@@ -934,28 +942,31 @@ function adjustPathFontSize(input) {
     `;
     document.body.appendChild(measureSpan);
     
-    // 获取输入框可用宽度（减去 padding）
-    const inputStyle = window.getComputedStyle(input);
-    const paddingLeft = parseFloat(inputStyle.paddingLeft) || 0;
-    const paddingRight = parseFloat(inputStyle.paddingRight) || 0;
-    const availableWidth = input.clientWidth - paddingLeft - paddingRight;
+    // 先设置最大字体，检查是否需要缩小
+    measureSpan.style.fontSize = maxFontSize + 'px';
+    measureSpan.textContent = input.value;
     
-    // 从最大字体开始测试
-    for (let size = maxFontSize; size >= minFontSize; size--) {
+    if (measureSpan.offsetWidth <= availableWidth) {
+        // 不需要缩小，使用最大字体
+        input.style.fontSize = maxFontSize + 'px';
+        document.body.removeChild(measureSpan);
+        return;
+    }
+    
+    // 需要缩小，从最大字体开始逐步减小
+    for (let size = maxFontSize - 1; size >= minFontSize; size--) {
         measureSpan.style.fontSize = size + 'px';
         measureSpan.textContent = input.value;
         
         if (measureSpan.offsetWidth <= availableWidth) {
             input.style.fontSize = size + 'px';
-            break;
-        }
-        
-        // 如果到最小字体还是放不下，就用最小字体
-        if (size === minFontSize) {
-            input.style.fontSize = minFontSize + 'px';
+            document.body.removeChild(measureSpan);
+            return;
         }
     }
     
+    // 最小字体还是放不下，就用最小字体
+    input.style.fontSize = minFontSize + 'px';
     document.body.removeChild(measureSpan);
 }
 
