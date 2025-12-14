@@ -36,7 +36,12 @@ class APIManager:
     """
     
     def __init__(self):
-        self.base_url = CONFIG["api_base_url"]
+        # 从 api_sources 获取第一个可用的 base_url（api_base_url 已废弃）
+        api_sources = CONFIG.get("api_sources", [])
+        if api_sources and isinstance(api_sources, list) and len(api_sources) > 0:
+            self.base_url = api_sources[0].get("base_url", "")
+        else:
+            self.base_url = CONFIG.get("api_base_url", "")
         self.endpoints = CONFIG["endpoints"]
         self._tls = threading.local()
         self._async_session: Optional[aiohttp.ClientSession] = None
@@ -218,17 +223,14 @@ class APIManager:
     def get_full_content(self, book_id: str) -> Optional[str]:
         """获取整本小说内容(纯文本)"""
         try:
-            # 优先使用 raw_full 端点（整书下载专用）
-            endpoint = self.endpoints.get('raw_full') or self.endpoints.get('content')
+            # 使用 /api/content?tab=下载 端点进行整书下载
+            # 注意: /api/raw_full 需要 item_id（章节ID），不适用于整书下载
+            endpoint = self.endpoints.get('content')
             if not endpoint:
                 return None
                 
             url = f"{self.base_url}{endpoint}"
-            params = {"book_id": book_id}
-            
-            # 如果使用的是 content 端点，添加 tab 参数
-            if 'content' in endpoint and 'raw_full' not in endpoint:
-                params["tab"] = "下载"
+            params = {"tab": "下载", "book_id": book_id}
             
             response = self._get_session().get(url, params=params, headers=get_headers(), timeout=60, stream=True)
             if response.status_code != 200:
