@@ -615,6 +615,15 @@ def download_worker():
                     update_status(message=t('web_book_info_fail_check'), is_downloading=False)
                     continue
                 
+                # 检查是否有错误（如书籍下架）
+                if isinstance(book_detail, dict) and book_detail.get('_error'):
+                    error_type = book_detail.get('_error')
+                    if error_type == 'BOOK_REMOVE':
+                        update_status(message='该书籍已下架，无法下载', is_downloading=False)
+                    else:
+                        update_status(message=f'获取书籍信息失败: {error_type}', is_downloading=False)
+                    continue
+                
                 book_name = book_detail.get('book_name', book_id)
                 update_status(book_name=book_name, message=t('web_preparing_download', book_name))
                 
@@ -946,6 +955,13 @@ def api_book_info():
         print(f"[DEBUG] book_detail result: {str(book_detail)[:100]}")
         if not book_detail:
             return jsonify({'success': False, 'message': t('web_book_info_fail')}), 400
+        
+        # 检查是否有错误（如书籍下架）
+        if isinstance(book_detail, dict) and book_detail.get('_error'):
+            error_type = book_detail.get('_error')
+            if error_type == 'BOOK_REMOVE':
+                return jsonify({'success': False, 'message': '该书籍已下架，无法下载'}), 400
+            return jsonify({'success': False, 'message': f'获取书籍信息失败: {error_type}'}), 400
         
         # 获取章节列表
         print(f"[DEBUG] calling get_chapter_list for {book_id}")

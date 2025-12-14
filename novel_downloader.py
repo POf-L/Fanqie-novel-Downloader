@@ -118,7 +118,7 @@ class APIManager:
             return None
     
     def get_book_detail(self, book_id: str) -> Optional[Dict]:
-        """获取书籍详情"""
+        """获取书籍详情，返回 dict 或 None，如果书籍下架会返回 {'_error': 'BOOK_REMOVE'}"""
         try:
             url = f"{self.base_url}{self.endpoints['detail']}"
             params = {"book_id": book_id}
@@ -128,8 +128,18 @@ class APIManager:
                 data = response.json()
                 if data.get("code") == 200 and "data" in data:
                     level1_data = data["data"]
-                    if isinstance(level1_data, dict) and "data" in level1_data:
-                        return level1_data["data"]
+                    # 检查是否有错误信息（如书籍下架）
+                    if isinstance(level1_data, dict):
+                        inner_msg = level1_data.get("message", "")
+                        inner_code = level1_data.get("code")
+                        if inner_msg == "BOOK_REMOVE" or inner_code == 101109:
+                            return {"_error": "BOOK_REMOVE", "_message": "书籍已下架"}
+                        if "data" in level1_data:
+                            inner_data = level1_data["data"]
+                            # 如果内层 data 是空的，也可能是下架
+                            if isinstance(inner_data, dict) and not inner_data and inner_msg:
+                                return {"_error": inner_msg, "_message": inner_msg}
+                            return inner_data
                     return level1_data
             return None
         except Exception as e:
