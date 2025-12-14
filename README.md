@@ -10,7 +10,6 @@
 -   **封面图片**: 自动获取并在 EPUB 文件中嵌入图书封面。
 -   **章节选择**: 下载完整图书、特定范围或手动选择的章节。
 -   **跨平台**: 支持 Windows、macOS、Linux 和 Termux（Android）。
--   **现代界面**: 简洁的"Apple Flow"风格界面，支持深色模式。
 
 ## 安装
 ### Windows / macOS / Linux
@@ -29,3 +28,4 @@
     git clone https://github.com/POf-L/Fanqie-novel-Downloader.git
     cd Fanqie-novel-Downloader
     ```
+
