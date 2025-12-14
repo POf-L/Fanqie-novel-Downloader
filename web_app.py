@@ -227,13 +227,18 @@ def update_download_worker(url, save_path, filename):
         temp_filename = filename + '.new'
         full_path = os.path.join(temp_dir, temp_filename)
         
-        # 如果不支持分块下载或文件太小，使用单线程
-        if not supports_range or total_size < 1024 * 1024:  # 小于1MB用单线程
+        # 如果无法获取文件大小或不支持分块下载或文件太小，使用单线程
+        if total_size == 0 or not supports_range or total_size < 1024 * 1024:  # 小于1MB或无法获取大小用单线程
             print(f'[DEBUG] Using single-threaded download')
             set_update_status(thread_count=1, message=t('web_update_status_start'))
             
-            response = requests.get(url, stream=True, timeout=60)
+            response = requests.get(final_url, stream=True, timeout=120, allow_redirects=True)
             response.raise_for_status()
+            
+            # 尝试从响应头获取文件大小（如果之前没获取到）
+            if total_size == 0:
+                total_size = int(response.headers.get('content-length', 0))
+                print(f'[DEBUG] Got total_size from response: {total_size}')
             
             downloaded = 0
             with open(full_path, 'wb') as f:
@@ -243,12 +248,17 @@ def update_download_worker(url, save_path, filename):
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
-                        progress = int((downloaded / total_size) * 100) if total_size > 0 else 0
+                        if total_size > 0:
+                            progress = int((downloaded / total_size) * 100)
+                        else:
+                            # 无法获取总大小时，显示已下载字节数
+                            progress = min(99, downloaded // 100000)  # 每100KB增加1%，最多99%
                         set_update_status(
                             progress=progress,
                             downloaded_size=downloaded,
-                            thread_progress=[{'start': 0, 'end': total_size, 'downloaded': downloaded, 'total': total_size, 'percent': progress}],
-                            message=t('web_update_status_dl', progress)
+                            total_size=total_size,
+                            thread_progress=[{'start': 0, 'end': total_size or downloaded, 'downloaded': downloaded, 'total': total_size or downloaded, 'percent': progress}],
+                            message=t('web_update_status_dl', progress) if total_size > 0 else f'已下载 {downloaded // 1024} KB'
                         )
         else:
             # 多线程下载
@@ -273,12 +283,12 @@ def update_download_worker(url, save_path, filename):
             
             set_update_status(thread_progress=progress_list)
             
-            # 启动多线程下载
+            # 启动多线程下载 - 使用重定向后的最终 URL
             success = True
             with ThreadPoolExecutor(max_workers=thread_count) as executor:
                 futures = []
                 for i, (start, end) in enumerate(ranges):
-                    future = executor.submit(download_chunk, url, start, end, i, temp_files, progress_list, total_size)
+                    future = executor.submit(download_chunk, final_url, start, end, i, temp_files, progress_list, total_size)
                     futures.append(future)
                 
                 for future in as_completed(futures):
