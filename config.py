@@ -65,11 +65,30 @@ def _dedupe_sources(sources: list) -> list:
         deduped.append({"name": name, "base_url": base_url})
     return deduped
 
+# 本地固定的 API 端点配置（参考 http://49.232.137.12/docs）
+LOCAL_ENDPOINTS = {
+    "search": "/api/search",
+    "detail": "/api/detail",
+    "book": "/api/book",
+    "directory": "/api/directory",
+    "content": "/api/content",
+    "chapter": "/api/chapter",
+    "raw_full": "/api/raw_full",
+    "comment": "/api/comment",
+    "multi_content": "/api/content",
+    "ios_content": "/api/ios/content",
+    "ios_register": "/api/ios/register",
+    "device_pool": "/api/device/pool",
+    "device_register": "/api/device/register",
+    "device_status": "/api/device/status"
+}
+
+
 def load_remote_config() -> Dict:
-    """从远程 URL 加载配置 - 所有配置必须从远程获取"""
+    """从远程 URL 加载配置 - 远程仅控制节点和下载参数，endpoints 使用本地配置"""
     print(t("config_fetching", REMOTE_CONFIG_URL))
     
-    # 空配置结构 - 必须从远程填充
+    # 默认配置结构
     config = {
         "api_base_url": "",
         "api_sources": [],
@@ -86,7 +105,7 @@ def load_remote_config() -> Dict:
         "api_rate_limit": None,
         "rate_limit_window": None,
         "async_batch_size": None,
-        "endpoints": {}
+        "endpoints": LOCAL_ENDPOINTS  # 使用本地固定端点
     }
 
     try:
@@ -128,11 +147,7 @@ def load_remote_config() -> Dict:
         if isinstance(config.get("api_base_url"), str) and config["api_base_url"].strip().lower() == "auto":
             config["api_base_url"] = ""
         
-        # 更新端点配置 (映射 tomato_endpoints -> endpoints)
-        if "tomato_endpoints" in remote_conf:
-            config["endpoints"] = remote_conf["tomato_endpoints"]
-        elif "endpoints" in remote_conf:
-            config["endpoints"] = remote_conf["endpoints"]
+        # endpoints 使用本地配置，不从远程覆盖
 
         # 解析多接口配置（从远程获取）
         sources = []
