@@ -139,11 +139,60 @@ def set_update_status(**kwargs):
             if key in update_download_status:
                 update_download_status[key] = value
 
+def get_system_proxy():
+    """获取系统代理设置"""
+    import urllib.request
+    proxies = urllib.request.getproxies()
+    if proxies:
+        print(f'[DEBUG] System proxies detected: {proxies}')
+        # 转换为 requests 格式
+        result = {}
+        if 'http' in proxies:
+            result['http'] = proxies['http']
+        if 'https' in proxies:
+            result['https'] = proxies['https']
+        return result if result else None
+    return None
+
+def test_url_connectivity(url, timeout=5):
+    """测试 URL 连通性，返回 (success, use_proxy, proxies)"""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    test_url = f"{parsed.scheme}://{parsed.netloc}"
+    
+    # 先尝试直连
+    print(f'[DEBUG] Testing direct connection to: {test_url}')
+    try:
+        resp = requests.head(test_url, timeout=timeout, allow_redirects=True)
+        if resp.status_code < 500:
+            print(f'[DEBUG] Direct connection OK (status: {resp.status_code})')
+            return True, False, None
+    except Exception as e:
+        print(f'[DEBUG] Direct connection failed: {e}')
+    
+    # 直连失败，尝试使用系统代理
+    proxies = get_system_proxy()
+    if proxies:
+        print(f'[DEBUG] Trying with system proxy: {proxies}')
+        try:
+            resp = requests.head(test_url, timeout=timeout, allow_redirects=True, proxies=proxies)
+            if resp.status_code < 500:
+                print(f'[DEBUG] Proxy connection OK (status: {resp.status_code})')
+                return True, True, proxies
+        except Exception as e:
+            print(f'[DEBUG] Proxy connection also failed: {e}')
+    
+    return False, False, None
+
+# 全局代理设置（由 update_download_worker 设置）
+_update_proxies = None
+
 def download_chunk(url, start, end, chunk_id, temp_files, progress_list, total_size):
     """下载文件的一个分块"""
+    global _update_proxies
     headers = {'Range': f'bytes={start}-{end}'}
     try:
-        response = requests.get(url, headers=headers, stream=True, timeout=120, allow_redirects=True)
+        response = requests.get(url, headers=headers, stream=True, timeout=120, allow_redirects=True, proxies=_update_proxies)
         response.raise_for_status()
         
         # 检查是否真的返回了部分内容
@@ -184,6 +233,7 @@ def download_chunk(url, start, end, chunk_id, temp_files, progress_list, total_s
 
 def update_download_worker(url, save_path, filename):
     """更新下载工作线程 - 多线程下载"""
+    global _update_proxies
     print(f'[DEBUG] update_download_worker started (multi-threaded)')
     print(f'[DEBUG]   url: {url}')
     print(f'[DEBUG]   save_path: {save_path}')
@@ -207,10 +257,23 @@ def update_download_worker(url, save_path, filename):
         import tempfile
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
+        # 先测试连通性，决定是否使用代理
+        set_update_status(message='正在检测网络连接...')
+        can_connect, use_proxy, proxies = test_url_connectivity(url, timeout=8)
+        
+        if not can_connect:
+            raise Exception('无法连接到下载服务器，请检查网络或代理设置')
+        
+        _update_proxies = proxies  # 设置全局代理供 download_chunk 使用
+        
+        if use_proxy:
+            set_update_status(message='使用系统代理下载...')
+            print(f'[DEBUG] Using system proxy for download')
+        
         # 获取文件大小 - 使用 GET 请求跟随重定向后获取真实信息
         # GitHub releases 会重定向到 CDN，HEAD 请求可能无法获取正确信息
         print(f'[DEBUG] Getting file info from: {url}')
-        head_response = requests.get(url, stream=True, timeout=30, allow_redirects=True)
+        head_response = requests.get(url, stream=True, timeout=30, allow_redirects=True, proxies=proxies)
         head_response.raise_for_status()
         
         # 获取最终的 URL（重定向后的）
@@ -232,7 +295,7 @@ def update_download_worker(url, save_path, filename):
             print(f'[DEBUG] Using single-threaded download')
             set_update_status(thread_count=1, message=t('web_update_status_start'))
             
-            response = requests.get(final_url, stream=True, timeout=120, allow_redirects=True)
+            response = requests.get(final_url, stream=True, timeout=120, allow_redirects=True, proxies=proxies)
             response.raise_for_status()
             
             # 尝试从响应头获取文件大小（如果之前没获取到）
