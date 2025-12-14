@@ -1795,7 +1795,7 @@ async function showUpdateModal(updateInfo) {
     const updateModalClose = document.getElementById('updateModalClose');
     
     // 重置UI显示状态
-    if (updateDescription.parentNode) updateDescription.parentNode.style.display = 'block';
+    updateDescription.style.display = 'block';
     versionSelector.style.display = 'none';
     downloadUpdateBtn.disabled = false;
     downloadUpdateBtn.textContent = i18n.t('btn_download_update');
@@ -1895,7 +1895,7 @@ async function showUpdateModal(updateInfo) {
                     if (modal.setDownloading) modal.setDownloading(true);
                     
                     // 隐藏不需要的元素以腾出空间
-                    updateDescription.parentNode.style.display = 'none'; // 隐藏更新说明区域
+                    updateDescription.style.display = 'none'; // 隐藏更新说明
                     versionSelector.style.display = 'none'; // 隐藏版本选择
                     
                     // 创建或显示进度条
@@ -1910,7 +1910,7 @@ async function showUpdateModal(updateInfo) {
                                     <span id="updateProgressText">${i18n.t('update_status_connecting')}</span>
                                     <span id="updateProgressPercent">0%</span>
                                 </div>
-                                <div class="progress-track multi-thread-progress" id="multiThreadProgress">
+                                <div class="multi-thread-progress" id="multiThreadProgress">
                                 </div>
                                 <div id="threadInfo" class="thread-info"></div>
                                 <div class="update-progress-hint">
@@ -1918,8 +1918,13 @@ async function showUpdateModal(updateInfo) {
                                 </div>
                             </div>
                         `;
-                        // 插入到版本选择器原来的位置（现在隐藏了）
-                        versionSelector.parentNode.insertBefore(progressContainer, versionSelector.nextSibling);
+                        // 插入到更新信息区域
+                        const updateInfo = document.querySelector('.update-info');
+                        if (updateInfo) {
+                            updateInfo.appendChild(progressContainer);
+                        } else {
+                            versionSelector.parentNode.insertBefore(progressContainer, versionSelector.nextSibling);
+                        }
                     }
                     progressContainer.style.display = 'block';
                     
