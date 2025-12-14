@@ -253,7 +253,7 @@ def update_download_worker(url, save_path, filename):
         # 如果无法获取文件大小或不支持分块下载或文件太小，使用单线程
         if total_size == 0 or not supports_range or total_size < 1024 * 1024:  # 小于1MB或无法获取大小用单线程
             print(f'[DEBUG] Using single-threaded download')
-            set_update_status(thread_count=1, message=t('web_update_status_start'))
+            set_update_status(thread_count=1, total_size=total_size, message=t('web_update_status_start'))
             
             response = requests.get(final_url, stream=True, timeout=120, allow_redirects=True)
             response.raise_for_status()

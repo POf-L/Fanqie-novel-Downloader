@@ -1939,6 +1939,12 @@ async function showUpdateModal(updateInfo) {
                             throw new Error(downloadData.message || '启动下载失败');
                         }
                         
+                        // 初始化进度条显示
+                        const multiProgress = document.getElementById('multiThreadProgress');
+                        if (multiProgress) {
+                            multiProgress.innerHTML = `<div class="thread-segment" style="width:100%;background:linear-gradient(to right, #3b82f6 0%, rgba(255,255,255,0.1) 0%);"></div>`;
+                        }
+                        
                         // 轮询下载进度
                         const pollProgress = async () => {
                             try {
@@ -1957,20 +1963,21 @@ async function showUpdateModal(updateInfo) {
                                     const multiProgress = document.getElementById('multiThreadProgress');
                                     const threadInfo = document.getElementById('threadInfo');
                                     
-                                    if (status.thread_progress && status.thread_progress.length > 0) {
+                                    if (status.thread_progress && status.thread_progress.length > 0 && status.total_size > 0) {
                                         const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
                                         let html = '';
                                         status.thread_progress.forEach((tp, idx) => {
                                             const color = colors[idx % colors.length];
-                                            const width = (tp.total / status.total_size) * 100;
+                                            const width = status.total_size > 0 ? (tp.total / status.total_size) * 100 : (100 / status.thread_progress.length);
                                             const filled = tp.percent || 0;
                                             html += `<div class="thread-segment" style="width:${width}%;background:linear-gradient(to right, ${color} ${filled}%, rgba(255,255,255,0.1) ${filled}%);"></div>`;
                                         });
                                         multiProgress.innerHTML = html;
                                         threadInfo.textContent = `${status.thread_count || 1} ${i18n.t('update_threads')}`;
                                     } else {
+                                        // 单线程或无法获取文件大小时显示单色进度条
                                         multiProgress.innerHTML = `<div class="thread-segment" style="width:100%;background:linear-gradient(to right, #3b82f6 ${status.progress}%, rgba(255,255,255,0.1) ${status.progress}%);"></div>`;
-                                        threadInfo.textContent = '';
+                                        threadInfo.textContent = status.thread_count > 1 ? `${status.thread_count} ${i18n.t('update_threads')}` : '';
                                     }
                                     
                                     progressText.textContent = status.message || i18n.t('update_btn_downloading');
