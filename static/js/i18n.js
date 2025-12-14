@@ -94,6 +94,7 @@ const translations = {
         "update_status_connecting": "正在连接...",
         "update_status_complete": "下载完成",
         "update_status_ready": "准备下载...",
+        "update_status_merging": "正在合并文件...",
         "update_warn_dont_close": "下载中请勿关闭窗口",
         "update_threads": "线程并行下载",
         "update_select_version": "选择下载版本:",
@@ -167,7 +168,8 @@ const translations = {
         "api_checking_sources": "正在检测接口...",
         "api_check_failed": "接口检测失败: {0}",
         "api_select_failed": "接口选择失败",
-        "api_status_auto": "自动选择接口中..."
+        "api_status_auto": "自动选择接口中...",
+        "api_status_manual": "手动选择接口: {0} ({1}ms)"
     },
     "en": {
         // Header
@@ -264,6 +266,7 @@ const translations = {
         "update_status_connecting": "Connecting...",
         "update_status_complete": "Download Complete",
         "update_status_ready": "Ready to download...",
+        "update_status_merging": "Merging files...",
         "update_warn_dont_close": "Do not close while downloading",
         "update_threads": "threads downloading",
         "update_select_version": "Select Version:",
@@ -337,7 +340,8 @@ const translations = {
         "api_checking_sources": "Checking sources...",
         "api_check_failed": "Source check failed: {0}",
         "api_select_failed": "Source selection failed",
-        "api_status_auto": "Auto selecting source..."
+        "api_status_auto": "Auto selecting source...",
+        "api_status_manual": "Manual source: {0} ({1}ms)"
     }
 };
 

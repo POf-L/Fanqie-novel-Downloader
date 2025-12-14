@@ -1963,13 +1963,22 @@ async function showUpdateModal(updateInfo) {
                                 const progressPercent = document.getElementById('updateProgressPercent');
                                 const installBtn = document.getElementById('installUpdateBtn');
                                 
-                                if (status.is_downloading) {
+                                if (status.merging) {
+                                    // 正在合并文件
+                                    const multiProgress = document.getElementById('multiThreadProgress');
+                                    const threadInfo = document.getElementById('threadInfo');
+                                    multiProgress.innerHTML = `<div class="thread-segment" style="width:100%;background:linear-gradient(90deg, #f59e0b 0%, #fbbf24 50%, #f59e0b 100%);animation:merging-pulse 1.5s ease-in-out infinite;"></div>`;
+                                    threadInfo.textContent = i18n.t('update_status_merging');
+                                    progressText.textContent = i18n.t('update_status_merging');
+                                    progressPercent.textContent = '100%';
+                                    setTimeout(pollProgress, 300);
+                                } else if (status.is_downloading) {
                                     // 更新多线程进度条
                                     const multiProgress = document.getElementById('multiThreadProgress');
                                     const threadInfo = document.getElementById('threadInfo');
                                     
                                     if (status.thread_progress && status.thread_progress.length > 0 && status.total_size > 0) {
-                                        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+                                        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
                                         let html = '';
                                         status.thread_progress.forEach((tp, idx) => {
                                             const color = colors[idx % colors.length];

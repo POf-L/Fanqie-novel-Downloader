@@ -122,8 +122,9 @@ update_download_status = {
     'error': None,
     'save_path': '',
     'temp_file_path': '',
-    'thread_count': 4,
-    'thread_progress': []  # 每个线程的进度 [{'start': 0, 'end': 100, 'downloaded': 50}, ...]
+    'thread_count': 1,
+    'thread_progress': [],  # 每个线程的进度 [{'downloaded': 50, 'total': 100, 'percent': 50, 'speed': 1024}, ...]
+    'merging': False  # 是否正在合并文件
 }
 update_lock = threading.Lock()
 
@@ -157,57 +158,64 @@ def test_url_connectivity(url, timeout=8):
     
     return False
 
-def download_chunk(url, start, end, chunk_id, temp_files, progress_list, total_size):
-    """下载文件的一个分块"""
+def download_chunk_adaptive(url, start, end, chunk_id, temp_file, progress_dict, total_size, cancel_flag):
+    """下载文件的一个分块（自适应版本）"""
     headers = {'Range': f'bytes={start}-{end}'}
     try:
         response = requests.get(url, headers=headers, stream=True, timeout=120, allow_redirects=True)
         response.raise_for_status()
         
-        # 检查是否真的返回了部分内容
-        if response.status_code != 206:
-            print(f'[DEBUG] Chunk {chunk_id}: Expected 206, got {response.status_code}')
-        
-        chunk_size = 8192
+        chunk_size = 32768  # 32KB chunks for better throughput measurement
         downloaded = 0
         chunk_total = end - start + 1
+        last_time = time.time()
+        last_downloaded = 0
         
-        with open(temp_files[chunk_id], 'wb') as f:
+        with open(temp_file, 'wb') as f:
             for chunk in response.iter_content(chunk_size=chunk_size):
-                if not get_update_status()['is_downloading']:
-                    return False
+                if cancel_flag.get('cancelled'):
+                    return {'success': False, 'reason': 'cancelled'}
                 if chunk:
                     f.write(chunk)
                     downloaded += len(chunk)
-                    progress_list[chunk_id] = {
-                        'start': start,
-                        'end': end,
-                        'downloaded': downloaded,
-                        'total': chunk_total,
-                        'percent': int((downloaded / chunk_total) * 100) if chunk_total > 0 else 0
-                    }
-                    # 更新总进度
-                    total_downloaded = sum(p.get('downloaded', 0) for p in progress_list)
-                    overall_progress = int((total_downloaded / total_size) * 100) if total_size > 0 else 0
-                    set_update_status(
-                        progress=overall_progress,
-                        downloaded_size=total_downloaded,
-                        thread_progress=progress_list.copy(),
-                        message=t('web_update_status_dl', overall_progress)
-                    )
-        return True
+                    
+                    # 计算速度（每秒更新一次）
+                    now = time.time()
+                    if now - last_time >= 0.5:
+                        speed = (downloaded - last_downloaded) / (now - last_time)
+                        last_time = now
+                        last_downloaded = downloaded
+                        progress_dict[chunk_id] = {
+                            'downloaded': downloaded,
+                            'total': chunk_total,
+                            'percent': int((downloaded / chunk_total) * 100) if chunk_total > 0 else 0,
+                            'speed': speed
+                        }
+                    else:
+                        progress_dict[chunk_id] = {
+                            'downloaded': downloaded,
+                            'total': chunk_total,
+                            'percent': int((downloaded / chunk_total) * 100) if chunk_total > 0 else 0,
+                            'speed': progress_dict.get(chunk_id, {}).get('speed', 0)
+                        }
+        
+        return {'success': True, 'chunk_id': chunk_id}
     except Exception as e:
         print(f'[DEBUG] Chunk {chunk_id} download error: {e}')
-        return False
+        return {'success': False, 'reason': str(e), 'chunk_id': chunk_id}
 
 def update_download_worker(url, save_path, filename):
-    """更新下载工作线程 - 多线程下载"""
-    print(f'[DEBUG] update_download_worker started (multi-threaded)')
+    """更新下载工作线程 - 自适应多线程下载"""
+    print(f'[DEBUG] update_download_worker started (adaptive multi-threaded)')
     print(f'[DEBUG]   url: {url}')
     print(f'[DEBUG]   save_path: {save_path}')
     print(f'[DEBUG]   filename: {filename}')
     
-    thread_count = 4
+    MIN_THREADS = 1
+    MAX_THREADS = 64
+    MIN_CHUNK_SIZE = 256 * 1024  # 最小分块 256KB
+    SPEED_CHECK_INTERVAL = 1.0  # 速度检测间隔（秒）
+    SPEED_THRESHOLD = 0.8  # 带宽利用率阈值，低于此值增加线程
     
     try:
         set_update_status(
@@ -218,31 +226,30 @@ def update_download_worker(url, save_path, filename):
             completed=False,
             error=None,
             save_path=save_path,
-            thread_count=thread_count,
-            thread_progress=[]
+            thread_count=MIN_THREADS,
+            thread_progress=[],
+            merging=False
         )
         
         import tempfile
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
         # 先测试连通性
-        set_update_status(message='正在检测网络连接...')
+        set_update_status(message=t('web_update_status_connect'))
         if not test_url_connectivity(url, timeout=8):
-            raise Exception('无法连接到下载服务器，请检查网络或代理设置')
+            raise Exception(t('web_update_connect_fail'))
         
-        # 获取文件大小 - 使用 GET 请求跟随重定向后获取真实信息
-        # GitHub releases 会重定向到 CDN，HEAD 请求可能无法获取正确信息
+        # 获取文件大小
         print(f'[DEBUG] Getting file info from: {url}')
         head_response = requests.get(url, stream=True, timeout=30, allow_redirects=True)
         head_response.raise_for_status()
         
-        # 获取最终的 URL（重定向后的）
         final_url = head_response.url
         print(f'[DEBUG] Final URL after redirect: {final_url}')
         
         total_size = int(head_response.headers.get('content-length', 0))
         supports_range = head_response.headers.get('accept-ranges', '').lower() == 'bytes'
-        head_response.close()  # 关闭连接，不下载内容
+        head_response.close()
         
         print(f'[DEBUG] Total size: {total_size} bytes, supports_range: {supports_range}')
         
@@ -250,18 +257,16 @@ def update_download_worker(url, save_path, filename):
         temp_filename = filename + '.new'
         full_path = os.path.join(temp_dir, temp_filename)
         
-        # 如果无法获取文件大小或不支持分块下载或文件太小，使用单线程
-        if total_size == 0 or not supports_range or total_size < 1024 * 1024:  # 小于1MB或无法获取大小用单线程
+        # 不支持分块或文件太小，使用单线程
+        if total_size == 0 or not supports_range or total_size < 1024 * 1024:
             print(f'[DEBUG] Using single-threaded download')
             set_update_status(thread_count=1, total_size=total_size, message=t('web_update_status_start'))
             
             response = requests.get(final_url, stream=True, timeout=120, allow_redirects=True)
             response.raise_for_status()
             
-            # 尝试从响应头获取文件大小（如果之前没获取到）
             if total_size == 0:
                 total_size = int(response.headers.get('content-length', 0))
-                print(f'[DEBUG] Got total_size from response: {total_size}')
             
             downloaded = 0
             with open(full_path, 'wb') as f:
@@ -271,70 +276,196 @@ def update_download_worker(url, save_path, filename):
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
-                        if total_size > 0:
-                            progress = int((downloaded / total_size) * 100)
-                        else:
-                            # 无法获取总大小时，显示已下载字节数
-                            progress = min(99, downloaded // 100000)  # 每100KB增加1%，最多99%
+                        progress = int((downloaded / total_size) * 100) if total_size > 0 else min(99, downloaded // 100000)
                         set_update_status(
                             progress=progress,
                             downloaded_size=downloaded,
                             total_size=total_size,
-                            thread_progress=[{'start': 0, 'end': total_size or downloaded, 'downloaded': downloaded, 'total': total_size or downloaded, 'percent': progress}],
+                            thread_progress=[{'downloaded': downloaded, 'total': total_size or downloaded, 'percent': progress, 'speed': 0}],
                             message=t('web_update_status_dl', progress) if total_size > 0 else f'已下载 {downloaded // 1024} KB'
                         )
         else:
-            # 多线程下载
-            print(f'[DEBUG] Using {thread_count}-threaded download')
+            # 自适应多线程下载
+            print(f'[DEBUG] Using adaptive multi-threaded download')
             set_update_status(total_size=total_size, message=t('web_update_status_start'))
             
-            chunk_size = total_size // thread_count
-            temp_files = []
-            progress_list = [{} for _ in range(thread_count)]
+            cancel_flag = {'cancelled': False}
+            progress_dict = {}
+            active_chunks = []  # [(chunk_id, start, end, temp_file, future), ...]
+            completed_chunks = []  # [(chunk_id, temp_file), ...]
+            next_chunk_id = 0
+            remaining_start = 0
+            current_threads = MIN_THREADS
+            last_speed_check = time.time()
+            last_total_downloaded = 0
+            peak_speed = 0
             
-            # 创建临时文件
-            for i in range(thread_count):
-                temp_files.append(os.path.join(temp_dir, f'{filename}.part{i}'))
+            def get_next_chunk(chunk_id, start, size):
+                """获取下一个分块"""
+                end = min(start + size - 1, total_size - 1)
+                temp_file = os.path.join(temp_dir, f'{filename}.part{chunk_id}')
+                return (chunk_id, start, end, temp_file)
             
-            # 计算每个线程的下载范围
-            ranges = []
-            for i in range(thread_count):
-                start = i * chunk_size
-                end = (i + 1) * chunk_size - 1 if i < thread_count - 1 else total_size - 1
-                ranges.append((start, end))
-                progress_list[i] = {'start': start, 'end': end, 'downloaded': 0, 'total': end - start + 1, 'percent': 0}
-            
-            set_update_status(thread_progress=progress_list)
-            
-            # 启动多线程下载 - 使用重定向后的最终 URL
-            success = True
-            with ThreadPoolExecutor(max_workers=thread_count) as executor:
-                futures = []
-                for i, (start, end) in enumerate(ranges):
-                    future = executor.submit(download_chunk, final_url, start, end, i, temp_files, progress_list, total_size)
-                    futures.append(future)
+            def update_progress():
+                """更新总进度"""
+                total_downloaded = sum(p.get('downloaded', 0) for p in progress_dict.values())
+                total_downloaded += sum(total_size // len(completed_chunks) if completed_chunks else 0 for _ in [])
+                # 计算已完成分块的大小
+                for cid, _ in completed_chunks:
+                    if cid in progress_dict:
+                        total_downloaded = sum(p.get('downloaded', 0) for p in progress_dict.values())
+                        break
                 
-                for future in as_completed(futures):
-                    if not future.result():
-                        success = False
+                overall_progress = int((total_downloaded / total_size) * 100) if total_size > 0 else 0
+                overall_progress = min(99, overall_progress)  # 下载阶段最多99%
+                
+                thread_progress = [
+                    {'downloaded': p.get('downloaded', 0), 'total': p.get('total', 0), 'percent': p.get('percent', 0), 'speed': p.get('speed', 0)}
+                    for p in progress_dict.values()
+                ]
+                
+                set_update_status(
+                    progress=overall_progress,
+                    downloaded_size=total_downloaded,
+                    thread_count=current_threads,
+                    thread_progress=thread_progress,
+                    message=t('web_update_status_dl', overall_progress)
+                )
+                return total_downloaded
             
-            if success and get_update_status()['is_downloading']:
-                # 合并文件
-                print(f'[DEBUG] Merging {thread_count} chunks...')
+            # 初始分块大小
+            initial_chunk_size = max(MIN_CHUNK_SIZE, total_size // 4)
+            
+            with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+                # 启动初始线程
+                for _ in range(MIN_THREADS):
+                    if remaining_start < total_size:
+                        chunk = get_next_chunk(next_chunk_id, remaining_start, initial_chunk_size)
+                        chunk_id, start, end, temp_file = chunk
+                        remaining_start = end + 1
+                        next_chunk_id += 1
+                        
+                        future = executor.submit(
+                            download_chunk_adaptive, final_url, start, end, 
+                            chunk_id, temp_file, progress_dict, total_size, cancel_flag
+                        )
+                        active_chunks.append((chunk_id, start, end, temp_file, future))
+                
+                # 主循环：监控进度并动态调整线程
+                while active_chunks or remaining_start < total_size:
+                    if not get_update_status()['is_downloading']:
+                        cancel_flag['cancelled'] = True
+                        break
+                    
+                    # 检查已完成的任务
+                    still_active = []
+                    for chunk_info in active_chunks:
+                        chunk_id, start, end, temp_file, future = chunk_info
+                        if future.done():
+                            result = future.result()
+                            if result.get('success'):
+                                completed_chunks.append((chunk_id, temp_file))
+                                print(f'[DEBUG] Chunk {chunk_id} completed')
+                            else:
+                                print(f'[DEBUG] Chunk {chunk_id} failed: {result.get("reason")}')
+                                # 重试失败的分块
+                                if not cancel_flag['cancelled']:
+                                    new_future = executor.submit(
+                                        download_chunk_adaptive, final_url, start, end,
+                                        chunk_id, temp_file, progress_dict, total_size, cancel_flag
+                                    )
+                                    still_active.append((chunk_id, start, end, temp_file, new_future))
+                        else:
+                            still_active.append(chunk_info)
+                    active_chunks = still_active
+                    
+                    # 更新进度
+                    total_downloaded = update_progress()
+                    
+                    # 速度检测和线程调整
+                    now = time.time()
+                    if now - last_speed_check >= SPEED_CHECK_INTERVAL:
+                        current_speed = (total_downloaded - last_total_downloaded) / (now - last_speed_check)
+                        last_speed_check = now
+                        last_total_downloaded = total_downloaded
+                        
+                        if current_speed > peak_speed:
+                            peak_speed = current_speed
+                        
+                        # 如果当前速度低于峰值速度的阈值，且还有剩余数据，增加线程
+                        if (peak_speed > 0 and current_speed < peak_speed * SPEED_THRESHOLD and 
+                            remaining_start < total_size and current_threads < MAX_THREADS and
+                            len(active_chunks) < MAX_THREADS):
+                            
+                            # 计算新分块大小（剩余数据平均分配给新线程）
+                            remaining_size = total_size - remaining_start
+                            threads_to_add = min(
+                                MAX_THREADS - current_threads,
+                                max(1, remaining_size // MIN_CHUNK_SIZE),
+                                4  # 每次最多增加4个线程
+                            )
+                            
+                            new_chunk_size = max(MIN_CHUNK_SIZE, remaining_size // (threads_to_add + 1))
+                            
+                            for _ in range(threads_to_add):
+                                if remaining_start < total_size:
+                                    chunk = get_next_chunk(next_chunk_id, remaining_start, new_chunk_size)
+                                    chunk_id, start, end, temp_file = chunk
+                                    remaining_start = end + 1
+                                    next_chunk_id += 1
+                                    current_threads += 1
+                                    
+                                    future = executor.submit(
+                                        download_chunk_adaptive, final_url, start, end,
+                                        chunk_id, temp_file, progress_dict, total_size, cancel_flag
+                                    )
+                                    active_chunks.append((chunk_id, start, end, temp_file, future))
+                                    print(f'[DEBUG] Added thread {current_threads}, chunk {chunk_id}')
+                    
+                    time.sleep(0.1)
+                
+                # 等待所有任务完成
+                for chunk_info in active_chunks:
+                    chunk_id, start, end, temp_file, future = chunk_info
+                    try:
+                        result = future.result(timeout=60)
+                        if result.get('success'):
+                            completed_chunks.append((chunk_id, temp_file))
+                    except Exception as e:
+                        print(f'[DEBUG] Chunk {chunk_id} final error: {e}')
+            
+            if cancel_flag['cancelled']:
+                # 清理临时文件
+                for _, temp_file in completed_chunks:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                print(f'[DEBUG] Download was cancelled')
+                return
+            
+            # 合并文件
+            if completed_chunks and get_update_status()['is_downloading']:
+                print(f'[DEBUG] Merging {len(completed_chunks)} chunks...')
+                set_update_status(
+                    progress=100,
+                    message=t('web_update_status_merging'),
+                    merging=True
+                )
+                
+                # 按 chunk_id 排序
+                completed_chunks.sort(key=lambda x: x[0])
+                
                 with open(full_path, 'wb') as outfile:
-                    for temp_file in temp_files:
+                    for chunk_id, temp_file in completed_chunks:
                         if os.path.exists(temp_file):
                             with open(temp_file, 'rb') as infile:
                                 outfile.write(infile.read())
                             os.remove(temp_file)
+                            print(f'[DEBUG] Merged chunk {chunk_id}')
             else:
                 # 清理临时文件
-                for temp_file in temp_files:
+                for _, temp_file in completed_chunks:
                     if os.path.exists(temp_file):
                         os.remove(temp_file)
-                if not get_update_status()['is_downloading']:
-                    print(f'[DEBUG] Download was cancelled')
-                    return
         
         if get_update_status()['is_downloading']:
             print(f'[DEBUG] Download completed successfully!')
@@ -346,7 +477,8 @@ def update_download_worker(url, save_path, filename):
                 completed=True, 
                 progress=100, 
                 message=t('web_update_complete'),
-                temp_file_path=full_path
+                temp_file_path=full_path,
+                merging=False
             )
         else:
             print(f'[DEBUG] Download was cancelled')
@@ -361,7 +493,8 @@ def update_download_worker(url, save_path, filename):
         set_update_status(
             is_downloading=False, 
             error=str(e), 
-            message=t('web_update_fail', str(e))
+            message=t('web_update_fail', str(e)),
+            merging=False
         )
 
 # 延迟导入重型模块
