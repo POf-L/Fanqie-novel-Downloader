@@ -1,8 +1,0 @@
-__turbopack_load_page_chunks__("/_error", [
-  "static/chunks/[root-of-the-server]__7cfca6cc._.js",
-  "static/chunks/45749_react-dom_98102e6f._.js",
-  "static/chunks/45749_1331c3a0._.js",
-  "static/chunks/[root-of-the-server]__78b9e10e._.js",
-  "static/chunks/user_app_pages__error_5771e187._.js",
-  "static/chunks/user_app_pages__error_442c813e._.js"
-])
