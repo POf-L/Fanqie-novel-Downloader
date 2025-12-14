@@ -226,12 +226,13 @@ api_manager = None
 novel_downloader = None
 downloader_instance = None
 
-def init_modules():
+def init_modules(skip_api_select=False):
     """初始化核心模块"""
     global api, api_manager, novel_downloader, downloader_instance
     try:
-        # 若未指定接口则自动选择一个可用的
-        _ensure_api_base_url()
+        # 若未指定接口则自动选择一个可用的（可跳过以加速启动）
+        if not skip_api_select:
+            _ensure_api_base_url()
 
         from novel_downloader import NovelDownloader, get_api_manager
         novel_downloader = __import__('novel_downloader')
@@ -282,8 +283,8 @@ def _get_api_sources() -> list:
         return []
 
 
-def _probe_api_source(base_url: str, timeout: float = 2.5) -> dict:
-    """HTTP 探活（仅 ping 域名根路径）"""
+def _probe_api_source(base_url: str, timeout: float = 1.5) -> dict:
+    """HTTP 探活（仅 ping 域名根路径，快速超时）"""
     import requests
     from urllib.parse import urlparse
 
@@ -334,7 +335,7 @@ def _apply_api_base_url(base_url: str) -> None:
 
 def _ensure_api_base_url(force_mode=None) -> str:
     """
-    确保 CONFIG.api_base_url 已设置；若为空/不可用则自动选择。
+    确保 CONFIG.api_base_url 已设置；若为空/不可用则自动选择最快节点。
 
     Returns:
         str: 当前/选中的 base_url（可能为空）
@@ -356,18 +357,17 @@ def _ensure_api_base_url(force_mode=None) -> str:
     if mode == 'manual':
         manual_url = _normalize_base_url(str(local_cfg.get('api_base_url', '') or ''))
         if manual_url:
-            probe = _probe_api_source(manual_url)
+            probe = _probe_api_source(manual_url, timeout=1.5)
             if probe.get('available'):
                 _apply_api_base_url(manual_url)
                 return manual_url
 
-    # 探测全部并选择延迟最低的可用项
+    # 并发探测全部并选择延迟最低的可用项
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    timeout = min(float(CONFIG.get('request_timeout', 10) or 10), 3.0)
     results = []
-    with ThreadPoolExecutor(max_workers=min(8, len(sources))) as ex:
-        fut_map = {ex.submit(_probe_api_source, s['base_url'], timeout): s for s in sources}
+    with ThreadPoolExecutor(max_workers=min(10, len(sources))) as ex:
+        fut_map = {ex.submit(_probe_api_source, s['base_url'], 1.5): s for s in sources}
         for fut in as_completed(fut_map):
             src = fut_map[fut]
             try:
@@ -376,13 +376,13 @@ def _ensure_api_base_url(force_mode=None) -> str:
                 probe = {'available': False, 'latency_ms': None, 'status_code': None, 'error': str(e)}
             results.append({**src, **probe})
 
+    # 按延迟排序，选择最快的可用节点
     available = [r for r in results if r.get('available')]
-    available.sort(key=lambda x: (x.get('latency_ms') is None, x.get('latency_ms', 999999)))
+    available.sort(key=lambda x: (x.get('latency_ms') or 999999))
 
     if available:
         best = available[0]['base_url']
         _apply_api_base_url(best)
-        # 记录自动模式选择结果（便于下次展示）
         _write_local_config({'api_base_url_mode': 'auto', 'api_base_url': best})
         return best
 
@@ -577,8 +577,8 @@ def index():
 
 @app.route('/api/init', methods=['POST'])
 def api_init():
-    """初始化模块"""
-    if init_modules():
+    """初始化模块（跳过节点探测，由前端单独调用 /api/api-sources）"""
+    if init_modules(skip_api_select=True):
         return jsonify({'success': True, 'message': t('web_module_loaded')})
     return jsonify({'success': False, 'message': t('web_module_fail_msg')}), 500
 
@@ -596,20 +596,40 @@ def api_status():
 
 @app.route('/api/api-sources', methods=['GET'])
 def api_api_sources():
-    """获取可用的下载接口列表，并返回可用性探测结果"""
+    """获取可用的下载接口列表，并返回可用性探测结果（并发探测）"""
     from config import CONFIG
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     local_cfg = _read_local_config()
     mode = str(local_cfg.get('api_base_url_mode', 'auto') or 'auto').lower()
-
-    current = _ensure_api_base_url(force_mode=mode if mode in ['auto', 'manual'] else None)
     sources = _get_api_sources()
 
-    timeout = min(float(CONFIG.get('request_timeout', 10) or 10), 3.0)
+    # 并发探测所有节点
+    timeout = min(float(CONFIG.get('request_timeout', 10) or 10), 2.0)
     probed = []
-    for s in sources:
-        probe = _probe_api_source(s['base_url'], timeout=timeout)
-        probed.append({**s, **probe})
+    with ThreadPoolExecutor(max_workers=min(10, len(sources) or 1)) as ex:
+        fut_map = {ex.submit(_probe_api_source, s['base_url'], timeout): s for s in sources}
+        for fut in as_completed(fut_map):
+            src = fut_map[fut]
+            try:
+                probe = fut.result()
+            except Exception as e:
+                probe = {'available': False, 'latency_ms': None, 'status_code': None, 'error': str(e)}
+            probed.append({**src, **probe})
+
+    # 按延迟排序
+    probed.sort(key=lambda x: (not x.get('available'), x.get('latency_ms') or 999999))
+
+    # 自动模式下选择最快的可用节点
+    current = _normalize_base_url(str(CONFIG.get('api_base_url', '') or ''))
+    if mode == 'auto':
+        available = [p for p in probed if p.get('available')]
+        if available:
+            best = available[0]['base_url']
+            if best != current:
+                _apply_api_base_url(best)
+                _write_local_config({'api_base_url_mode': 'auto', 'api_base_url': best})
+            current = best
 
     return jsonify({
         'success': True,

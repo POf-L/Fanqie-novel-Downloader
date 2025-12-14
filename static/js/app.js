@@ -1143,7 +1143,8 @@ async function refreshApiSourcesUI() {
     renderApiSourcesUI(result);
 }
 
-function initApiSourceControls() {
+function initApiSourceControlsLazy() {
+    // 仅绑定事件，不立即加载节点列表
     if (apiSourceControlsInitialized) return;
     apiSourceControlsInitialized = true;
 
@@ -1170,13 +1171,16 @@ function initApiSourceControls() {
         }
         await refreshApiSourcesUI();
     });
+}
 
+function initApiSourceControls() {
+    initApiSourceControlsLazy();
     refreshApiSourcesUI();
 }
 
 /* ===================== UI 事件处理 ===================== */
 
-function initializeUI() {
+function initializeUI(skipApiSources = false) {
     // 初始化标签页系统
     initTabSystem();
 
@@ -1184,8 +1188,13 @@ function initializeUI() {
     AppState.loadQueue();
     renderQueue();
 
-    // 初始化下载接口选择
-    initApiSourceControls();
+    // 初始化下载接口选择（可跳过以加速启动）
+    if (!skipApiSources) {
+        initApiSourceControls();
+    } else {
+        // 仅绑定事件，不立即加载
+        initApiSourceControlsLazy();
+    }
     
     // 初始化保存路径
     api.getSavePath().then(path => {
@@ -1272,7 +1281,7 @@ function initializeUI() {
         });
     }
     
-    checkForUpdate();
+    // checkForUpdate 已在 DOMContentLoaded 中并发执行
 }
 
 // 章节选择相关变量
@@ -2651,15 +2660,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         logger.logKey('msg_token_loaded');
     }
     
-    initializeUI();
+    // 并发执行：更新检查 + 模块初始化
+    const [updateResult, initSuccess] = await Promise.all([
+        api.checkUpdate().catch(() => ({ success: false })),
+        api.init()
+    ]);
     
-    // 初始化模块
-    const success = await api.init();
-    if (success) {
-        logger.logKey('msg_ready');
+    // 如果有更新，显示更新弹窗，不再加载节点
+    if (updateResult.success && updateResult.has_update) {
+        initializeUI(true); // 跳过节点加载
+        showUpdateModal(updateResult.data);
     } else {
-        logger.logKey('msg_init_partial');
-        logger.logKey('msg_check_network');
+        initializeUI(false); // 正常加载节点
+        if (initSuccess) {
+            logger.logKey('msg_ready');
+        } else {
+            logger.logKey('msg_init_partial');
+            logger.logKey('msg_check_network');
+        }
     }
 });
 
