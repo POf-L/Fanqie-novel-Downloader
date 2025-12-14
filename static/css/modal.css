@@ -399,25 +399,56 @@
     font-size: 13px;
 }
 
+.folder-browser-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
 .folder-browser-nav {
     display: flex;
     gap: 8px;
-    margin-bottom: 12px;
+    align-items: center;
 }
 
 .folder-browser-nav button {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
+    min-width: 36px;
+    height: 36px;
+}
+
+.folder-browser-quick {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+}
+
+.folder-browser-quick .quick-btn {
+    min-width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .folder-browser-drives {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 12px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border);
+    align-items: center;
+    margin-left: auto;
+}
+
+.folder-browser-drives .drive-btn {
+    min-width: 40px;
+    height: 36px;
 }
 
 .folder-browser-drives .drive-btn {

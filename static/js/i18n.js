@@ -101,6 +101,10 @@ const translations = {
         "alert_select_version": "请选择一个版本",
         "alert_apply_update_fail": "应用更新失败: ",
         "alert_download_fail": "下载失败: ",
+        "alert_show_dialog_fail": "显示对话框失败",
+        "alert_chapter_range_error": "章节范围错误",
+        "alert_select_one_chapter": "请至少选择一个章节",
+        "alert_url_error": "URL格式错误",
         
         // JS Messages / Logs
         "msg_app_start": "系统已启动，等待操作...",
@@ -111,9 +115,13 @@ const translations = {
         "msg_module_loaded": "核心模块加载完成",
         "msg_module_fail": "模块加载失败: ",
         "msg_init_fail": "初始化失败",
+        "msg_ready": "初始化完成，准备就绪",
+        "msg_init_partial": "部分初始化完成",
+        "msg_check_network": "请检查网络连接",
         "msg_request_fail": "请求失败: ",
         "msg_book_info_fail": "获取书籍信息失败: ",
         "msg_search_fail": "搜索失败: ",
+        "msg_searching": "正在搜索: {0}",
         "msg_task_started": "下载任务已启动",
         "msg_added_to_queue": "已加入待下载：{0}",
         "msg_removed_from_queue": "已移除：{0}",
@@ -123,9 +131,28 @@ const translations = {
         "msg_cancel_fail": "取消下载失败: ",
         "msg_start_download_fail": "启动下载失败: ",
         "msg_save_path_updated": "保存路径已更新: {0}",
+        "msg_open_folder_dialog": "打开文件夹选择...",
+        "msg_folder_fail": "文件夹操作失败: ",
+        "msg_settings_cleared": "设置已清除",
         "log_get_chapter_list": "获取章节列表: ",
         "log_confirmed_selection": "已确认选择 {0} 个章节",
-        "log_search_success": "找到 {0} 本书籍"
+        "log_cancel_selection": "已取消章节选择",
+        "log_search_success": "找到 {0} 本书籍",
+        "log_search_no_results_x": "未找到相关书籍",
+        "log_selected": "已选择: {0} (ID: {1})",
+        "log_prepare_download": "准备下载: {0}",
+        "log_chapter_range": "章节范围: {0} - {1}",
+        "log_mode_manual": "手动选择: {0} 章",
+        "log_download_all": "下载全部: {0}",
+        "log_show_dialog_fail": "显示对话框失败: {0}",
+        
+        // API Sources
+        "api_auto_select": "自动选择",
+        "api_unavailable": "不可用",
+        "api_checking_sources": "正在检测接口...",
+        "api_check_failed": "接口检测失败: {0}",
+        "api_select_failed": "接口选择失败",
+        "api_status_auto": "自动选择接口中..."
     },
     "en": {
         // Header
@@ -229,6 +256,10 @@ const translations = {
         "alert_select_version": "Please select a version",
         "alert_apply_update_fail": "Failed to apply update: ",
         "alert_download_fail": "Download failed: ",
+        "alert_show_dialog_fail": "Failed to show dialog",
+        "alert_chapter_range_error": "Invalid chapter range",
+        "alert_select_one_chapter": "Please select at least one chapter",
+        "alert_url_error": "Invalid URL format",
         
         // JS Messages / Logs
         "msg_version_info": "Version: ",
@@ -239,9 +270,13 @@ const translations = {
         "msg_module_loaded": "Core modules loaded",
         "msg_module_fail": "Module load failed: ",
         "msg_init_fail": "Initialization failed",
+        "msg_ready": "Initialization complete, ready",
+        "msg_init_partial": "Partial initialization complete",
+        "msg_check_network": "Please check network connection",
         "msg_request_fail": "Request failed: ",
         "msg_book_info_fail": "Failed to get book info: ",
         "msg_search_fail": "Search failed: ",
+        "msg_searching": "Searching: {0}",
         "msg_task_started": "Download started",
         "msg_added_to_queue": "Added to queue: {0}",
         "msg_removed_from_queue": "Removed: {0}",
@@ -251,9 +286,28 @@ const translations = {
         "msg_cancel_fail": "Cancel failed: ",
         "msg_start_download_fail": "Failed to start download: ",
         "msg_save_path_updated": "Save path updated: {0}",
+        "msg_open_folder_dialog": "Opening folder dialog...",
+        "msg_folder_fail": "Folder operation failed: ",
+        "msg_settings_cleared": "Settings cleared",
         "log_get_chapter_list": "Fetching chapter list: ",
         "log_confirmed_selection": "Confirmed {0} chapters",
-        "log_search_success": "Found {0} books"
+        "log_cancel_selection": "Chapter selection cancelled",
+        "log_search_success": "Found {0} books",
+        "log_search_no_results_x": "No books found",
+        "log_selected": "Selected: {0} (ID: {1})",
+        "log_prepare_download": "Preparing download: {0}",
+        "log_chapter_range": "Chapter range: {0} - {1}",
+        "log_mode_manual": "Manual selection: {0} chapters",
+        "log_download_all": "Download all: {0}",
+        "log_show_dialog_fail": "Failed to show dialog: {0}",
+        
+        // API Sources
+        "api_auto_select": "Auto Select",
+        "api_unavailable": "Unavailable",
+        "api_checking_sources": "Checking sources...",
+        "api_check_failed": "Source check failed: {0}",
+        "api_select_failed": "Source selection failed",
+        "api_status_auto": "Auto selecting source..."
     }
 };
 

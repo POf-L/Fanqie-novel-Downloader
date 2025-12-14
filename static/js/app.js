@@ -333,7 +333,9 @@ const AppState = {
     
     setSavePath(path) {
         this.savePath = path;
-        document.getElementById('savePath').value = path;
+        const input = document.getElementById('savePath');
+        input.value = path;
+        adjustPathFontSize(input);
     },
     
     setAccessToken(token) {
@@ -908,6 +910,35 @@ class APIClient {
 }
 
 const api = new APIClient();
+
+/* ===================== 路径字体自适应 ===================== */
+
+function adjustPathFontSize(input) {
+    if (!input) return;
+    
+    const maxFontSize = 12;
+    const minFontSize = 8;
+    
+    // 重置为最大字体
+    input.style.fontSize = maxFontSize + 'px';
+    
+    // 检查是否溢出
+    if (input.scrollWidth <= input.clientWidth) return;
+    
+    // 逐步减小字体直到不溢出
+    for (let size = maxFontSize - 1; size >= minFontSize; size--) {
+        input.style.fontSize = size + 'px';
+        if (input.scrollWidth <= input.clientWidth) break;
+    }
+}
+
+// 窗口大小变化时重新调整
+window.addEventListener('resize', () => {
+    const pathInput = document.getElementById('savePath');
+    if (pathInput && pathInput.value) {
+        adjustPathFontSize(pathInput);
+    }
+});
 
 /* ===================== 标签页系统 ===================== */
 

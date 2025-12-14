@@ -746,12 +746,11 @@ iconify-icon {
 .queue-path-group .path-input {
     flex: 1;
     min-width: 0;
-    padding: 8px 12px;
+    padding: 6px 10px;
     font-size: 12px;
     font-family: monospace;
-    text-overflow: ellipsis;
-    overflow: hidden;
     white-space: nowrap;
+    overflow: hidden;
 }
 
 .queue-path-group .icon-btn {
