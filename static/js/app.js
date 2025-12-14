@@ -1342,16 +1342,11 @@ async function handleSearch() {
     searchBtn.textContent = i18n.t('btn_search');
     
     if (result && result.books) {
-        displaySearchResults(result.books, false);
+        displaySearchResults(result.books, false, result.has_more);
         searchOffset = result.books.length;
-        
-        // 显示/隐藏加载更多按钮
-        const loadMoreContainer = document.getElementById('loadMoreContainer');
-        loadMoreContainer.style.display = result.has_more ? 'block' : 'none';
-        
         logger.logKey('log_search_success', result.books.length);
     } else {
-        displaySearchResults([], false);
+        displaySearchResults([], false, false);
         logger.logKey('log_search_no_results_x');
     }
 }
@@ -1369,25 +1364,25 @@ async function loadMoreResults() {
     loadMoreBtn.textContent = i18n.t('btn_load_more');
     
     if (result && result.books && result.books.length > 0) {
-        displaySearchResults(result.books, true);
+        displaySearchResults(result.books, true, result.has_more);
         searchOffset += result.books.length;
-        
-        const loadMoreContainer = document.getElementById('loadMoreContainer');
-        loadMoreContainer.style.display = result.has_more ? 'block' : 'none';
     } else {
         document.getElementById('loadMoreContainer').style.display = 'none';
     }
 }
 
-function displaySearchResults(books, append = false) {
+function displaySearchResults(books, append = false, hasMore = false) {
     const headerContainer = document.getElementById('searchHeader');
     const listContainer = document.getElementById('searchResultList');
     const countSpan = document.getElementById('searchResultCount');
+    const loadMoreContainer = document.getElementById('loadMoreContainer');
     
     headerContainer.style.display = 'flex';
     
     if (!append) {
+        // 保留加载更多按钮，清除其他内容
         listContainer.innerHTML = '';
+        listContainer.appendChild(loadMoreContainer);
     }
     
     if (books.length === 0 && !append) {
@@ -1437,7 +1432,7 @@ function displaySearchResults(books, append = false) {
                 <div class="search-meta">${book.author} · ${wordCount}${chapterCount ? ' · ' + chapterCount : ''}</div>
                 <div class="search-desc-wrapper">
                     <div class="search-desc ${needsExpand ? 'collapsed' : ''}">${abstractText}</div>
-                    ${needsExpand ? `<button class="desc-toggle" type="button">${i18n.t('btn_expand') || '展开'}</button>` : ''}
+                    ${needsExpand ? `<button class="desc-toggle" type="button"><iconify-icon icon="line-md:chevron-small-down"></iconify-icon></button>` : ''}
                 </div>
             </div>
             <div class="search-actions">
@@ -1454,7 +1449,9 @@ function displaySearchResults(books, append = false) {
                 const isCollapsed = desc.classList.contains('collapsed');
                 desc.classList.toggle('collapsed', !isCollapsed);
                 desc.classList.toggle('expanded', isCollapsed);
-                toggleBtn.textContent = isCollapsed ? (i18n.t('btn_collapse') || '收起') : (i18n.t('btn_expand') || '展开');
+                toggleBtn.innerHTML = isCollapsed 
+                    ? '<iconify-icon icon="line-md:chevron-small-up"></iconify-icon>' 
+                    : '<iconify-icon icon="line-md:chevron-small-down"></iconify-icon>';
             });
         }
         
@@ -1472,8 +1469,12 @@ function displaySearchResults(books, append = false) {
             });
         }
         
-        listContainer.appendChild(item);
+        // 插入到加载更多按钮之前
+        listContainer.insertBefore(item, loadMoreContainer);
     });
+    
+    // 显示/隐藏加载更多按钮
+    loadMoreContainer.style.display = hasMore ? 'block' : 'none';
     
     // 更新计数
     const totalCount = listContainer.querySelectorAll('.search-item').length;
@@ -1490,9 +1491,12 @@ function selectBook(bookId, bookName) {
 
 function clearSearchResults() {
     document.getElementById('searchHeader').style.display = 'none';
-    document.getElementById('searchResultList').innerHTML = '';
+    const listContainer = document.getElementById('searchResultList');
+    const loadMoreContainer = document.getElementById('loadMoreContainer');
+    listContainer.innerHTML = '';
+    loadMoreContainer.style.display = 'none';
+    listContainer.appendChild(loadMoreContainer);
     document.getElementById('searchKeyword').value = '';
-    document.getElementById('loadMoreContainer').style.display = 'none';
     searchOffset = 0;
     currentSearchKeyword = '';
 }
