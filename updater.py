@@ -34,39 +34,6 @@ def get_current_platform() -> str:
     else:
         return 'unknown'
 
-
-def filter_assets_for_platform(assets: List[dict], platform: str) -> List[dict]:
-    """
-    过滤适合指定平台的更新资源
-    
-    Args:
-        assets: GitHub release assets 列表
-        platform: 目标平台 ('windows', 'linux', 'macos')
-    
-    Returns:
-        过滤后的 assets 列表
-    """
-    if not assets:
-        return []
-    
-    filtered = []
-    
-    for asset in assets:
-        name = asset.get('name', '').lower()
-        
-        if platform == 'windows':
-            if name.endswith('.exe'):
-                filtered.append(asset)
-        elif platform == 'linux':
-            if 'linux' in name and not name.endswith('.exe'):
-                filtered.append(asset)
-        elif platform == 'macos':
-            if ('macos' in name or 'darwin' in name) and not name.endswith('.exe'):
-                filtered.append(asset)
-        # termux 和 unknown 不返回任何资源
-    
-    return filtered
-
 def parse_version(ver_str: str) -> Optional[pkg_version.Version]:
     """解析版本号字符串"""
     try:

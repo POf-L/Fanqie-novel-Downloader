@@ -149,16 +149,18 @@ class FolderBrowser {
                         <div class="folder-browser-path">
                             <input type="text" class="form-input path-input" readonly>
                         </div>
-                        <div class="folder-browser-nav">
-                            <button class="btn btn-sm btn-secondary nav-up" type="button" disabled>
-                                <iconify-icon icon="line-md:chevron-left"></iconify-icon>
-                            </button>
-                            <button class="btn btn-sm btn-secondary nav-home" type="button">
-                                <iconify-icon icon="line-md:home-md"></iconify-icon>
-                            </button>
+                        <div class="folder-browser-toolbar">
+                            <div class="folder-browser-nav">
+                                <button class="btn btn-sm btn-secondary nav-up" type="button" disabled>
+                                    <iconify-icon icon="line-md:chevron-left"></iconify-icon>
+                                </button>
+                                <button class="btn btn-sm btn-secondary nav-home" type="button">
+                                    <iconify-icon icon="line-md:home-md"></iconify-icon>
+                                </button>
+                            </div>
+                            <div class="folder-browser-quick" style="display: none;"></div>
+                            <div class="folder-browser-drives" style="display: none;"></div>
                         </div>
-                        <div class="folder-browser-quick" style="display: none;"></div>
-                        <div class="folder-browser-drives" style="display: none;"></div>
                         <div class="folder-browser-list">
                             <div class="folder-loading"><iconify-icon icon="line-md:loading-twotone-loop"></iconify-icon></div>
                         </div>
@@ -386,7 +388,6 @@ const AppState = {
         const startQueueBtn = document.getElementById('startQueueBtn');
         const clearQueueBtn = document.getElementById('clearQueueBtn');
         const apiSourceSelect = document.getElementById('apiSourceSelect');
-        const refreshApiSourcesBtn = document.getElementById('refreshApiSourcesBtn');
         
         if (this.isDownloading) {
             downloadBtn.style.display = 'none';
@@ -396,16 +397,14 @@ const AppState = {
             if (startQueueBtn) startQueueBtn.disabled = true;
             if (clearQueueBtn) clearQueueBtn.disabled = true;
             if (apiSourceSelect) apiSourceSelect.disabled = true;
-            if (refreshApiSourcesBtn) refreshApiSourcesBtn.disabled = true;
         } else {
-            downloadBtn.style.display = 'inline-block';
+            downloadBtn.style.display = 'none';
             cancelBtn.style.display = 'none';
             bookIdInput.disabled = false;
             browseBtn.disabled = false;
             if (startQueueBtn) startQueueBtn.disabled = false;
             if (clearQueueBtn) clearQueueBtn.disabled = false;
             if (apiSourceSelect) apiSourceSelect.disabled = false;
-            if (refreshApiSourcesBtn) refreshApiSourcesBtn.disabled = false;
         }
     }
 };
@@ -1073,8 +1072,7 @@ let apiSourceControlsInitialized = false;
 
 function renderApiSourcesUI(data) {
     const select = document.getElementById('apiSourceSelect');
-    const statusEl = document.getElementById('apiSourceStatus');
-    if (!select || !statusEl) return;
+    if (!select) return;
 
     apiSourcesCache = data;
 
@@ -1096,7 +1094,7 @@ function renderApiSourcesUI(data) {
         const name = src.name || src.base_url;
         if (src.available) {
             const ms = typeof src.latency_ms === 'number' ? src.latency_ms : '?';
-            opt.textContent = `${name} (${i18n.t('api_available_latency', ms)})`;
+            opt.textContent = `${name} (${ms}ms)`;
         } else {
             opt.textContent = `${name} (${i18n.t('api_unavailable')})`;
         }
@@ -1110,43 +1108,40 @@ function renderApiSourcesUI(data) {
         select.value = current;
     }
 
-    // Update status text
+    // Log status
     const currentSrc = sources.find(s => s.base_url === current);
-    statusEl.className = 'helper-text';
-    if (!current) {
-        statusEl.textContent = i18n.t('api_status_no_current');
-        statusEl.classList.add('bad');
-        return;
+    if (current && currentSrc) {
+        const currentName = currentSrc.name || current;
+        if (currentSrc.available) {
+            const ms = typeof currentSrc.latency_ms === 'number' ? currentSrc.latency_ms : '?';
+            logger.logKey(mode === 'auto' ? 'api_status_auto' : 'api_status_manual', currentName, ms);
+        }
     }
+}
 
-    const currentName = currentSrc?.name || current;
-    if (currentSrc?.available) {
-        const ms = typeof currentSrc.latency_ms === 'number' ? currentSrc.latency_ms : '?';
-        statusEl.textContent = mode === 'auto'
-            ? i18n.t('api_status_auto', currentName, ms)
-            : i18n.t('api_status_manual', currentName, ms);
-        statusEl.classList.add('ok');
-    } else {
-        statusEl.textContent = mode === 'auto'
-            ? i18n.t('api_status_auto_bad', currentName)
-            : i18n.t('api_status_manual_bad', currentName);
-        statusEl.classList.add('bad');
+function setApiSelectLoading(loading) {
+    const wrapper = document.querySelector('.api-select-wrapper');
+    const select = document.getElementById('apiSourceSelect');
+    if (wrapper && select) {
+        if (loading) {
+            wrapper.classList.add('loading');
+            select.disabled = true;
+        } else {
+            wrapper.classList.remove('loading');
+            select.disabled = false;
+        }
     }
 }
 
 async function refreshApiSourcesUI() {
-    const statusEl = document.getElementById('apiSourceStatus');
-    if (statusEl) {
-        statusEl.className = 'helper-text';
-        statusEl.textContent = i18n.t('api_checking_sources');
-    }
+    setApiSelectLoading(true);
+    logger.logKey('api_checking_sources');
 
     const result = await api.getApiSources();
+    setApiSelectLoading(false);
+    
     if (!result || !result.success) {
-        if (statusEl) {
-            statusEl.classList.add('bad');
-            statusEl.textContent = i18n.t('api_check_failed', result?.message || '');
-        }
+        logger.logKey('api_check_failed', result?.message || '');
         return;
     }
 
@@ -1159,13 +1154,14 @@ function initApiSourceControlsLazy() {
     apiSourceControlsInitialized = true;
 
     const select = document.getElementById('apiSourceSelect');
-    const refreshBtn = document.getElementById('refreshApiSourcesBtn');
-    if (!select || !refreshBtn) return;
-
-    refreshBtn.addEventListener('click', refreshApiSourcesUI);
+    if (!select) return;
 
     select.addEventListener('change', async () => {
         const value = select.value;
+        if (!value || value === '') return;
+        
+        setApiSelectLoading(true);
+        
         if (value === '__auto__') {
             const res = await api.selectApiSource('auto');
             if (!res.success) {
@@ -1240,10 +1236,11 @@ function initializeUI(skipApiSources = false) {
     // 初始化语言切换
     const langBtn = document.getElementById('langToggle');
     if (langBtn) {
-        const langLabel = document.getElementById('langLabel');
+        const langIcon = document.getElementById('langIcon');
         
         const updateLangBtn = (lang) => {
-            langLabel.textContent = lang === 'zh' ? 'EN' : '中文';
+            // 中文时显示英国旗帜(点击切换到英文)，英文时显示中国旗帜(点击切换到中文)
+            langIcon.setAttribute('icon', lang === 'zh' ? 'circle-flags:uk' : 'circle-flags:cn');
         };
         
         // Initial state

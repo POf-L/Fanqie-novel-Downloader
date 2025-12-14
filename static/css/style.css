@@ -134,6 +134,51 @@ body {
     -webkit-app-region: no-drag;
 }
 
+.header-api-source {
+    display: flex;
+    align-items: center;
+}
+
+.api-select-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.api-select-wrapper .form-input {
+    width: 180px;
+    padding: 8px 32px 8px 12px;
+    font-size: 12px;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a6adbb' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+}
+
+.api-select-wrapper .form-input:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.api-select-loading {
+    position: absolute;
+    right: 10px;
+    font-size: 14px;
+    color: var(--primary);
+    display: none;
+}
+
+.api-select-wrapper.loading .form-input {
+    background-image: none;
+    padding-right: 32px;
+}
+
+.api-select-wrapper.loading .api-select-loading {
+    display: block;
+}
+
 .github-link {
     display: flex;
     align-items: center;
@@ -438,12 +483,14 @@ select.form-input {
 }
 
 .btn iconify-icon {
-    vertical-align: middle;
     font-size: 18px;
+    display: inline-flex;
+    align-items: center;
 }
 
 iconify-icon {
     vertical-align: middle;
+    display: inline-flex;
 }
 
 /* ===================== 搜索区域 ===================== */
@@ -675,61 +722,90 @@ iconify-icon {
     overflow-y: auto;
 }
 
-.queue-header {
+/* 队列工具栏 - 单行布局 */
+.queue-toolbar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
     gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-input);
+    border-radius: var(--radius-md);
     margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.queue-path-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.queue-path-group .path-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-family: monospace;
+}
+
+.queue-path-group .icon-btn {
+    flex-shrink: 0;
+    padding: 8px 12px;
+}
+
+.queue-toolbar .format-selector {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.queue-toolbar .format-name {
+    padding: 8px 14px;
+    font-size: 12px;
+}
+
+.queue-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .queue-summary {
     font-size: 13px;
     color: var(--text-secondary);
     font-weight: 500;
+    white-space: nowrap;
 }
 
 .queue-actions {
     display: flex;
-    gap: 10px;
+    gap: 6px;
 }
 
+.queue-actions .btn {
+    padding: 8px 12px;
+}
+
+.queue-actions .btn iconify-icon {
+    font-size: 16px;
+}
+
+/* 旧样式保留兼容 */
 .queue-settings {
-    display: grid;
-    grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.5fr) minmax(120px, 0.8fr);
-    gap: 12px;
-    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
     background: var(--bg-input);
     border-radius: var(--radius-md);
     margin-bottom: 14px;
 }
 
-.queue-settings .form-group {
-    min-width: 0;
-    overflow: hidden;
-}
 
-.queue-settings .input-group {
-    flex-wrap: nowrap;
-}
-
-.queue-settings .form-input {
-    min-width: 0;
-    text-overflow: ellipsis;
-}
-
-.queue-settings .icon-btn {
-    flex-shrink: 0;
-}
-
-.queue-settings .format-selector {
-    gap: 8px;
-}
-
-.queue-settings .format-name {
-    padding: 6px 12px;
-    font-size: 12px;
-}
 
 .queue-list {
     flex: 1;
@@ -1153,38 +1229,68 @@ iconify-icon {
     max-width: 560px;
 }
 
+.folder-browser-dialog .modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.folder-browser-path {
+    margin-bottom: 0;
+}
+
 .folder-browser-path .path-input {
     width: 100%;
     font-family: monospace;
     font-size: 12px;
 }
 
+.folder-browser-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .folder-browser-nav {
     display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: 6px;
+}
+
+.folder-browser-nav .btn {
+    padding: 8px 12px;
+    min-width: 40px;
 }
 
 .folder-browser-quick {
     display: flex;
     gap: 6px;
-    margin-bottom: 10px;
     flex-wrap: wrap;
+    margin-left: 8px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
 }
 
 .folder-browser-quick .quick-btn {
-    padding: 8px 10px;
+    padding: 8px 12px;
+    min-width: 40px;
 }
 
 .folder-browser-quick .quick-btn iconify-icon {
-    font-size: 18px;
+    font-size: 16px;
 }
 
 .folder-browser-drives {
     display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.folder-browser-drives .drive-btn {
+    padding: 8px 12px;
+    min-width: 40px;
+    font-size: 12px;
+    font-weight: 600;
 }
 
 .folder-browser-list {

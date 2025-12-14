@@ -17,9 +17,16 @@
                 <h1 class="app-title" data-i18n="app_title">番茄小说下载器</h1>
             </div>
             <div class="header-actions">
-                <button class="btn btn-sm btn-secondary" id="langToggle" title="切换语言">
-                    <iconify-icon icon="line-md:translate"></iconify-icon>
-                    <span id="langLabel">EN</span>
+                <div class="header-api-source">
+                    <div class="api-select-wrapper">
+                        <select id="apiSourceSelect" class="form-input form-input-sm" title="下载接口">
+                            <option value="">测速中...</option>
+                        </select>
+                        <iconify-icon class="api-select-loading" icon="line-md:loading-twotone-loop"></iconify-icon>
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-secondary icon-btn" id="langToggle" title="切换语言">
+                    <iconify-icon id="langIcon" icon="circle-flags:uk"></iconify-icon>
                 </button>
                 <a href="https://github.com/POf-L/Fanqie-novel-Downloader" target="_blank" class="btn btn-sm btn-secondary icon-btn" title="GitHub">
                     <iconify-icon icon="line-md:github-loop"></iconify-icon>
@@ -107,61 +114,33 @@
                         <!-- 待下载队列 -->
                         <div class="tab-pane" id="tab-queue">
                             <div class="queue-container">
-                                <div class="queue-header">
-                                    <div class="queue-summary" id="queueSummary">0</div>
-                                    <div class="queue-actions">
-                                        <button class="btn btn-primary" id="startQueueBtn" title="开始下载">
-                                            <iconify-icon icon="line-md:play"></iconify-icon>
-                                        </button>
-                                        <button class="btn btn-secondary" id="clearQueueBtn" title="清空">
-                                            <iconify-icon icon="line-md:remove"></iconify-icon>
-                                        </button>
-                                    </div>
-                                </div>
-
                                 <!-- 下载设置 -->
-                                <div class="queue-settings">
-                                    <div class="form-group">
-                                        <label class="form-label">
-                                            <iconify-icon icon="line-md:cloud-download-outline-loop"></iconify-icon>
-                                            <span data-i18n="label_api_source">接口</span>
-                                        </label>
-                                        <div class="input-group">
-                                            <select id="apiSourceSelect" class="form-input"></select>
-                                            <button class="btn btn-secondary icon-btn" id="refreshApiSourcesBtn" title="检测">
-                                                <iconify-icon icon="line-md:speedometer"></iconify-icon>
-                                            </button>
-                                        </div>
-                                        <div class="helper-text" id="apiSourceStatus"></div>
+                                <div class="queue-toolbar">
+                                    <div class="queue-path-group">
+                                        <input type="text" id="savePath" class="form-input path-input" readonly title="保存路径">
+                                        <button class="btn btn-secondary icon-btn" id="browseBtn" title="浏览">
+                                            <iconify-icon icon="line-md:folder-plus-twotone"></iconify-icon>
+                                        </button>
                                     </div>
-
-                                    <div class="form-group">
-                                        <label class="form-label">
-                                            <iconify-icon icon="line-md:folder-open-twotone"></iconify-icon>
-                                            <span data-i18n="label_save_path">路径</span>
+                                    <div class="format-selector">
+                                        <label class="format-option-card">
+                                            <input type="radio" name="format" value="txt" id="formatTxt" checked>
+                                            <span class="format-name">TXT</span>
                                         </label>
-                                        <div class="input-group">
-                                            <input type="text" id="savePath" class="form-input" readonly>
-                                            <button class="btn btn-secondary icon-btn" id="browseBtn" title="浏览">
-                                                <iconify-icon icon="line-md:folder-plus-twotone"></iconify-icon>
-                                            </button>
-                                        </div>
+                                        <label class="format-option-card">
+                                            <input type="radio" name="format" value="epub" id="formatEpub">
+                                            <span class="format-name">EPUB</span>
+                                        </label>
                                     </div>
-
-                                    <div class="form-group">
-                                        <label class="form-label">
-                                            <iconify-icon icon="line-md:document"></iconify-icon>
-                                            <span data-i18n="label_format">格式</span>
-                                        </label>
-                                        <div class="format-selector">
-                                            <label class="format-option-card">
-                                                <input type="radio" name="format" value="txt" id="formatTxt" checked>
-                                                <span class="format-name">TXT</span>
-                                            </label>
-                                            <label class="format-option-card">
-                                                <input type="radio" name="format" value="epub" id="formatEpub">
-                                                <span class="format-name">EPUB</span>
-                                            </label>
+                                    <div class="queue-header">
+                                        <div class="queue-summary" id="queueSummary">0</div>
+                                        <div class="queue-actions">
+                                            <button class="btn btn-primary" id="startQueueBtn" title="开始下载">
+                                                <iconify-icon icon="line-md:play"></iconify-icon>
+                                            </button>
+                                            <button class="btn btn-secondary" id="clearQueueBtn" title="清空">
+                                                <iconify-icon icon="line-md:remove"></iconify-icon>
+                                            </button>
                                         </div>
                                     </div>
                                 </div>

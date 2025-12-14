@@ -11,7 +11,6 @@ Python编译脚本
 import subprocess
 import sys
 import os
-import shutil
 import argparse
 import re
 from pathlib import Path

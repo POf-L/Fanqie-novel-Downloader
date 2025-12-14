@@ -12,7 +12,7 @@ import tempfile
 import subprocess
 import re
 from locales import t
-from flask import Flask, render_template, request, jsonify, send_from_directory, abort
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
 import logging
 
