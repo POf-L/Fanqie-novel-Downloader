@@ -1397,11 +1397,12 @@ iconify-icon {
 }
 
 .chapter-list {
-    max-height: 320px;
+    max-height: 400px;
     overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--bg-body);
+    user-select: none;
 }
 
 .chapter-item {
@@ -1423,6 +1424,10 @@ iconify-icon {
 }
 
 .chapter-item.selected {
+    background: var(--primary-light);
+}
+
+.chapter-item:active {
     background: var(--primary-light);
 }
 

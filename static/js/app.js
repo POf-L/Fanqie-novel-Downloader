@@ -2249,14 +2249,61 @@ function showInlineConfirm(bookId, prefill = null) {
             startSelect.disabled = chapters.length === 0;
             endSelect.disabled = chapters.length === 0;
 
-            // Manual list
+            // Manual list with Shift select and drag select support
             manualList.innerHTML = '';
+            let lastClickedIndex = -1;
+            let isDragging = false;
+            let dragStartIndex = -1;
+            let dragSelectState = true; // true = select, false = deselect
+
             chapters.forEach((ch, idx) => {
                 const label = document.createElement('label');
                 label.className = 'chapter-item';
+                label.dataset.index = idx;
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.value = String(idx);
+
+                // Shift + Click for range selection
+                label.addEventListener('click', (e) => {
+                    if (e.target === checkbox) return; // Let checkbox handle its own click
+                    
+                    e.preventDefault();
+                    const currentIndex = idx;
+                    
+                    if (e.shiftKey && lastClickedIndex !== -1) {
+                        // Shift+Click: select range
+                        const start = Math.min(lastClickedIndex, currentIndex);
+                        const end = Math.max(lastClickedIndex, currentIndex);
+                        const checkboxes = manualList.querySelectorAll('input[type="checkbox"]');
+                        for (let i = start; i <= end; i++) {
+                            checkboxes[i].checked = true;
+                        }
+                    } else {
+                        // Normal click: toggle
+                        checkbox.checked = !checkbox.checked;
+                    }
+                    lastClickedIndex = currentIndex;
+                    updateSelectedCount();
+                });
+
+                // Drag selection - mousedown
+                label.addEventListener('mousedown', (e) => {
+                    if (e.target === checkbox) return;
+                    isDragging = true;
+                    dragStartIndex = idx;
+                    dragSelectState = !checkbox.checked; // Toggle based on current state
+                    e.preventDefault();
+                });
+
+                // Drag selection - mouseenter
+                label.addEventListener('mouseenter', () => {
+                    if (isDragging) {
+                        checkbox.checked = dragSelectState;
+                        updateSelectedCount();
+                    }
+                });
+
                 checkbox.addEventListener('change', updateSelectedCount);
 
                 const span = document.createElement('span');
@@ -2266,6 +2313,18 @@ function showInlineConfirm(bookId, prefill = null) {
                 label.appendChild(span);
                 manualList.appendChild(label);
             });
+
+            // Global mouseup to end drag
+            const handleMouseUp = () => {
+                if (isDragging) {
+                    isDragging = false;
+                    updateSelectedCount();
+                }
+            };
+            document.addEventListener('mouseup', handleMouseUp, { once: false });
+            // Store cleanup function
+            manualList._cleanupDrag = () => document.removeEventListener('mouseup', handleMouseUp);
+
             updateSelectedCount();
         };
 

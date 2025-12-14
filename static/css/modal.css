@@ -294,13 +294,14 @@
 }
 
 .chapter-list {
-    max-height: 240px;
+    max-height: 400px;
     overflow-y: auto;
     padding: 8px;
     background: var(--bg-body);
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 8px;
+    user-select: none;
 }
 
 .chapter-item {
@@ -523,6 +524,8 @@
     background: var(--bg-card);
     overflow: hidden;
     animation: slideDown 0.3s ease;
+    max-height: 70vh;
+    overflow-y: auto;
 }
 
 @keyframes slideDown {
