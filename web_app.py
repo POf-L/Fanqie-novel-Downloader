@@ -15,7 +15,6 @@ from locales import t
 from flask import Flask, render_template, request, jsonify, send_from_directory, abort
 from flask_cors import CORS
 import logging
-import re
 
 # 预先导入版本信息（确保在模块加载时就获取正确版本）
 from config import __version__ as APP_VERSION
@@ -1452,13 +1451,6 @@ def api_apply_update():
         # 使用临时文件路径
         new_file_path = status.get('temp_file_path', '')
         print(f'[DEBUG] temp_file_path: {new_file_path}')
-        
-        if not new_file_path:
-            # 兼容旧逻辑
-            save_path = status.get('save_path', '')
-            filename = status.get('filename', '')
-            if save_path and filename:
-                new_file_path = os.path.join(save_path, filename)
         
         print(f'[DEBUG] new_file_path: {new_file_path}')
         
