@@ -598,8 +598,6 @@ iconify-icon {
 /* ===================== 下载表单 ===================== */
 
 .download-form-container {
-    max-width: 500px;
-    margin: 0 auto;
     width: 100%;
     display: flex;
     flex-direction: column;
