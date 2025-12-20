@@ -252,62 +252,129 @@ class APIManager:
             return None
 
     def get_full_content(self, book_id: str) -> Optional[str]:
-        """获取整本小说内容(纯文本)"""
-        try:
-            # 使用 /api/content?tab=下载 端点进行整书下载
-            # 注意: /api/raw_full 需要 item_id（章节ID），不适用于整书下载
-            endpoint = self.endpoints.get('content')
-            if not endpoint:
-                return None
-                
-            url = f"{self.base_url}{endpoint}"
-            params = {"tab": "下载", "book_id": book_id}
-            
-            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=60, stream=True)
-            if response.status_code != 200:
-                return None
-            
-            raw_content = response.content
-            content_type = (response.headers.get('content-type') or '').lower()
-            
-            def _extract_text(payload):
-                if isinstance(payload, str):
-                    return payload
-                if isinstance(payload, dict):
-                    # 先看嵌套 data，再看常见文本字段
-                    nested = payload.get('data')
-                    if isinstance(nested, str):
-                        return nested
-                    if isinstance(nested, dict):
-                        for key in ("content", "text", "raw", "raw_text", "full_text"):
-                            val = nested.get(key)
-                            if isinstance(val, str):
-                                return val
+        """获取整本小说内容(纯文本)，支持多节点自动切换"""
+        max_retries = CONFIG.get("max_retries", 3)
+        api_sources = CONFIG.get("api_sources", [])
+        
+        def _extract_text(payload):
+            if isinstance(payload, str):
+                return payload
+            if isinstance(payload, dict):
+                nested = payload.get('data')
+                if isinstance(nested, str):
+                    return nested
+                if isinstance(nested, dict):
+                    # 检查是否是批量下载返回的格式 {chapter_id: content, ...}
+                    keys = list(nested.keys())
+                    if keys and all(k.isdigit() for k in keys[:5]):
+                        contents = []
+                        for k in sorted(nested.keys(), key=lambda x: int(x) if x.isdigit() else 0):
+                            v = nested[k]
+                            if isinstance(v, str):
+                                contents.append(v)
+                            elif isinstance(v, dict):
+                                c = v.get("content") or v.get("text") or ""
+                                if c:
+                                    contents.append(c)
+                        if contents:
+                            return "\n\n".join(contents)
                     for key in ("content", "text", "raw", "raw_text", "full_text"):
-                        val = payload.get(key)
+                        val = nested.get(key)
                         if isinstance(val, str):
                             return val
-                return None
-            
-            # 优先解析 JSON 返回（新接口可能返回 {code,data:{content:...}}）
-            is_json_like = 'application/json' in content_type or raw_content[:1] in (b'{', b'[')
-            if is_json_like:
-                try:
-                    data = json.loads(raw_content.decode('utf-8', errors='ignore'))
-                except Exception:
-                    data = None
-                text_from_json = _extract_text(data) if data is not None else None
-                if text_from_json:
-                    return text_from_json
-            
-            # 回退到纯文本解码
-            if not response.encoding:
-                response.encoding = response.apparent_encoding or 'utf-8'
-            return raw_content.decode(response.encoding or 'utf-8', errors='replace')
-        except Exception as e:
-            with print_lock:
-                print(t("dl_full_content_error", str(e)))
+                for key in ("content", "text", "raw", "raw_text", "full_text"):
+                    val = payload.get(key)
+                    if isinstance(val, str):
+                        return val
             return None
+        
+        endpoint = self.endpoints.get('content')
+        if not endpoint:
+            return None
+        
+        # 构建要尝试的节点列表
+        urls_to_try = []
+        if self.base_url:
+            urls_to_try.append(self.base_url)
+        for source in api_sources:
+            base = source.get("base_url", "")
+            if base and base not in urls_to_try:
+                urls_to_try.append(base)
+        
+        # 下载模式：批量模式优先（更稳定）
+        download_modes = [
+            {"tab": "批量", "book_id": book_id},
+            {"tab": "下载", "book_id": book_id},
+        ]
+        
+        headers = get_headers()
+        headers['Connection'] = 'close'
+        
+        for base_url in urls_to_try:
+            url = f"{base_url}{endpoint}"
+            node_failed = False  # 标记节点是否因网络问题失败
+            
+            for mode in download_modes:
+                if node_failed:
+                    break  # 节点网络有问题，跳过该节点的其他模式
+                    
+                try:
+                    with print_lock:
+                        print(f"[DEBUG] 尝试节点 {base_url}, 模式 tab={mode.get('tab')}")
+                    
+                    response = requests.get(
+                        url, 
+                        params=mode, 
+                        headers=headers, 
+                        timeout=(10, 120)
+                    )
+                    
+                    if response.status_code == 400:
+                        # 该节点不支持此模式，尝试下一个模式
+                        continue
+                    
+                    if response.status_code != 200:
+                        continue
+                    
+                    raw_content = response.content
+                    if len(raw_content) < 1000:
+                        continue
+                    
+                    content_type = (response.headers.get('content-type') or '').lower()
+                    
+                    is_json_like = 'application/json' in content_type or raw_content[:1] in (b'{', b'[')
+                    if is_json_like:
+                        try:
+                            data = json.loads(raw_content.decode('utf-8', errors='ignore'))
+                        except Exception:
+                            data = None
+                        if data:
+                            text_from_json = _extract_text(data)
+                            if text_from_json and len(text_from_json) > 1000:
+                                with print_lock:
+                                    print(f"[DEBUG] 急速下载成功，节点: {base_url}, 模式: tab={mode.get('tab')}")
+                                return text_from_json
+                    
+                    encoding = response.encoding or response.apparent_encoding or 'utf-8'
+                    text = raw_content.decode(encoding, errors='replace')
+                    if len(text) > 1000:
+                        with print_lock:
+                            print(f"[DEBUG] 急速下载成功，节点: {base_url}, 模式: tab={mode.get('tab')}")
+                        return text
+                        
+                except (requests.exceptions.ConnectionError,
+                        requests.exceptions.Timeout,
+                        requests.exceptions.ChunkedEncodingError) as e:
+                    with print_lock:
+                        print(f"[DEBUG] 节点 {base_url} 网络失败: {type(e).__name__}，切换下一节点")
+                    node_failed = True  # 网络问题，整个节点跳过
+                except Exception as e:
+                    with print_lock:
+                        print(f"[DEBUG] 节点 {base_url} 异常: {type(e).__name__}")
+        
+        with print_lock:
+            print(t("dl_full_content_error", "所有节点均失败"))
+        return None
 
 def _normalize_title(title: str) -> str:
     """标准化章节标题，用于模糊匹配"""
@@ -459,6 +526,53 @@ def get_api_manager():
 
 # ===================== 辅助函数 =====================
 
+# 文件系统非法字符
+ILLEGAL_FILENAME_CHARS = r'\/:*?"<>|'
+
+
+def sanitize_filename(name: str) -> str:
+    r"""
+    清理文件名中的非法字符
+    
+    Args:
+        name: 原始文件名
+    
+    Returns:
+        清理后的文件名，非法字符 (\ / : * ? " < > |) 替换为下划线
+    """
+    if not name:
+        return ""
+    # 将非法字符替换为下划线
+    result = re.sub(r'[\\/:*?"<>|]', '_', name)
+    return result
+
+
+def generate_filename(book_name: str, author_name: str, extension: str) -> str:
+    """
+    生成文件名
+    
+    Args:
+        book_name: 书名
+        author_name: 作者名 (可为空)
+        extension: 文件扩展名 (txt/epub)
+    
+    Returns:
+        格式化的文件名: "{书名} 作者：{作者名}.{扩展名}" 或 "{书名}.{扩展名}"
+    """
+    # 清理书名和作者名中的非法字符
+    safe_book_name = sanitize_filename(book_name)
+    safe_author_name = sanitize_filename(author_name) if author_name else ""
+    
+    # 确保扩展名不以点开头
+    ext = extension.lstrip('.')
+    
+    # 根据作者名是否为空生成不同格式的文件名
+    if safe_author_name and safe_author_name.strip():
+        return f"{safe_book_name} 作者：{safe_author_name}.{ext}"
+    else:
+        return f"{safe_book_name}.{ext}"
+
+
 def process_chapter_content(content):
     """处理章节内容"""
     if not content:
@@ -500,11 +614,19 @@ def process_chapter_content(content):
 def _get_status_file_path(book_id: str) -> str:
     """获取下载状态文件路径（保存在临时目录，不污染小说目录）"""
     import tempfile
-    import hashlib
     # 使用 book_id 的哈希作为文件名，避免冲突
     status_dir = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader')
     os.makedirs(status_dir, exist_ok=True)
     filename = f".download_status_{book_id}.json"
+    return os.path.join(status_dir, filename)
+
+
+def _get_content_file_path(book_id: str) -> str:
+    """获取已下载内容文件路径"""
+    import tempfile
+    status_dir = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader')
+    os.makedirs(status_dir, exist_ok=True)
+    filename = f".download_content_{book_id}.json"
     return os.path.join(status_dir, filename)
 
 
@@ -522,6 +644,28 @@ def load_status(book_id: str):
     return set()
 
 
+def load_saved_content(book_id: str) -> dict:
+    """加载已保存的章节内容
+    
+    Args:
+        book_id: 书籍ID
+    
+    Returns:
+        dict: 已保存的章节内容 {index: {'title': ..., 'content': ...}}
+    """
+    content_file = _get_content_file_path(book_id)
+    if os.path.exists(content_file):
+        try:
+            with open(content_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    # 将字符串键转换为整数键
+                    return {int(k): v for k, v in data.items()}
+        except:
+            pass
+    return {}
+
+
 def save_status(book_id: str, downloaded_ids):
     """保存下载状态（保存到临时目录）"""
     status_file = _get_status_file_path(book_id)
@@ -533,14 +677,47 @@ def save_status(book_id: str, downloaded_ids):
             print(t("dl_save_status_fail", str(e)))
 
 
+def save_content(book_id: str, chapter_results: dict):
+    """保存已下载的章节内容
+    
+    Args:
+        book_id: 书籍ID
+        chapter_results: 章节内容 {index: {'title': ..., 'content': ...}}
+    """
+    content_file = _get_content_file_path(book_id)
+    try:
+        with open(content_file, 'w', encoding='utf-8') as f:
+            json.dump(chapter_results, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        with print_lock:
+            print(f"保存章节内容失败: {str(e)}")
+
+
 def clear_status(book_id: str):
     """清除下载状态（下载完成后调用）"""
     status_file = _get_status_file_path(book_id)
+    content_file = _get_content_file_path(book_id)
     try:
         if os.path.exists(status_file):
             os.remove(status_file)
+        if os.path.exists(content_file):
+            os.remove(content_file)
     except:
         pass
+
+
+def has_saved_state(book_id: str) -> bool:
+    """检查是否有已保存的下载状态
+    
+    Args:
+        book_id: 书籍ID
+    
+    Returns:
+        bool: 是否有已保存的状态
+    """
+    status_file = _get_status_file_path(book_id)
+    content_file = _get_content_file_path(book_id)
+    return os.path.exists(status_file) or os.path.exists(content_file)
 
 
 def analyze_download_completeness(chapter_results: dict, expected_chapters: list = None, log_func=None) -> dict:
@@ -756,8 +933,9 @@ def create_epub(name, author_name, description, cover_url, chapters, save_path):
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
     
-    filename = re.sub(r'[\\/:*?"<>|]', '_', name)
-    epub_path = os.path.join(save_path, f'{filename}.epub')
+    # 使用新的文件命名逻辑
+    filename = generate_filename(name, author_name, 'epub')
+    epub_path = os.path.join(save_path, filename)
     epub.write_epub(epub_path, book)
     
     return epub_path
@@ -765,8 +943,9 @@ def create_epub(name, author_name, description, cover_url, chapters, save_path):
 
 def create_txt(name, author_name, description, chapters, save_path):
     """创建TXT文件"""
-    filename = re.sub(r'[\\/:*?"<>|]', '_', name)
-    txt_path = os.path.join(save_path, f'{filename}.txt')
+    # 使用新的文件命名逻辑
+    filename = generate_filename(name, author_name, 'txt')
+    txt_path = os.path.join(save_path, filename)
     
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.write(f"{name}\n")
@@ -918,6 +1097,13 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
                     log_message(t("dl_filter_error", e))
             
             downloaded_ids = load_status(book_id)
+            
+            # 加载已保存的章节内容（断点续传）
+            saved_content = load_saved_content(book_id)
+            if saved_content:
+                log_message(f"发现已保存的下载进度，已有 {len(saved_content)} 个章节", 22)
+                chapter_results.update(saved_content)
+            
             chapters_to_download = [ch for ch in chapters if ch["id"] not in downloaded_ids]
             
             if not chapters_to_download:
@@ -955,7 +1141,9 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
                         except Exception:
                             pass
             
+            # 保存下载状态和章节内容
             save_status(book_id, downloaded_ids)
+            save_content(book_id, chapter_results)
         
         # ==================== 下载完整性分析 ====================
         if gui_callback:

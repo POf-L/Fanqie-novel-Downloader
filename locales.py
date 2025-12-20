@@ -43,7 +43,7 @@ def set_current_lang(lang):
 MESSAGES = {
     "zh": {
         # config.py
-        "config_fetching": "正在获取最新的 API 配置: {}",
+        "config_loading_local": "正在加载本地配置...",
         "config_success": "成功加载配置，API 地址: {}",
         "config_fail": "获取远程配置失败: {}",
         "config_server_error": "警告: 无法连接配置服务器，程序可能无法正常工作",
@@ -205,7 +205,7 @@ MESSAGES = {
     },
     "en": {
          # config.py
-        "config_fetching": "Fetching latest API config: {}",
+        "config_loading_local": "Loading local config...",
         "config_success": "Config loaded, API base URL: {}",
         "config_fail": "Failed to fetch remote config: {}",
         "config_server_error": "Warning: Cannot connect to config server, app may not work properly",

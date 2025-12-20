@@ -110,6 +110,293 @@ current_download_status = {
 }
 status_lock = threading.Lock()
 
+
+# ===================== 任务管理器 =====================
+
+class TaskManager:
+    """下载队列任务管理器
+    
+    管理下载任务列表、状态跟踪、跳过/重试/强制保存等操作
+    """
+    
+    # 任务状态常量
+    STATUS_PENDING = 'pending'
+    STATUS_DOWNLOADING = 'downloading'
+    STATUS_COMPLETED = 'completed'
+    STATUS_FAILED = 'failed'
+    STATUS_SKIPPED = 'skipped'
+    
+    def __init__(self):
+        self.tasks = []  # 任务列表
+        self.current_index = 0  # 当前任务索引
+        self.is_running = False  # 队列是否正在运行
+        self.skip_requested = False  # 是否请求跳过当前任务
+        self.force_save_requested = False  # 是否请求强制保存
+        self.current_download_mode = None  # 当前下载模式 (fast/slow)
+        self.downloaded_chapters = {}  # 已下载章节 {book_id: {index: content}}
+        self._lock = threading.Lock()
+    
+    def start_queue(self, tasks: list) -> bool:
+        """启动队列下载
+        
+        Args:
+            tasks: 任务列表，每个任务包含 book_id, book_name, author 等信息
+        
+        Returns:
+            bool: 是否成功启动
+        """
+        with self._lock:
+            if self.is_running:
+                return False
+            
+            self.tasks = []
+            for i, task in enumerate(tasks):
+                self.tasks.append({
+                    'id': task.get('id', f"task_{i}_{int(time.time())}"),
+                    'book_id': task.get('book_id'),
+                    'book_name': task.get('book_name', ''),
+                    'author': task.get('author', ''),
+                    'status': self.STATUS_PENDING,
+                    'progress': 0,
+                    'error_message': None,
+                    'file_format': task.get('file_format', 'txt'),
+                    'save_path': task.get('save_path', ''),
+                    'start_chapter': task.get('start_chapter'),
+                    'end_chapter': task.get('end_chapter'),
+                    'selected_chapters': task.get('selected_chapters'),
+                    'created_at': time.time(),
+                    'started_at': None,
+                    'completed_at': None
+                })
+            
+            self.current_index = 0
+            self.is_running = True
+            self.skip_requested = False
+            self.force_save_requested = False
+            
+            return True
+    
+    def get_current_task(self) -> dict:
+        """获取当前正在执行的任务"""
+        with self._lock:
+            if 0 <= self.current_index < len(self.tasks):
+                return self.tasks[self.current_index].copy()
+            return None
+    
+    def update_task_status(self, task_id: str, status: str, progress: int = None, 
+                          error_message: str = None) -> bool:
+        """更新任务状态
+        
+        Args:
+            task_id: 任务ID
+            status: 新状态
+            progress: 进度 (0-100)
+            error_message: 错误信息
+        
+        Returns:
+            bool: 是否更新成功
+        """
+        with self._lock:
+            for task in self.tasks:
+                if task['id'] == task_id:
+                    task['status'] = status
+                    if progress is not None:
+                        task['progress'] = progress
+                    if error_message is not None:
+                        task['error_message'] = error_message
+                    
+                    if status == self.STATUS_DOWNLOADING and task['started_at'] is None:
+                        task['started_at'] = time.time()
+                    elif status in [self.STATUS_COMPLETED, self.STATUS_FAILED, self.STATUS_SKIPPED]:
+                        task['completed_at'] = time.time()
+                    
+                    return True
+            return False
+    
+    def skip_current(self) -> bool:
+        """跳过当前任务
+        
+        Returns:
+            bool: 是否成功设置跳过标志
+        """
+        with self._lock:
+            if not self.is_running:
+                return False
+            
+            if 0 <= self.current_index < len(self.tasks):
+                current_task = self.tasks[self.current_index]
+                if current_task['status'] == self.STATUS_DOWNLOADING:
+                    self.skip_requested = True
+                    current_task['status'] = self.STATUS_SKIPPED
+                    current_task['completed_at'] = time.time()
+                    return True
+            return False
+    
+    def force_save(self) -> dict:
+        """强制保存当前已下载的内容
+        
+        Returns:
+            dict: 保存结果，包含 success, saved_chapters, book_id
+        """
+        with self._lock:
+            if not self.is_running:
+                return {'success': False, 'message': '队列未运行'}
+            
+            current_task = self.get_current_task_unsafe()
+            if not current_task:
+                return {'success': False, 'message': '没有正在执行的任务'}
+            
+            book_id = current_task['book_id']
+            
+            # 设置强制保存标志
+            self.force_save_requested = True
+            
+            # 获取已下载的章节
+            downloaded = self.downloaded_chapters.get(book_id, {})
+            
+            return {
+                'success': True,
+                'book_id': book_id,
+                'saved_chapters': len(downloaded),
+                'message': f'已保存 {len(downloaded)} 个章节'
+            }
+    
+    def get_current_task_unsafe(self) -> dict:
+        """获取当前任务（不加锁，内部使用）"""
+        if 0 <= self.current_index < len(self.tasks):
+            return self.tasks[self.current_index]
+        return None
+    
+    def move_to_next_task(self) -> bool:
+        """移动到下一个任务
+        
+        Returns:
+            bool: 是否还有下一个任务
+        """
+        with self._lock:
+            self.current_index += 1
+            self.skip_requested = False
+            self.force_save_requested = False
+            
+            if self.current_index >= len(self.tasks):
+                self.is_running = False
+                return False
+            return True
+    
+    def retry_task(self, task_id: str) -> bool:
+        """重试指定任务
+        
+        Args:
+            task_id: 任务ID
+        
+        Returns:
+            bool: 是否成功设置重试
+        """
+        with self._lock:
+            for task in self.tasks:
+                if task['id'] == task_id and task['status'] == self.STATUS_FAILED:
+                    task['status'] = self.STATUS_PENDING
+                    task['progress'] = 0
+                    task['error_message'] = None
+                    task['started_at'] = None
+                    task['completed_at'] = None
+                    return True
+            return False
+    
+    def retry_all_failed(self) -> int:
+        """重试所有失败的任务
+        
+        Returns:
+            int: 重试的任务数量
+        """
+        with self._lock:
+            count = 0
+            for task in self.tasks:
+                if task['status'] == self.STATUS_FAILED:
+                    task['status'] = self.STATUS_PENDING
+                    task['progress'] = 0
+                    task['error_message'] = None
+                    task['started_at'] = None
+                    task['completed_at'] = None
+                    count += 1
+            return count
+    
+    def get_queue_status(self) -> dict:
+        """获取队列状态
+        
+        Returns:
+            dict: 队列状态信息
+        """
+        with self._lock:
+            completed_count = sum(1 for t in self.tasks if t['status'] == self.STATUS_COMPLETED)
+            failed_count = sum(1 for t in self.tasks if t['status'] == self.STATUS_FAILED)
+            skipped_count = sum(1 for t in self.tasks if t['status'] == self.STATUS_SKIPPED)
+            
+            current_task = self.get_current_task_unsafe()
+            current_task_id = current_task['id'] if current_task else None
+            current_task_progress = current_task['progress'] if current_task else 0
+            
+            return {
+                'is_running': self.is_running,
+                'total_tasks': len(self.tasks),
+                'completed_count': completed_count,
+                'failed_count': failed_count,
+                'skipped_count': skipped_count,
+                'current_task_id': current_task_id,
+                'current_task_progress': current_task_progress,
+                'current_download_mode': self.current_download_mode,
+                'tasks': [t.copy() for t in self.tasks]
+            }
+    
+    def set_download_mode(self, mode: str):
+        """设置当前下载模式
+        
+        Args:
+            mode: 'fast' 或 'slow'
+        """
+        with self._lock:
+            self.current_download_mode = mode
+    
+    def store_chapter(self, book_id: str, chapter_index: int, content: dict):
+        """存储已下载的章节内容
+        
+        Args:
+            book_id: 书籍ID
+            chapter_index: 章节索引
+            content: 章节内容
+        """
+        with self._lock:
+            if book_id not in self.downloaded_chapters:
+                self.downloaded_chapters[book_id] = {}
+            self.downloaded_chapters[book_id][chapter_index] = content
+    
+    def get_downloaded_chapters(self, book_id: str) -> dict:
+        """获取已下载的章节
+        
+        Args:
+            book_id: 书籍ID
+        
+        Returns:
+            dict: 已下载的章节 {index: content}
+        """
+        with self._lock:
+            return self.downloaded_chapters.get(book_id, {}).copy()
+    
+    def clear_downloaded_chapters(self, book_id: str):
+        """清除已下载的章节缓存
+        
+        Args:
+            book_id: 书籍ID
+        """
+        with self._lock:
+            if book_id in self.downloaded_chapters:
+                del self.downloaded_chapters[book_id]
+
+
+# 全局任务管理器实例
+task_manager = TaskManager()
+
+
 # 更新下载状态 - 支持多线程下载
 update_download_status = {
     'is_downloading': False,
@@ -1303,6 +1590,139 @@ def api_queue_start():
         download_queue.put(task)
 
     return jsonify({'success': True, 'count': len(cleaned_tasks)})
+
+
+@app.route('/api/queue/status', methods=['GET'])
+def api_queue_status():
+    """获取队列状态
+    
+    返回队列中所有任务的详细信息，包括状态、进度等
+    """
+    status = task_manager.get_queue_status()
+    return jsonify({
+        'success': True,
+        'data': status
+    })
+
+
+@app.route('/api/queue/skip', methods=['POST'])
+def api_queue_skip():
+    """跳过当前任务
+    
+    停止当前书籍的下载并开始下载队列中的下一本书
+    """
+    result = task_manager.skip_current()
+    if result:
+        return jsonify({
+            'success': True,
+            'message': '已跳过当前任务'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': '无法跳过：没有正在下载的任务'
+        }), 400
+
+
+@app.route('/api/queue/retry', methods=['POST'])
+def api_queue_retry():
+    """重试指定任务或所有失败任务
+    
+    请求体:
+    - task_id: 指定任务ID（可选）
+    - retry_all: 是否重试所有失败任务（可选）
+    """
+    data = request.get_json() or {}
+    task_id = data.get('task_id')
+    retry_all = data.get('retry_all', False)
+    
+    if retry_all:
+        count = task_manager.retry_all_failed()
+        if count > 0:
+            return jsonify({
+                'success': True,
+                'message': f'已重置 {count} 个失败任务',
+                'count': count
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '没有失败的任务需要重试'
+            }), 400
+    elif task_id:
+        result = task_manager.retry_task(task_id)
+        if result:
+            return jsonify({
+                'success': True,
+                'message': '任务已重置，等待重新下载'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '无法重试：任务不存在或状态不是失败'
+            }), 400
+    else:
+        return jsonify({
+            'success': False,
+            'message': '请提供 task_id 或设置 retry_all=true'
+        }), 400
+
+
+@app.route('/api/queue/force-save', methods=['POST'])
+def api_queue_force_save():
+    """强制保存当前进度
+    
+    将当前已下载的章节内容保存到文件
+    """
+    result = task_manager.force_save()
+    if result['success']:
+        return jsonify(result)
+    else:
+        return jsonify(result), 400
+
+
+@app.route('/api/download/resume-check', methods=['POST'])
+def api_download_resume_check():
+    """检查是否有可恢复的下载状态
+    
+    请求体:
+    - book_id: 书籍ID
+    
+    返回:
+    - has_saved_state: 是否有已保存的下载状态
+    - downloaded_chapters: 已下载的章节数
+    - total_chapters: 总章节数（如果已知）
+    """
+    data = request.get_json() or {}
+    book_id = str(data.get('book_id', '')).strip()
+    
+    if not book_id:
+        return jsonify({
+            'success': False,
+            'message': '请提供 book_id'
+        }), 400
+    
+    # 从 novel_downloader 导入状态加载函数
+    try:
+        from novel_downloader import load_status, _get_status_file_path
+        
+        downloaded_ids = load_status(book_id)
+        has_saved_state = len(downloaded_ids) > 0
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'has_saved_state': has_saved_state,
+                'downloaded_chapters': len(downloaded_ids),
+                'book_id': book_id
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'检查下载状态失败: {str(e)}'
+        }), 500
+
 
 @app.route('/api/cancel', methods=['POST'])
 def api_cancel():

@@ -209,6 +209,22 @@
                                         </div>
                                     </div>
                                 </div>
+                                
+                                <!-- 队列控制按钮 -->
+                                <div class="queue-controls" id="queueControls" style="display: none;">
+                                    <button class="btn btn-sm btn-warning" id="skipCurrentBtn" title="跳过当前任务">
+                                        <iconify-icon icon="line-md:arrow-right"></iconify-icon>
+                                        <span data-i18n="btn_skip_current">跳过当前</span>
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary" id="forceSaveBtn" title="强制保存已下载内容">
+                                        <iconify-icon icon="line-md:download-outline"></iconify-icon>
+                                        <span data-i18n="btn_force_save">强制保存</span>
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary" id="retryAllBtn" title="重试所有失败任务" style="display: none;">
+                                        <iconify-icon icon="line-md:backup-restore"></iconify-icon>
+                                        <span data-i18n="btn_retry_all">重试全部</span>
+                                    </button>
+                                </div>
 
                                 <div class="queue-list" id="queueList">
                                     <div class="empty-state">
@@ -340,6 +356,79 @@
                 </button>
                 <button class="btn btn-primary" id="downloadUpdateBtn">
                     <iconify-icon icon="line-md:download-loop"></iconify-icon>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 断点续传确认对话框 -->
+    <div class="modal" id="resumeModal" style="display: none;">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>
+                    <iconify-icon icon="line-md:backup-restore"></iconify-icon>
+                    <span data-i18n="modal_resume_title">发现未完成的下载</span>
+                </h3>
+                <button class="modal-close" id="resumeModalClose">
+                    <iconify-icon icon="line-md:close"></iconify-icon>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="resumeMessage">检测到该书籍有未完成的下载，已下载 <span id="resumeChapterCount">0</span> 个章节。</p>
+                <p data-i18n="resume_question">是否继续上次的下载？</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="resumeRestartBtn">
+                    <iconify-icon icon="line-md:backup-restore"></iconify-icon>
+                    <span data-i18n="btn_restart_download">重新下载</span>
+                </button>
+                <button class="btn btn-primary" id="resumeContinueBtn">
+                    <iconify-icon icon="line-md:play"></iconify-icon>
+                    <span data-i18n="btn_continue_download">继续下载</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 队列完成摘要对话框 -->
+    <div class="modal" id="queueSummaryModal" style="display: none;">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>
+                    <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
+                    <span data-i18n="modal_queue_complete_title">队列下载完成</span>
+                </h3>
+                <button class="modal-close" id="queueSummaryModalClose">
+                    <iconify-icon icon="line-md:close"></iconify-icon>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="queue-summary-stats">
+                    <div class="stat-item stat-success">
+                        <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
+                        <span id="summaryCompleted">0</span>
+                        <span data-i18n="summary_completed">成功</span>
+                    </div>
+                    <div class="stat-item stat-failed">
+                        <iconify-icon icon="line-md:close-circle"></iconify-icon>
+                        <span id="summaryFailed">0</span>
+                        <span data-i18n="summary_failed">失败</span>
+                    </div>
+                    <div class="stat-item stat-skipped">
+                        <iconify-icon icon="line-md:arrow-right-circle"></iconify-icon>
+                        <span id="summarySkipped">0</span>
+                        <span data-i18n="summary_skipped">跳过</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="summaryCloseBtn">
+                    <iconify-icon icon="line-md:close"></iconify-icon>
+                    <span data-i18n="btn_close">关闭</span>
+                </button>
+                <button class="btn btn-primary" id="summaryRetryBtn" style="display: none;">
+                    <iconify-icon icon="line-md:backup-restore"></iconify-icon>
+                    <span data-i18n="btn_retry_failed">重试失败</span>
                 </button>
             </div>
         </div>

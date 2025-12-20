@@ -12,3 +12,7 @@ pillow-heif>=0.15.0,<1.0.0
 Flask>=3.0.0,<4.0.0
 Flask-CORS>=5.0.0,<7.0.0
 pywebview>=5.0.0,<6.0.0
+
+# 测试依赖
+pytest>=7.0.0,<9.0.0
+hypothesis>=6.0.0,<7.0.0

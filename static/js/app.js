@@ -78,6 +78,269 @@ class Toast {
     }
 }
 
+/* ===================== 队列管理器 ===================== */
+
+class QueueManager {
+    constructor() {
+        this.storageKey = 'fanqie_download_queue_v2';
+        this.statusPollInterval = null;
+        this.serverTasks = [];  // 服务器端任务状态
+    }
+    
+    // 获取状态图标
+    getStatusIcon(status) {
+        const icons = {
+            pending: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+            downloading: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>',
+            completed: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
+            failed: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>',
+            skipped: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>'
+        };
+        return icons[status] || icons.pending;
+    }
+    
+    // 获取状态文本
+    getStatusText(status) {
+        const texts = {
+            pending: i18n.t('queue_status_pending') || '等待中',
+            downloading: i18n.t('queue_status_downloading') || '下载中',
+            completed: i18n.t('queue_status_completed') || '已完成',
+            failed: i18n.t('queue_status_failed') || '失败',
+            skipped: i18n.t('queue_status_skipped') || '已跳过'
+        };
+        return texts[status] || status;
+    }
+    
+    // 从服务器获取队列状态
+    async fetchQueueStatus() {
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (AppState.accessToken) {
+                headers['X-Access-Token'] = AppState.accessToken;
+            }
+            const response = await fetch('/api/queue/status', { headers });
+            const result = await response.json();
+            if (result.success) {
+                this.serverTasks = result.data.tasks || [];
+                return result.data;
+            }
+        } catch (e) {
+            console.error('获取队列状态失败:', e);
+        }
+        return null;
+    }
+    
+    // 跳过当前任务
+    async skipCurrent() {
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (AppState.accessToken) {
+                headers['X-Access-Token'] = AppState.accessToken;
+            }
+            const response = await fetch('/api/queue/skip', {
+                method: 'POST',
+                headers
+            });
+            const result = await response.json();
+            if (result.success) {
+                Toast.success(result.message || '已跳过当前任务');
+                return true;
+            } else {
+                Toast.error(result.message || '跳过失败');
+            }
+        } catch (e) {
+            Toast.error('跳过失败: ' + e.message);
+        }
+        return false;
+    }
+    
+    // 重试任务
+    async retryTask(taskId) {
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (AppState.accessToken) {
+                headers['X-Access-Token'] = AppState.accessToken;
+            }
+            const response = await fetch('/api/queue/retry', {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ task_id: taskId })
+            });
+            const result = await response.json();
+            if (result.success) {
+                Toast.success(result.message || '任务已重置');
+                return true;
+            } else {
+                Toast.error(result.message || '重试失败');
+            }
+        } catch (e) {
+            Toast.error('重试失败: ' + e.message);
+        }
+        return false;
+    }
+    
+    // 重试所有失败任务
+    async retryAllFailed() {
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (AppState.accessToken) {
+                headers['X-Access-Token'] = AppState.accessToken;
+            }
+            const response = await fetch('/api/queue/retry', {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ retry_all: true })
+            });
+            const result = await response.json();
+            if (result.success) {
+                Toast.success(result.message || '已重置所有失败任务');
+                return true;
+            } else {
+                Toast.error(result.message || '重试失败');
+            }
+        } catch (e) {
+            Toast.error('重试失败: ' + e.message);
+        }
+        return false;
+    }
+    
+    // 强制保存
+    async forceSave() {
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (AppState.accessToken) {
+                headers['X-Access-Token'] = AppState.accessToken;
+            }
+            const response = await fetch('/api/queue/force-save', {
+                method: 'POST',
+                headers
+            });
+            const result = await response.json();
+            if (result.success) {
+                Toast.success(result.message || '已保存当前进度');
+                return true;
+            } else {
+                Toast.error(result.message || '保存失败');
+            }
+        } catch (e) {
+            Toast.error('保存失败: ' + e.message);
+        }
+        return false;
+    }
+    
+    // 检查断点续传
+    async checkResume(bookId) {
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (AppState.accessToken) {
+                headers['X-Access-Token'] = AppState.accessToken;
+            }
+            const response = await fetch('/api/download/resume-check', {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ book_id: bookId })
+            });
+            const result = await response.json();
+            if (result.success) {
+                return result.data;
+            }
+        } catch (e) {
+            console.error('检查断点续传失败:', e);
+        }
+        return null;
+    }
+    
+    // 开始状态轮询
+    startStatusPolling() {
+        if (this.statusPollInterval) return;
+        this.statusPollInterval = setInterval(async () => {
+            const status = await this.fetchQueueStatus();
+            if (status) {
+                this.updateQueueUI(status);
+                // 如果队列完成，停止轮询
+                if (!status.is_running) {
+                    this.stopStatusPolling();
+                    this.showQueueSummary(status);
+                }
+            }
+        }, 1000);
+    }
+    
+    // 停止状态轮询
+    stopStatusPolling() {
+        if (this.statusPollInterval) {
+            clearInterval(this.statusPollInterval);
+            this.statusPollInterval = null;
+        }
+    }
+    
+    // 更新队列UI
+    updateQueueUI(status) {
+        const list = document.getElementById('queueList');
+        if (!list) return;
+        
+        const tasks = status.tasks || [];
+        if (tasks.length === 0) return;
+        
+        // 更新每个任务的状态显示
+        tasks.forEach(task => {
+            const taskEl = list.querySelector(`[data-task-id="${task.id}"]`);
+            if (taskEl) {
+                const statusEl = taskEl.querySelector('.queue-item-status');
+                if (statusEl) {
+                    statusEl.innerHTML = `${this.getStatusIcon(task.status)} ${this.getStatusText(task.status)}`;
+                    statusEl.className = `queue-item-status status-${task.status}`;
+                }
+                
+                const progressEl = taskEl.querySelector('.queue-item-progress');
+                if (progressEl && task.status === 'downloading') {
+                    progressEl.style.display = 'block';
+                    progressEl.querySelector('.progress-fill').style.width = `${task.progress}%`;
+                } else if (progressEl) {
+                    progressEl.style.display = 'none';
+                }
+                
+                // 显示/隐藏重试按钮
+                const retryBtn = taskEl.querySelector('.retry-btn');
+                if (retryBtn) {
+                    retryBtn.style.display = task.status === 'failed' ? 'inline-block' : 'none';
+                }
+            }
+        });
+        
+        // 更新摘要
+        const summary = document.getElementById('queueSummary');
+        if (summary) {
+            const completed = status.completed_count || 0;
+            const failed = status.failed_count || 0;
+            const skipped = status.skipped_count || 0;
+            const total = status.total_tasks || 0;
+            summary.textContent = `${completed}/${total} 完成, ${failed} 失败, ${skipped} 跳过`;
+        }
+    }
+    
+    // 显示队列完成摘要
+    showQueueSummary(status) {
+        const completed = status.completed_count || 0;
+        const failed = status.failed_count || 0;
+        const skipped = status.skipped_count || 0;
+        const total = status.total_tasks || 0;
+        
+        let message = `队列下载完成: ${completed}/${total} 成功`;
+        if (failed > 0) message += `, ${failed} 失败`;
+        if (skipped > 0) message += `, ${skipped} 跳过`;
+        
+        if (failed > 0) {
+            Toast.warning(message + '。点击"重试全部"可重新下载失败任务。');
+        } else {
+            Toast.success(message);
+        }
+    }
+}
+
+// 全局队列管理器实例
+const queueManager = new QueueManager();
+
 /* ===================== 确认对话框组件 ===================== */
 
 class ConfirmDialog {
@@ -1058,28 +1321,46 @@ function renderQueue() {
 
         const item = document.createElement('div');
         item.className = 'queue-item';
+        item.dataset.taskId = task.id;
 
         const title = task.book_name || task.book_id || i18n.t('queue_unknown_book');
         const meta = [
             task.author || '',
             task.book_id ? `ID: ${task.book_id}` : ''
         ].filter(Boolean).join(' · ');
+        
+        const status = task.status || 'pending';
 
         item.innerHTML = `
             <div class="queue-item-main">
                 <div class="queue-item-title">${title}</div>
                 <div class="queue-item-meta">${meta}</div>
                 <div class="queue-item-meta">${formatQueueChapterInfo(task)}</div>
+                <div class="queue-item-status status-${status}">
+                    ${queueManager.getStatusIcon(status)} ${queueManager.getStatusText(status)}
+                </div>
+                <div class="queue-item-progress" style="display: none;">
+                    <div class="progress-bar-mini">
+                        <div class="progress-fill" style="width: 0%"></div>
+                    </div>
+                </div>
             </div>
             <div class="queue-item-actions">
-                <button class="btn btn-sm btn-text" type="button">${i18n.t('btn_remove_from_queue')}</button>
+                <button class="btn btn-sm btn-text retry-btn" type="button" style="display: none;">${i18n.t('btn_retry') || '重试'}</button>
+                <button class="btn btn-sm btn-text remove-btn" type="button">${i18n.t('btn_remove_from_queue')}</button>
             </div>
         `;
 
-        const removeBtn = item.querySelector('button');
+        const removeBtn = item.querySelector('.remove-btn');
         removeBtn.addEventListener('click', () => {
             AppState.removeFromQueue(task.id);
             logger.logKey('msg_removed_from_queue', title);
+        });
+        
+        const retryBtn = item.querySelector('.retry-btn');
+        retryBtn.addEventListener('click', async () => {
+            await queueManager.retryTask(task.id);
+            renderQueue();
         });
 
         list.appendChild(item);
