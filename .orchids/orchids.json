@@ -1,7 +1,0 @@
-{
-  "projectId": "fanqie-novel-downloader",
-  "createdAt": 1765692047783,
-  "startupCommands": [
-    "pip install -r requirements.txt; python web_app.py"
-  ]
-}
