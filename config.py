@@ -111,11 +111,11 @@ def load_config() -> Dict:
         "endpoints": LOCAL_ENDPOINTS
     }
 
-    # 读取本地偏好（手动指定优先）
+    # 读取本地偏好（手动/自动选择均可复用）
     local_pref = _load_local_pref()
     mode = str(local_pref.get("api_base_url_mode", "auto") or "auto").lower()
     pref_url = _normalize_base_url(str(local_pref.get("api_base_url", "") or ""))
-    if mode == "manual" and pref_url:
+    if mode in ("manual", "auto") and pref_url:
         config["api_base_url"] = pref_url
 
     print(t("config_success", config['api_base_url'] or "auto"))

@@ -239,10 +239,10 @@ def cmd_download(args):
     )
     
     if success:
-        print("\n✓ 下载完成!")
+        print("\n下载完成!")
         return 0
     else:
-        print("\n✗ 下载失败")
+        print("\n下载失败")
         return 1
 
 

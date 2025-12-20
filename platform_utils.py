@@ -265,7 +265,7 @@ def get_feature_status_report() -> str:
     }
     
     for feature_id, feature_name in feature_names.items():
-        status = '✓' if feature_id in info.available_features else '✗'
+        status = 'Y' if feature_id in info.available_features else 'N'
         lines.append(f"  [{status}] {feature_name}")
     
     return '\n'.join(lines)
