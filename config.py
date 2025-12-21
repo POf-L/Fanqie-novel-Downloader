@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 配置管理模块 - 包含版本信息、全局配置
-配置已硬编码，无需远程获取
+API文档: http://49.232.137.12/docs
 """
 
 __version__ = "1.1.0"
@@ -69,22 +69,13 @@ def _load_local_pref() -> Dict:
         pass
     return {}
 
-# 本地固定的 API 端点配置
+# API 端点配置 - 对接 http://49.232.137.12/docs
 LOCAL_ENDPOINTS = {
-    "search": "/api/search",
-    "detail": "/api/detail",
-    "book": "/api/book",
-    "directory": "/api/directory",
-    "content": "/api/content",
-    "chapter": "/api/chapter",
-    "raw_full": "/api/raw_full",
-    "comment": "/api/comment",
-    "multi_content": "/api/content",
-    "ios_content": "/api/ios/content",
-    "ios_register": "/api/ios/register",
-    "device_pool": "/api/device/pool",
-    "device_register": "/api/device/register",
-    "device_status": "/api/device/status"
+    "search": "/api/search",       # 搜索书籍 (key, tab_type, offset)
+    "detail": "/api/detail",       # 获取书籍详情 (book_id)
+    "book": "/api/book",           # 获取书籍目录 (book_id)
+    "directory": "/api/directory", # 获取简化目录 (fq_id)
+    "content": "/api/content",     # 内容接口 (tab=小说/批量/下载, item_id/book_id)
 }
 
 

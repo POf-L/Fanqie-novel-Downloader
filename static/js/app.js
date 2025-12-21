@@ -2665,15 +2665,14 @@ function showInlineConfirm(bookId, prefill = null) {
             chapterInputs.style.display = mode === 'range' ? 'grid' : 'none';
             manualContainer.style.display = mode === 'manual' ? 'block' : 'none';
 
-            if (mode === 'all') {
-                setHint('');
-                confirmBtn.disabled = false;
-                return;
-            }
-
+            // 无论哪种模式，加载中或出错时都禁用确认按钮
             if (InlineConfirmState.loading) {
-                setHint(i18n.t('text_fetching_chapters'), true);
-                showLoadingChapters();
+                if (mode !== 'all') {
+                    setHint(i18n.t('text_fetching_chapters'), true);
+                    showLoadingChapters();
+                } else {
+                    setHint(i18n.t('text_fetching_book_info'), true);
+                }
                 confirmBtn.disabled = true;
                 return;
             }

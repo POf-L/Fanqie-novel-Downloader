@@ -156,14 +156,12 @@ class APIManager:
             return None
     
     def get_directory(self, book_id: str) -> Optional[List[Dict]]:
-        """获取简化目录（更快，标题与整本下载内容一致）"""
+        """获取简化目录（更快，标题与整本下载内容一致）
+        GET /api/directory - 参数: fq_id
+        """
         try:
-            endpoint = self.endpoints.get('directory')
-            if not endpoint:
-                return None
-            
-            url = f"{self.base_url}{endpoint}"
-            params = {"book_id": book_id}
+            url = f"{self.base_url}/api/directory"
+            params = {"fq_id": book_id}
             response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
             
             if response.status_code == 200:
