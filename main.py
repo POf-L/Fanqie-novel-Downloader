@@ -112,19 +112,17 @@ def open_web_interface(port, access_token):
                             pass
                         _window.destroy()
                 
-                def start_drag(self, mouse_x, mouse_y):
-                    """开始拖动窗口"""
+                def start_drag(self, offset_x, offset_y):
+                    """开始拖动窗口，记录鼠标在窗口内的偏移"""
                     if _window and not self._is_maximized:
-                        self._drag_start_x = mouse_x
-                        self._drag_start_y = mouse_y
+                        self._drag_start_x = offset_x
+                        self._drag_start_y = offset_y
                 
-                def drag_window(self, mouse_x, mouse_y):
+                def drag_window(self, screen_x, screen_y):
                     """拖动窗口到新位置"""
                     if _window and not self._is_maximized:
-                        dx = mouse_x - self._drag_start_x
-                        dy = mouse_y - self._drag_start_y
-                        new_x = _window.x + dx
-                        new_y = _window.y + dy
+                        new_x = screen_x - self._drag_start_x
+                        new_y = screen_y - self._drag_start_y
                         _window.move(new_x, new_y)
             
             api = WindowApi()

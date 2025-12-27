@@ -3559,13 +3559,15 @@ function initWindowDrag() {
         
         if (isPyWebView() && window.pywebview.api.start_drag) {
             isDragging = true;
-            window.pywebview.api.start_drag(e.screenX, e.screenY);
+            // 传入鼠标在页面内的位置（相对于窗口左上角）
+            window.pywebview.api.start_drag(e.clientX, e.clientY);
             e.preventDefault();
         }
     });
     
     document.addEventListener('mousemove', (e) => {
         if (isDragging && isPyWebView() && window.pywebview.api.drag_window) {
+            // 传入屏幕坐标
             window.pywebview.api.drag_window(e.screenX, e.screenY);
         }
     });
