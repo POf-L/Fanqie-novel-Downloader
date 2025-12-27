@@ -3533,6 +3533,61 @@ function initWindowControls() {
             window.close();
         }
     });
+    
+    // 初始化窗口拖动功能
+    initWindowDrag();
+}
+
+// 窗口拖动功能
+function initWindowDrag() {
+    const header = document.querySelector('.dashboard-header');
+    if (!header) return;
+    
+    const isPyWebView = () => window.pywebview && window.pywebview.api;
+    
+    let isDragging = false;
+    
+    header.addEventListener('mousedown', (e) => {
+        // 忽略按钮和输入框等交互元素
+        if (e.target.closest('.header-actions') || 
+            e.target.closest('button') || 
+            e.target.closest('input') || 
+            e.target.closest('select') ||
+            e.target.closest('a')) {
+            return;
+        }
+        
+        if (isPyWebView() && window.pywebview.api.start_drag) {
+            isDragging = true;
+            window.pywebview.api.start_drag(e.screenX, e.screenY);
+            e.preventDefault();
+        }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (isDragging && isPyWebView() && window.pywebview.api.drag_window) {
+            window.pywebview.api.drag_window(e.screenX, e.screenY);
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        isDragging = false;
+    });
+    
+    // 双击标题栏最大化/还原
+    header.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.header-actions') || 
+            e.target.closest('button') || 
+            e.target.closest('input') || 
+            e.target.closest('select') ||
+            e.target.closest('a')) {
+            return;
+        }
+        
+        if (isPyWebView()) {
+            window.pywebview.api.toggle_maximize();
+        }
+    });
 }
 
 // 初始化窗口控制

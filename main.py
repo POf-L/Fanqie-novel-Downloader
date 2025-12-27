@@ -74,6 +74,8 @@ def open_web_interface(port, access_token):
             class WindowApi:
                 def __init__(self):
                     self._is_maximized = False
+                    self._drag_start_x = 0
+                    self._drag_start_y = 0
 
                 def minimize_window(self):
                     if _window:
@@ -109,6 +111,21 @@ def open_web_interface(port, access_token):
                         except Exception:
                             pass
                         _window.destroy()
+                
+                def start_drag(self, mouse_x, mouse_y):
+                    """开始拖动窗口"""
+                    if _window and not self._is_maximized:
+                        self._drag_start_x = mouse_x
+                        self._drag_start_y = mouse_y
+                
+                def drag_window(self, mouse_x, mouse_y):
+                    """拖动窗口到新位置"""
+                    if _window and not self._is_maximized:
+                        dx = mouse_x - self._drag_start_x
+                        dy = mouse_y - self._drag_start_y
+                        new_x = _window.x + dx
+                        new_y = _window.y + dy
+                        _window.move(new_x, new_y)
             
             api = WindowApi()
             

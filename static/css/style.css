@@ -107,6 +107,12 @@ body {
     border: 1px solid var(--border);
     -webkit-app-region: drag;
     flex-shrink: 0;
+    cursor: grab;
+    user-select: none;
+}
+
+.dashboard-header:active {
+    cursor: grabbing;
 }
 
 .brand {
