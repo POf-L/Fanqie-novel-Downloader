@@ -19,7 +19,8 @@ from platform_utils import (
     get_window_config, 
     is_feature_available,
     get_feature_status_report,
-    get_unavailable_feature_message
+    get_unavailable_feature_message,
+    WindowPositionManager
 )
 
 def find_free_port():
@@ -64,6 +65,9 @@ def open_web_interface(port, access_token):
         try:
             import webview
             
+            # 窗口位置管理器
+            position_manager = WindowPositionManager()
+            
             # 窗口控制 API (延迟绑定)
             _window = None
             
@@ -95,27 +99,58 @@ def open_web_interface(port, access_token):
                 
                 def close_window(self):
                     if _window:
+                        # 保存窗口位置
+                        try:
+                            position_manager.save_position(
+                                _window.x, _window.y,
+                                _window.width, _window.height,
+                                self._is_maximized
+                            )
+                        except Exception:
+                            pass
                         _window.destroy()
             
             api = WindowApi()
             
             def on_closed():
+                # 保存窗口位置
+                if _window:
+                    try:
+                        position_manager.save_position(
+                            _window.x, _window.y,
+                            _window.width, _window.height,
+                            api._is_maximized
+                        )
+                    except Exception:
+                        pass
                 print(t("main_app_closed"))
             
             # 获取平台适配的窗口配置
             window_config = get_window_config()
             
-            # 创建窗口 (使用平台适配配置)
+            # 获取恢复的窗口位置
+            restored_position = position_manager.get_restored_position(
+                window_config['width'],
+                window_config['height']
+            )
+            
+            # 创建窗口 (使用恢复的位置)
             _window = webview.create_window(
                 title=window_config['title'],
                 url=url,
-                width=window_config['width'],
-                height=window_config['height'],
+                x=restored_position['x'],
+                y=restored_position['y'],
+                width=restored_position['width'],
+                height=restored_position['height'],
                 min_size=window_config['min_size'],
                 background_color=window_config['background_color'],
                 frameless=window_config['frameless'],
                 js_api=api
             )
+            
+            # 设置最大化状态
+            if restored_position.get('maximized', False):
+                api._is_maximized = True
             
             try:
                 webview.start()

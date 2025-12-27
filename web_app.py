@@ -94,6 +94,436 @@ def get_default_download_path():
     
     return downloads
 
+# ===================== 书籍列表文件解析器 =====================
+
+class BookListParser:
+    """解析书籍列表文件
+    
+    支持格式：
+    - 纯书籍ID: 12345
+    - 完整URL: https://fanqienovel.com/page/12345
+    - 注释行: # 这是注释
+    - 空行会被忽略
+    """
+    
+    # URL 正则模式
+    URL_PATTERN = re.compile(r'fanqienovel\.com/page/(\d+)')
+    
+    @staticmethod
+    def parse_file_content(content: str) -> dict:
+        """
+        解析文件内容
+        
+        Args:
+            content: 文件文本内容
+        
+        Returns:
+            {
+                'success': bool,
+                'books': List[dict],  # [{'book_id': str, 'source_line': int}, ...]
+                'skipped': List[dict],  # 跳过的行 [{'line': int, 'content': str, 'reason': str}, ...]
+                'total_lines': int
+            }
+        """
+        result = {
+            'success': True,
+            'books': [],
+            'skipped': [],
+            'total_lines': 0
+        }
+        
+        if not content or not content.strip():
+            return result
+        
+        lines = content.splitlines()
+        result['total_lines'] = len(lines)
+        
+        seen_ids = set()  # 用于去重
+        
+        for line_num, line in enumerate(lines, 1):
+            line = line.strip()
+            
+            # 跳过空行
+            if not line:
+                continue
+            
+            # 跳过注释行
+            if line.startswith('#'):
+                continue
+            
+            # 尝试提取书籍ID
+            book_id = BookListParser.extract_book_id(line)
+            
+            if book_id:
+                if book_id not in seen_ids:
+                    seen_ids.add(book_id)
+                    result['books'].append({
+                        'book_id': book_id,
+                        'source_line': line_num
+                    })
+                else:
+                    result['skipped'].append({
+                        'line': line_num,
+                        'content': line[:50] + ('...' if len(line) > 50 else ''),
+                        'reason': '重复的书籍ID'
+                    })
+            else:
+                result['skipped'].append({
+                    'line': line_num,
+                    'content': line[:50] + ('...' if len(line) > 50 else ''),
+                    'reason': '无效的格式'
+                })
+        
+        return result
+    
+    @staticmethod
+    def extract_book_id(line: str) -> str:
+        """
+        从行内容提取书籍ID（支持纯ID和URL格式）
+        
+        Args:
+            line: 单行内容
+        
+        Returns:
+            书籍ID字符串，如果无法提取则返回 None
+        """
+        line = line.strip()
+        
+        if not line:
+            return None
+        
+        # 尝试从URL提取
+        match = BookListParser.URL_PATTERN.search(line)
+        if match:
+            return match.group(1)
+        
+        # 检查是否为纯数字ID
+        if line.isdigit() and len(line) >= 5:
+            return line
+        
+        return None
+
+
+# ===================== 章节范围解析器 =====================
+
+class ChapterRangeParser:
+    """解析章节范围输入字符串
+    
+    支持格式：
+    - 单个数字: "5"
+    - 范围: "1-100"
+    - 多个范围: "1-10, 50-100, 200-300"
+    - 混合格式: "1-10, 15, 20-30"
+    """
+    
+    @staticmethod
+    def parse(input_str: str, max_chapter: int) -> dict:
+        """
+        解析章节范围字符串
+        
+        Args:
+            input_str: 用户输入，如 "1-100, 150, 200-300"
+            max_chapter: 最大章节数（用于边界验证，1-based）
+        
+        Returns:
+            {
+                'success': bool,
+                'chapters': List[int],  # 选中的章节索引列表 (0-based)
+                'errors': List[str],    # 错误信息列表
+                'warnings': List[str]   # 警告信息列表
+            }
+        """
+        result = {
+            'success': True,
+            'chapters': [],
+            'errors': [],
+            'warnings': []
+        }
+        
+        # 空输入返回空列表
+        if not input_str or not input_str.strip():
+            return result
+        
+        # 分割输入（支持逗号和中文逗号）
+        input_str = input_str.replace('，', ',')
+        items = [item.strip() for item in input_str.split(',') if item.strip()]
+        
+        selected_chapters = set()
+        
+        for item in items:
+            parsed = ChapterRangeParser._parse_single_item(item, max_chapter)
+            
+            if parsed['error']:
+                result['errors'].append(parsed['error'])
+                result['success'] = False
+            elif parsed['warning']:
+                result['warnings'].append(parsed['warning'])
+                selected_chapters.update(parsed['chapters'])
+            else:
+                selected_chapters.update(parsed['chapters'])
+        
+        # 转换为排序后的列表 (0-based 索引)
+        result['chapters'] = sorted(list(selected_chapters))
+        
+        return result
+    
+    @staticmethod
+    def _parse_single_item(item: str, max_chapter: int) -> dict:
+        """
+        解析单个项目（范围或单个数字）
+        
+        Args:
+            item: 单个项目字符串，如 "1-100" 或 "50"
+            max_chapter: 最大章节数 (1-based)
+        
+        Returns:
+            {
+                'chapters': List[int],  # 0-based 索引列表
+                'error': str or None,
+                'warning': str or None
+            }
+        """
+        result = {
+            'chapters': [],
+            'error': None,
+            'warning': None
+        }
+        
+        item = item.strip()
+        if not item:
+            return result
+        
+        # 检查是否是范围格式 (支持 - 和 中文 -)
+        item = item.replace('－', '-')
+        
+        if '-' in item:
+            parts = item.split('-')
+            if len(parts) != 2:
+                result['error'] = f'无效的范围格式: "{item}"'
+                return result
+            
+            start_str, end_str = parts[0].strip(), parts[1].strip()
+            
+            # 验证是否为数字
+            if not start_str.isdigit() or not end_str.isdigit():
+                result['error'] = f'范围必须是数字: "{item}"'
+                return result
+            
+            start = int(start_str)
+            end = int(end_str)
+            
+            # 验证非负数
+            if start <= 0 or end <= 0:
+                result['error'] = f'章节号必须大于0: "{item}"'
+                return result
+            
+            # 验证范围有效性
+            if start > end:
+                result['error'] = f'无效的范围（起始大于结束）: "{item}"'
+                return result
+            
+            # 处理超出最大值的情况
+            if start > max_chapter:
+                result['warning'] = f'起始章节 {start} 超出最大章节数 {max_chapter}，已忽略'
+                return result
+            
+            if end > max_chapter:
+                result['warning'] = f'结束章节 {end} 超出最大章节数 {max_chapter}，已截断到 {max_chapter}'
+                end = max_chapter
+            
+            # 生成章节列表 (转换为 0-based 索引)
+            result['chapters'] = list(range(start - 1, end))
+            
+        else:
+            # 单个数字
+            if not item.isdigit():
+                result['error'] = f'无效的章节号: "{item}"'
+                return result
+            
+            chapter = int(item)
+            
+            if chapter <= 0:
+                result['error'] = f'章节号必须大于0: "{item}"'
+                return result
+            
+            if chapter > max_chapter:
+                result['warning'] = f'章节 {chapter} 超出最大章节数 {max_chapter}，已忽略'
+                return result
+            
+            # 转换为 0-based 索引
+            result['chapters'] = [chapter - 1]
+        
+        return result
+
+
+# ===================== 下载历史管理器 =====================
+
+class DownloadHistoryManager:
+    """管理下载历史记录
+    
+    记录已下载的书籍信息，支持重复下载检测
+    """
+    
+    HISTORY_FILE = 'fanqie_download_history.json'
+    
+    def __init__(self, history_dir: str = None):
+        """
+        初始化历史管理器
+        
+        Args:
+            history_dir: 历史文件存储目录，默认为用户目录
+        """
+        if history_dir:
+            self.history_dir = history_dir
+        else:
+            self.history_dir = os.path.expanduser('~')
+        
+        self.history_file = os.path.join(self.history_dir, self.HISTORY_FILE)
+        self.history = self._load_history()
+    
+    def _load_history(self) -> dict:
+        """从文件加载历史记录"""
+        if os.path.exists(self.history_file):
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # 验证格式
+                    if isinstance(data, dict) and 'records' in data:
+                        return data
+                    # 兼容旧格式
+                    return {'version': 1, 'records': data if isinstance(data, dict) else {}}
+            except (json.JSONDecodeError, IOError) as e:
+                # 文件损坏，备份并创建新的
+                backup_file = self.history_file + '.bak'
+                try:
+                    if os.path.exists(self.history_file):
+                        os.rename(self.history_file, backup_file)
+                except:
+                    pass
+                return {'version': 1, 'records': {}}
+        return {'version': 1, 'records': {}}
+    
+    def _save_history(self) -> bool:
+        """保存历史记录到文件"""
+        try:
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                json.dump(self.history, f, ensure_ascii=False, indent=2)
+            return True
+        except IOError:
+            return False
+    
+    def add_record(self, book_id: str, book_name: str, author: str,
+                   save_path: str, file_format: str, chapter_count: int = 0) -> bool:
+        """
+        添加下载记录
+        
+        Args:
+            book_id: 书籍ID
+            book_name: 书名
+            author: 作者
+            save_path: 保存路径
+            file_format: 文件格式 (txt/epub)
+            chapter_count: 章节数量
+        
+        Returns:
+            是否保存成功
+        """
+        from datetime import datetime
+        
+        record = {
+            'book_id': str(book_id),
+            'book_name': book_name,
+            'author': author,
+            'download_time': datetime.now().isoformat(),
+            'save_path': save_path,
+            'file_format': file_format,
+            'chapter_count': chapter_count
+        }
+        
+        self.history['records'][str(book_id)] = record
+        return self._save_history()
+    
+    def check_exists(self, book_id: str) -> dict:
+        """
+        检查书籍是否已下载
+        
+        Args:
+            book_id: 书籍ID
+        
+        Returns:
+            如果存在返回记录详情，否则返回 None
+        """
+        book_id = str(book_id)
+        record = self.history['records'].get(book_id)
+        
+        if record:
+            # 检查文件是否仍然存在
+            record = record.copy()
+            record['file_exists'] = os.path.exists(record.get('save_path', ''))
+            return record
+        
+        return None
+    
+    def check_batch(self, book_ids: list) -> dict:
+        """
+        批量检查书籍是否已下载
+        
+        Args:
+            book_ids: 书籍ID列表
+        
+        Returns:
+            {book_id: record_or_none, ...}
+        """
+        result = {}
+        for book_id in book_ids:
+            result[str(book_id)] = self.check_exists(book_id)
+        return result
+    
+    def get_all_records(self) -> list:
+        """获取所有下载记录"""
+        records = []
+        for book_id, record in self.history['records'].items():
+            record_copy = record.copy()
+            record_copy['file_exists'] = os.path.exists(record.get('save_path', ''))
+            records.append(record_copy)
+        
+        # 按下载时间倒序排列
+        records.sort(key=lambda x: x.get('download_time', ''), reverse=True)
+        return records
+    
+    def remove_record(self, book_id: str) -> bool:
+        """
+        删除下载记录
+        
+        Args:
+            book_id: 书籍ID
+        
+        Returns:
+            是否删除成功
+        """
+        book_id = str(book_id)
+        if book_id in self.history['records']:
+            del self.history['records'][book_id]
+            return self._save_history()
+        return False
+    
+    def clear_all(self) -> bool:
+        """清空所有历史记录"""
+        self.history['records'] = {}
+        return self._save_history()
+
+
+# 全局下载历史管理器实例
+_download_history_manager = None
+
+def get_download_history_manager() -> DownloadHistoryManager:
+    """获取下载历史管理器单例"""
+    global _download_history_manager
+    if _download_history_manager is None:
+        _download_history_manager = DownloadHistoryManager()
+    return _download_history_manager
+
+
 # 全局变量
 download_queue = queue.Queue()
 current_download_status = {
@@ -1064,6 +1494,27 @@ def download_worker():
                         has_more = queue_done < queue_total
 
                 if success:
+                    # 记录下载历史
+                    try:
+                        history_manager = get_download_history_manager()
+                        # 构建保存路径
+                        from novel_downloader import sanitize_filename, generate_filename
+                        safe_book_name = sanitize_filename(book_name)
+                        author_name = book_detail.get('author', '')
+                        output_filename = generate_filename(safe_book_name, author_name, file_format)
+                        full_save_path = os.path.join(save_path, output_filename)
+                        
+                        history_manager.add_record(
+                            book_id=book_id,
+                            book_name=book_name,
+                            author=author_name,
+                            save_path=full_save_path,
+                            file_format=file_format,
+                            chapter_count=book_detail.get('serial_count', 0)
+                        )
+                    except Exception as hist_err:
+                        print(f"记录下载历史失败: {hist_err}")
+                    
                     if has_more:
                         update_status(
                             progress=0,
@@ -1342,6 +1793,161 @@ def api_search():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': t('web_search_fail', str(e))}), 500
+
+@app.route('/api/parse-chapter-range', methods=['POST'])
+def api_parse_chapter_range():
+    """解析章节范围字符串"""
+    data = request.get_json() or {}
+    input_str = data.get('input', '').strip()
+    max_chapter = data.get('max_chapter', 0)
+    
+    if not input_str:
+        return jsonify({
+            'success': True,
+            'data': {
+                'chapters': [],
+                'errors': [],
+                'warnings': []
+            }
+        })
+    
+    try:
+        max_chapter = int(max_chapter)
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': '无效的最大章节数'}), 400
+    
+    result = ChapterRangeParser.parse(input_str, max_chapter)
+    
+    return jsonify({
+        'success': result['success'],
+        'data': {
+            'chapters': result['chapters'],
+            'errors': result['errors'],
+            'warnings': result['warnings']
+        }
+    })
+
+
+@app.route('/api/upload-book-list', methods=['POST'])
+def api_upload_book_list():
+    """上传并解析书籍列表文件"""
+    # 检查是否有文件上传
+    if 'file' in request.files:
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': '未选择文件'}), 400
+        
+        try:
+            content = file.read().decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                file.seek(0)
+                content = file.read().decode('gbk')
+            except:
+                return jsonify({'success': False, 'message': '文件编码不支持，请使用 UTF-8 或 GBK 编码'}), 400
+    else:
+        # 也支持直接传递文本内容
+        data = request.get_json() or {}
+        content = data.get('content', '')
+    
+    if not content:
+        return jsonify({'success': False, 'message': '文件内容为空'}), 400
+    
+    result = BookListParser.parse_file_content(content)
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'books': result['books'],
+            'skipped': result['skipped'],
+            'total_lines': result['total_lines'],
+            'valid_count': len(result['books']),
+            'skipped_count': len(result['skipped'])
+        }
+    })
+
+
+# ===================== 下载历史 API =====================
+
+@app.route('/api/download-history/check', methods=['POST'])
+def api_download_history_check():
+    """检查书籍是否已下载"""
+    data = request.get_json() or {}
+    book_id = data.get('book_id')
+    book_ids = data.get('book_ids', [])
+    
+    history_manager = get_download_history_manager()
+    
+    # 单个检查
+    if book_id:
+        record = history_manager.check_exists(book_id)
+        return jsonify({
+            'success': True,
+            'exists': record is not None,
+            'record': record
+        })
+    
+    # 批量检查
+    if book_ids:
+        results = history_manager.check_batch(book_ids)
+        return jsonify({
+            'success': True,
+            'results': results
+        })
+    
+    return jsonify({'success': False, 'message': '请提供 book_id 或 book_ids'}), 400
+
+
+@app.route('/api/download-history/list', methods=['GET'])
+def api_download_history_list():
+    """获取下载历史列表"""
+    history_manager = get_download_history_manager()
+    records = history_manager.get_all_records()
+    
+    return jsonify({
+        'success': True,
+        'records': records,
+        'total': len(records)
+    })
+
+
+@app.route('/api/download-history/add', methods=['POST'])
+def api_download_history_add():
+    """添加下载记录"""
+    data = request.get_json() or {}
+    
+    required_fields = ['book_id', 'book_name', 'save_path', 'file_format']
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({'success': False, 'message': f'缺少必填字段: {field}'}), 400
+    
+    history_manager = get_download_history_manager()
+    success = history_manager.add_record(
+        book_id=data['book_id'],
+        book_name=data['book_name'],
+        author=data.get('author', ''),
+        save_path=data['save_path'],
+        file_format=data['file_format'],
+        chapter_count=data.get('chapter_count', 0)
+    )
+    
+    return jsonify({'success': success})
+
+
+@app.route('/api/download-history/remove', methods=['POST'])
+def api_download_history_remove():
+    """删除下载记录"""
+    data = request.get_json() or {}
+    book_id = data.get('book_id')
+    
+    if not book_id:
+        return jsonify({'success': False, 'message': '请提供 book_id'}), 400
+    
+    history_manager = get_download_history_manager()
+    success = history_manager.remove_record(book_id)
+    
+    return jsonify({'success': success})
+
 
 @app.route('/api/book-info', methods=['POST'])
 def api_book_info():

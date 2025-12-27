@@ -390,6 +390,66 @@ class ConfirmDialog {
     }
 }
 
+/* ===================== 重复下载确认对话框 ===================== */
+
+function showDuplicateDownloadDialog(bookInfo, record, downloadTime) {
+    return new Promise((resolve) => {
+        const fileExists = record.file_exists;
+        const modal = document.createElement('div');
+        modal.className = 'modal confirm-modal';
+        modal.innerHTML = `
+            <div class="modal-content confirm-dialog confirm-warning" style="max-width: 450px;">
+                <div class="modal-header">
+                    <h3>${i18n.t('title_duplicate_download') || '重复下载提示'}</h3>
+                    <button class="modal-close" type="button">×</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 15px;">
+                        <p style="color: #ffaa00; margin-bottom: 10px;">
+                            ⚠️ ${i18n.t('msg_book_already_downloaded') || '该书籍已下载过'}
+                        </p>
+                        <div style="background: #1a1a2e; padding: 12px; border-radius: 4px; font-size: 12px;">
+                            <p style="margin: 4px 0;"><strong>${i18n.t('label_book_name') || '书名'}:</strong> ${record.book_name}</p>
+                            <p style="margin: 4px 0;"><strong>${i18n.t('label_download_time') || '下载时间'}:</strong> ${downloadTime}</p>
+                            <p style="margin: 4px 0;"><strong>${i18n.t('label_file_status') || '文件状态'}:</strong> 
+                                ${fileExists 
+                                    ? '<span style="color: #00ff00;">' + (i18n.t('status_file_exists') || '文件存在') + '</span>' 
+                                    : '<span style="color: #ff4444;">' + (i18n.t('status_file_missing') || '文件已移动或删除') + '</span>'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button class="btn btn-secondary cancel-btn" type="button">${i18n.t('btn_cancel') || '取消'}</button>
+                    ${fileExists ? `<button class="btn btn-secondary open-btn" type="button">${i18n.t('btn_open_existing') || '打开已有文件'}</button>` : ''}
+                    <button class="btn btn-primary download-btn" type="button">${i18n.t('btn_download_anyway') || '仍然下载'}</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        modal.style.display = 'flex';
+
+        const close = (action) => {
+            modal.remove();
+            resolve(action);
+        };
+
+        modal.querySelector('.modal-close').addEventListener('click', () => close('cancel'));
+        modal.querySelector('.cancel-btn').addEventListener('click', () => close('cancel'));
+        modal.querySelector('.download-btn').addEventListener('click', () => close('download'));
+        
+        const openBtn = modal.querySelector('.open-btn');
+        if (openBtn) {
+            openBtn.addEventListener('click', () => close('open'));
+        }
+        
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close('cancel');
+        });
+    });
+}
+
 /* ===================== 文件夹浏览器组件 ===================== */
 
 class FolderBrowser {
@@ -1424,6 +1484,81 @@ async function handleClearQueue() {
     logger.logKey('msg_queue_cleared');
 }
 
+async function handleLoadFromFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // 重置 input 以便可以再次选择同一文件
+    event.target.value = '';
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const headers = {};
+        if (AppState.accessToken) {
+            headers['X-Access-Token'] = AppState.accessToken;
+        }
+        
+        const response = await fetch('/api/upload-book-list', {
+            method: 'POST',
+            headers,
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            Toast.error(result.message || i18n.t('alert_load_file_fail') || '加载文件失败');
+            return;
+        }
+        
+        const { books, skipped, valid_count, skipped_count } = result.data;
+        
+        if (valid_count === 0) {
+            Toast.warning(i18n.t('alert_no_valid_books') || '文件中没有有效的书籍ID');
+            return;
+        }
+        
+        // 添加到队列
+        let addedCount = 0;
+        for (const book of books) {
+            const task = {
+                id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+                book_id: book.book_id,
+                book_name: i18n.t('queue_unknown_book') || '未知书籍',
+                author: '',
+                cover_url: '',
+                abstract: '',
+                chapter_count: 0,
+                start_chapter: null,
+                end_chapter: null,
+                selected_chapters: null,
+                added_at: new Date().toISOString(),
+                from_file: true,
+                source_line: book.source_line
+            };
+            AppState.addToQueue(task);
+            addedCount++;
+        }
+        
+        let message = i18n.t('msg_loaded_from_file', addedCount) || `已从文件加载 ${addedCount} 本书籍`;
+        if (skipped_count > 0) {
+            message += ` (${i18n.t('msg_skipped_lines', skipped_count) || `跳过 ${skipped_count} 行`})`;
+        }
+        
+        Toast.success(message);
+        logger.log(message);
+        
+        // 切换到队列标签
+        switchTab('queue');
+        
+    } catch (e) {
+        console.error('Load from file error:', e);
+        Toast.error(i18n.t('alert_load_file_fail') || '加载文件失败');
+    }
+}
+
 /* ===================== 下载接口选择 ===================== */
 
 let apiSourcesCache = null;
@@ -1585,6 +1720,14 @@ function initializeUI(skipApiSources = false) {
     if (startQueueBtn) startQueueBtn.addEventListener('click', handleStartQueueDownload);
     const clearQueueBtn = document.getElementById('clearQueueBtn');
     if (clearQueueBtn) clearQueueBtn.addEventListener('click', handleClearQueue);
+    
+    // 从文件加载按钮
+    const loadFromFileBtn = document.getElementById('loadFromFileBtn');
+    const bookListFileInput = document.getElementById('bookListFileInput');
+    if (loadFromFileBtn && bookListFileInput) {
+        loadFromFileBtn.addEventListener('click', () => bookListFileInput.click());
+        bookListFileInput.addEventListener('change', handleLoadFromFile);
+    }
     
     // 版本信息 - 从API获取
     fetchVersion();
@@ -2883,6 +3026,10 @@ function showConfirmDialogLegacy(bookInfo) {
                     ${i18n.t('radio_range_chapters')}
                 </label>
                 <label>
+                    <input type="radio" name="chapterMode" value="quick">
+                    ${i18n.t('radio_quick_range') || '快速范围输入'}
+                </label>
+                <label>
                     <input type="radio" name="chapterMode" value="manual">
                     ${i18n.t('radio_manual_chapters')}
                 </label>
@@ -2905,6 +3052,22 @@ function showConfirmDialogLegacy(bookInfo) {
                         ).join('')}
                     </select>
                 </div>
+            </div>
+            
+            <div class="chapter-quick-range" id="chapterQuickRange" style="display: none; margin-top: 12px;">
+                <div class="input-row" style="margin-bottom: 8px;">
+                    <label>${i18n.t('label_quick_range') || '章节范围'}</label>
+                    <input type="text" id="quickRangeInput" class="form-input" 
+                           placeholder="${i18n.t('placeholder_quick_range') || '例如: 1-100, 150, 200-300'}"
+                           style="width: 100%; font-family: monospace;">
+                </div>
+                <div class="quick-range-hint" style="font-size: 11px; color: #888; margin-bottom: 8px;">
+                    ${i18n.t('hint_quick_range') || '支持格式: 单个数字(5)、范围(1-100)、多个范围(1-10, 50-100)'}
+                </div>
+                <div id="quickRangeResult" style="font-size: 12px; min-height: 20px;"></div>
+                <button class="btn btn-sm btn-secondary" id="applyQuickRangeBtn" style="margin-top: 8px;">
+                    ${i18n.t('btn_apply_range') || '应用范围'}
+                </button>
             </div>
             
             <div class="chapter-manual-container" id="chapterManualContainer" style="display: none; margin-top: 12px;">
@@ -2966,16 +3129,129 @@ function showConfirmDialogLegacy(bookInfo) {
         const chapterModeInputs = modal.querySelectorAll('input[name="chapterMode"]');
         const chapterInputs = modal.querySelector('#chapterInputs');
         const chapterManualContainer = modal.querySelector('#chapterManualContainer');
+        const chapterQuickRange = modal.querySelector('#chapterQuickRange');
         
         chapterModeInputs.forEach(input => {
             input.addEventListener('change', (e) => {
                 chapterInputs.style.display = e.target.value === 'range' ? 'block' : 'none';
                 chapterManualContainer.style.display = e.target.value === 'manual' ? 'block' : 'none';
+                if (chapterQuickRange) {
+                    chapterQuickRange.style.display = e.target.value === 'quick' ? 'block' : 'none';
+                }
             });
         });
+        
+        // 快速范围输入事件
+        const quickRangeInput = modal.querySelector('#quickRangeInput');
+        const quickRangeResult = modal.querySelector('#quickRangeResult');
+        const applyQuickRangeBtn = modal.querySelector('#applyQuickRangeBtn');
+        
+        if (quickRangeInput && quickRangeResult) {
+            let debounceTimer = null;
+            quickRangeInput.addEventListener('input', () => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(async () => {
+                    const inputValue = quickRangeInput.value.trim();
+                    if (!inputValue) {
+                        quickRangeResult.innerHTML = '';
+                        return;
+                    }
+                    
+                    try {
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (AppState.accessToken) {
+                            headers['X-Access-Token'] = AppState.accessToken;
+                        }
+                        const response = await fetch('/api/parse-chapter-range', {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify({
+                                input: inputValue,
+                                max_chapter: bookInfo.chapters.length
+                            })
+                        });
+                        const result = await response.json();
+                        
+                        if (result.success && result.data) {
+                            const { chapters, errors, warnings } = result.data;
+                            let html = '';
+                            
+                            if (errors.length > 0) {
+                                html += `<span style="color: #ff4444;">❌ ${errors.join(', ')}</span>`;
+                            } else if (chapters.length > 0) {
+                                html += `<span style="color: #00ff00;">✓ ${i18n.t('quick_range_selected', chapters.length) || '已选择 ' + chapters.length + ' 章'}</span>`;
+                            }
+                            
+                            if (warnings.length > 0) {
+                                html += `<br><span style="color: #ffaa00;">⚠ ${warnings.join(', ')}</span>`;
+                            }
+                            
+                            quickRangeResult.innerHTML = html;
+                        } else {
+                            quickRangeResult.innerHTML = `<span style="color: #ff4444;">❌ ${result.message || '解析失败'}</span>`;
+                        }
+                    } catch (e) {
+                        quickRangeResult.innerHTML = `<span style="color: #ff4444;">❌ 解析失败</span>`;
+                    }
+                }, 300);
+            });
+        }
+        
+        if (applyQuickRangeBtn) {
+            applyQuickRangeBtn.addEventListener('click', async () => {
+                const inputValue = quickRangeInput.value.trim();
+                if (!inputValue) {
+                    Toast.warning(i18n.t('alert_enter_range') || '请输入章节范围');
+                    return;
+                }
+                
+                try {
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (AppState.accessToken) {
+                        headers['X-Access-Token'] = AppState.accessToken;
+                    }
+                    const response = await fetch('/api/parse-chapter-range', {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({
+                            input: inputValue,
+                            max_chapter: bookInfo.chapters.length
+                        })
+                    });
+                    const result = await response.json();
+                    
+                    if (result.success && result.data && result.data.chapters.length > 0) {
+                        // 切换到手动模式并选中对应章节
+                        const manualRadio = modal.querySelector('input[name="chapterMode"][value="manual"]');
+                        if (manualRadio) {
+                            manualRadio.checked = true;
+                            chapterInputs.style.display = 'none';
+                            chapterQuickRange.style.display = 'none';
+                            chapterManualContainer.style.display = 'block';
+                            
+                            // 选中解析出的章节
+                            const checkboxes = modal.querySelectorAll('#dialogChapterList input[type="checkbox"]');
+                            const selectedSet = new Set(result.data.chapters);
+                            checkboxes.forEach(cb => {
+                                cb.checked = selectedSet.has(parseInt(cb.value));
+                            });
+                            window.updateDialogSelectedCount();
+                            
+                            Toast.success(i18n.t('quick_range_applied', result.data.chapters.length) || `已应用范围，选中 ${result.data.chapters.length} 章`);
+                        }
+                    } else if (result.data && result.data.errors.length > 0) {
+                        Toast.error(result.data.errors.join(', '));
+                    } else {
+                        Toast.warning(i18n.t('alert_no_chapters_selected') || '没有选中任何章节');
+                    }
+                } catch (e) {
+                    Toast.error(i18n.t('alert_parse_range_fail') || '解析范围失败');
+                }
+            });
+        }
     }
     
-    modal.querySelector('#confirmDownloadBtn').addEventListener('click', () => {
+    modal.querySelector('#confirmDownloadBtn').addEventListener('click', async () => {
         let startChapter = null;
         let endChapter = null;
         let selectedChapters = AppState.selectedChapters;
@@ -3022,6 +3298,51 @@ function showConfirmDialogLegacy(bookInfo) {
                     logger.logKey('log_download_all', bookInfo.book_name);
                 }
             }
+        }
+        
+        // 检查下载历史
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (AppState.accessToken) {
+                headers['X-Access-Token'] = AppState.accessToken;
+            }
+            const historyResponse = await fetch('/api/download-history/check', {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ book_id: bookInfo.book_id })
+            });
+            const historyResult = await historyResponse.json();
+            
+            if (historyResult.success && historyResult.exists) {
+                const record = historyResult.record;
+                const downloadTime = new Date(record.download_time).toLocaleString();
+                
+                // 显示重复下载确认对话框
+                const action = await showDuplicateDownloadDialog(bookInfo, record, downloadTime);
+                
+                if (action === 'cancel') {
+                    return;
+                } else if (action === 'open') {
+                    // 打开已有文件所在目录
+                    if (record.save_path) {
+                        try {
+                            await fetch('/api/open-folder', {
+                                method: 'POST',
+                                headers,
+                                body: JSON.stringify({ path: record.save_path })
+                            });
+                        } catch (e) {
+                            Toast.info(i18n.t('msg_file_path') + ': ' + record.save_path);
+                        }
+                    }
+                    modal.remove();
+                    return;
+                }
+                // action === 'download' 继续下载
+            }
+        } catch (e) {
+            console.error('History check error:', e);
+            // 历史检查失败不阻止下载
         }
         
         const task = {
