@@ -1435,23 +1435,35 @@ class ChapterOrderValidator:
     def sort_chapters(self, chapter_results: dict) -> List[dict]:
         """
         按正确顺序排序章节
-        
+
         Args:
             chapter_results: 下载结果 {index: {'title': str, 'content': str}, ...}
-        
+
         Returns:
             排序后的章节列表 [{'index': int, 'title': str, 'content': str}, ...]
         """
         sorted_chapters = []
-        
-        for index in sorted(chapter_results.keys()):
-            chapter_data = chapter_results[index]
-            sorted_chapters.append({
-                'index': index,
-                'title': chapter_data.get('title', f'第{index + 1}章'),
-                'content': chapter_data.get('content', '')
-            })
-        
+
+        # 确保 key 是整数类型后排序
+        int_keys = []
+        for k in chapter_results.keys():
+            try:
+                int_keys.append(int(k))
+            except (ValueError, TypeError):
+                # 如果无法转换为整数，跳过
+                continue
+
+        int_keys.sort()
+
+        for index in int_keys:
+            chapter_data = chapter_results.get(index) or chapter_results.get(str(index))
+            if chapter_data:
+                sorted_chapters.append({
+                    'index': index,
+                    'title': chapter_data.get('title', f'第{index + 1}章'),
+                    'content': chapter_data.get('content', '')
+                })
+
         return sorted_chapters
     
     def map_bulk_content(self, bulk_data: dict, item_ids: List[str]) -> dict:

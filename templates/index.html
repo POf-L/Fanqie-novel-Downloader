@@ -136,6 +136,10 @@
                                                 <span data-i18n="radio_range_chapters">范围选择</span>
                                             </label>
                                             <label>
+                                                <input type="radio" name="inlineChapterMode" value="quick">
+                                                <span data-i18n="radio_quick_range">快速范围</span>
+                                            </label>
+                                            <label>
                                                 <input type="radio" name="inlineChapterMode" value="manual">
                                                 <span data-i18n="radio_manual_chapters">手动选择</span>
                                             </label>
@@ -155,6 +159,21 @@
                                                 <label data-i18n="label_end_chapter">结束章节</label>
                                                 <select id="inlineEndChapter" class="chapter-select" disabled></select>
                                             </div>
+                                        </div>
+
+                                        <div class="chapter-quick-range" id="inlineChapterQuickRange" style="display:none;">
+                                            <div class="input-row" style="margin-bottom: 8px;">
+                                                <label data-i18n="label_quick_range">章节范围</label>
+                                                <input type="text" id="inlineQuickRangeInput" class="form-input"
+                                                       placeholder="例如: 1-100, 150, 200-300"
+                                                       data-i18n-placeholder="placeholder_quick_range"
+                                                       style="width: 100%; font-family: monospace;">
+                                            </div>
+                                            <div class="quick-range-hint" style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;" data-i18n="hint_quick_range">
+                                                支持格式: 单个数字(5)、范围(1-100)、多个范围(1-10, 50-100)
+                                            </div>
+                                            <div id="inlineQuickRangeResult" style="font-size: 12px; min-height: 20px;"></div>
+                                            <button class="btn btn-sm btn-secondary" type="button" id="inlineApplyQuickRangeBtn" style="margin-top: 8px;" data-i18n="btn_apply_range">应用范围</button>
                                         </div>
 
                                         <div class="chapter-manual-container" id="inlineChapterManualContainer" style="display:none;">
