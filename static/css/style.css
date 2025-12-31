@@ -39,6 +39,7 @@
     
     /* 动画 */
     --transition: all 0.2s ease;
+    --focus-ring: 0 0 0 2px rgba(59, 130, 246, 0.35);
     --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -391,6 +392,10 @@ body {
     background: var(--bg-input-focus);
 }
 
+.form-input:focus-visible {
+    box-shadow: var(--focus-ring);
+}
+
 .form-input::placeholder {
     color: var(--text-muted);
 }
@@ -479,6 +484,21 @@ select.form-input {
     cursor: not-allowed;
 }
 
+.btn:focus-visible,
+.tab-btn:focus-visible,
+.btn-text:focus-visible,
+.icon-btn:focus-visible,
+.desc-toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+
+.btn,
+.tab-btn,
+.desc-toggle {
+    touch-action: manipulation;
+}
+
 .icon-btn {
     padding: 12px 14px;
     min-width: 44px;
@@ -546,6 +566,8 @@ iconify-icon {
     cursor: pointer;
     border: 1px solid transparent;
     align-items: flex-start;
+    content-visibility: auto;
+    contain-intrinsic-size: 120px;
 }
 
 .search-item:hover {
@@ -561,6 +583,7 @@ iconify-icon {
     width: 48px;
     height: 64px;
     object-fit: cover;
+    aspect-ratio: 3 / 4;
     border-radius: 4px;
     flex-shrink: 0;
     background: var(--bg-card);
@@ -834,6 +857,8 @@ iconify-icon {
     border-radius: var(--radius-md);
     transition: var(--transition);
     border: 1px solid transparent;
+    content-visibility: auto;
+    contain-intrinsic-size: 110px;
 }
 
 .queue-item:hover {
@@ -1128,6 +1153,8 @@ iconify-icon {
     font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
     font-size: 13px;
     min-height: 120px;
+    content-visibility: auto;
+    contain-intrinsic-size: 320px;
 }
 
 #logContent {
@@ -1217,6 +1244,18 @@ iconify-icon {
     .search-cover {
         width: 100%;
         height: 100px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .spin {
+        animation: none !important;
     }
 }
 

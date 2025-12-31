@@ -85,6 +85,7 @@ class QueueManager {
         this.storageKey = 'fanqie_download_queue_v2';
         this.statusPollInterval = null;
         this.serverTasks = [];  // 服务器端任务状态
+        this.visibilityHandler = null;
     }
     
     // 获取状态图标
@@ -254,6 +255,7 @@ class QueueManager {
     startStatusPolling() {
         if (this.statusPollInterval) return;
         this.statusPollInterval = setInterval(async () => {
+            if (document.hidden) return;
             const status = await this.fetchQueueStatus();
             if (status) {
                 this.updateQueueUI(status);
@@ -264,6 +266,22 @@ class QueueManager {
                 }
             }
         }, 1000);
+        
+        if (!this.visibilityHandler) {
+            this.visibilityHandler = async () => {
+                if (!document.hidden && this.statusPollInterval) {
+                    const status = await this.fetchQueueStatus();
+                    if (status) {
+                        this.updateQueueUI(status);
+                        if (!status.is_running) {
+                            this.stopStatusPolling();
+                            this.showQueueSummary(status);
+                        }
+                    }
+                }
+            };
+            document.addEventListener('visibilitychange', this.visibilityHandler);
+        }
     }
     
     // 停止状态轮询
@@ -271,6 +289,10 @@ class QueueManager {
         if (this.statusPollInterval) {
             clearInterval(this.statusPollInterval);
             this.statusPollInterval = null;
+        }
+        if (this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+            this.visibilityHandler = null;
         }
     }
     
@@ -287,23 +309,37 @@ class QueueManager {
             const taskEl = list.querySelector(`[data-task-id="${task.id}"]`);
             if (taskEl) {
                 const statusEl = taskEl.querySelector('.queue-item-status');
+                const nextStatus = task.status || 'pending';
                 if (statusEl) {
-                    statusEl.innerHTML = `${this.getStatusIcon(task.status)} ${this.getStatusText(task.status)}`;
-                    statusEl.className = `queue-item-status status-${task.status}`;
+                    if (taskEl.dataset.status !== nextStatus) {
+                        statusEl.innerHTML = `${this.getStatusIcon(nextStatus)} ${this.getStatusText(nextStatus)}`;
+                        statusEl.className = `queue-item-status status-${nextStatus}`;
+                        taskEl.dataset.status = nextStatus;
+                    }
                 }
                 
                 const progressEl = taskEl.querySelector('.queue-item-progress');
-                if (progressEl && task.status === 'downloading') {
+                const nextProgress = typeof task.progress === 'number' ? task.progress : 0;
+                if (progressEl && nextStatus === 'downloading') {
                     progressEl.style.display = 'block';
-                    progressEl.querySelector('.progress-fill').style.width = `${task.progress}%`;
+                    const fill = progressEl.querySelector('.progress-fill');
+                    if (fill && taskEl.dataset.progress !== String(nextProgress)) {
+                        fill.style.width = `${nextProgress}%`;
+                        taskEl.dataset.progress = String(nextProgress);
+                    }
                 } else if (progressEl) {
                     progressEl.style.display = 'none';
+                    taskEl.dataset.progress = String(nextProgress);
                 }
                 
                 // 显示/隐藏重试按钮
                 const retryBtn = taskEl.querySelector('.retry-btn');
                 if (retryBtn) {
-                    retryBtn.style.display = task.status === 'failed' ? 'inline-block' : 'none';
+                    const shouldShowRetry = nextStatus === 'failed';
+                    if (retryBtn.dataset.visible !== String(shouldShowRetry)) {
+                        retryBtn.style.display = shouldShowRetry ? 'inline-flex' : 'none';
+                        retryBtn.dataset.visible = String(shouldShowRetry);
+                    }
                 }
             }
         });
@@ -315,7 +351,10 @@ class QueueManager {
             const failed = status.failed_count || 0;
             const skipped = status.skipped_count || 0;
             const total = status.total_tasks || 0;
-            summary.textContent = `${completed}/${total} 完成, ${failed} 失败, ${skipped} 跳过`;
+            const summaryText = `${completed}/${total} 完成, ${failed} 失败, ${skipped} 跳过`;
+            if (summary.textContent !== summaryText) {
+                summary.textContent = summaryText;
+            }
         }
     }
     
@@ -877,6 +916,13 @@ class APIClient {
     constructor(baseURL = null) {
         this.baseURL = baseURL || window.location.origin;
         this.statusPoll = null;
+        this.visibilityHandler = null;
+        this.lastStatusSnapshot = {
+            progress: null,
+            statusKey: '',
+            queueInfo: '',
+            bookName: ''
+        };
     }
     
     async request(endpoint, options = {}) {
@@ -1026,8 +1072,8 @@ class APIClient {
     
     startStatusPolling() {
         if (this.statusPoll) return;
-        
-        this.statusPoll = setInterval(async () => {
+        const poll = async () => {
+            if (document.hidden) return;
             const status = await this.getStatus();
             if (status) {
                 this.updateUI(status);
@@ -1038,7 +1084,18 @@ class APIClient {
                     AppState.setDownloading(false);
                 }
             }
-        }, 500);
+        };
+        
+        this.statusPoll = setInterval(poll, 800);
+        
+        if (!this.visibilityHandler) {
+            this.visibilityHandler = () => {
+                if (!document.hidden && this.statusPoll) {
+                    poll();
+                }
+            };
+            document.addEventListener('visibilitychange', this.visibilityHandler);
+        }
     }
     
     stopStatusPolling() {
@@ -1046,19 +1103,26 @@ class APIClient {
             clearInterval(this.statusPoll);
             this.statusPoll = null;
         }
+        if (this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+            this.visibilityHandler = null;
+        }
     }
     
     updateUI(status) {
         // 更新进度
-        const progress = status.progress || 0;
-        const progressFill = document.getElementById('progressFill');
-        const progressPercent = document.getElementById('progressPercent');
-        
-        progressFill.style.width = progress + '%';
-        progressPercent.textContent = progress + '%';
-        
-        // 更新进度标签徽章
-        updateProgressBadge(progress);
+        const progress = typeof status.progress === 'number' ? status.progress : 0;
+        if (this.lastStatusSnapshot.progress !== progress) {
+            const progressFill = document.getElementById('progressFill');
+            const progressPercent = document.getElementById('progressPercent');
+            
+            progressFill.style.width = progress + '%';
+            progressPercent.textContent = progress + '%';
+            
+            // 更新进度标签徽章
+            updateProgressBadge(progress);
+            this.lastStatusSnapshot.progress = progress;
+        }
         
         // 更新消息队列（显示所有消息，不遗漏）
         if (status.messages && status.messages.length > 0) {
@@ -1069,18 +1133,28 @@ class APIClient {
         
         // 更新书籍名称
         if (status.book_name) {
-            document.getElementById('bookName').textContent = status.book_name;
+            if (this.lastStatusSnapshot.bookName !== status.book_name) {
+                document.getElementById('bookName').textContent = status.book_name;
+                this.lastStatusSnapshot.bookName = status.book_name;
+            }
         }
         
         // 更新状态文本
-        if (status.is_downloading) {
-            const queueInfo = status.queue_total ? ` (${status.queue_current || 1}/${status.queue_total})` : '';
-            document.getElementById('statusText').innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg> ${i18n.t('status_downloading')}${queueInfo}`;
-        } else if (progress === 100) {
-            document.getElementById('statusText').innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> ${i18n.t('status_completed')}`;
-            updateProgressBadge(100); // 清除徽章
-        } else {
-            document.getElementById('statusText').textContent = i18n.t('status_ready');
+        const statusTextEl = document.getElementById('statusText');
+        const queueInfo = status.queue_total ? ` (${status.queue_current || 1}/${status.queue_total})` : '';
+        const statusKey = status.is_downloading ? 'downloading' : (progress === 100 ? 'completed' : 'ready');
+        
+        if (this.lastStatusSnapshot.statusKey !== statusKey || this.lastStatusSnapshot.queueInfo !== queueInfo) {
+            if (statusKey === 'downloading') {
+                statusTextEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg> ${i18n.t('status_downloading')}${queueInfo}`;
+            } else if (statusKey === 'completed') {
+                statusTextEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> ${i18n.t('status_completed')}`;
+                updateProgressBadge(100);
+            } else {
+                statusTextEl.textContent = i18n.t('status_ready');
+            }
+            this.lastStatusSnapshot.statusKey = statusKey;
+            this.lastStatusSnapshot.queueInfo = queueInfo;
         }
     }
     
@@ -1375,7 +1449,7 @@ function renderQueue() {
         return;
     }
 
-    list.innerHTML = '';
+    const fragment = document.createDocumentFragment();
     tasks.forEach(task => {
         if (!task) return;
 
@@ -1390,6 +1464,9 @@ function renderQueue() {
         ].filter(Boolean).join(' · ');
         
         const status = task.status || 'pending';
+        const progressValue = typeof task.progress === 'number' ? task.progress : 0;
+        item.dataset.status = status;
+        item.dataset.progress = String(progressValue);
 
         item.innerHTML = `
             <div class="queue-item-main">
@@ -1399,31 +1476,51 @@ function renderQueue() {
                 <div class="queue-item-status status-${status}">
                     ${queueManager.getStatusIcon(status)} ${queueManager.getStatusText(status)}
                 </div>
-                <div class="queue-item-progress" style="display: none;">
+                <div class="queue-item-progress" style="display: ${status === 'downloading' ? 'block' : 'none'};">
                     <div class="progress-bar-mini">
-                        <div class="progress-fill" style="width: 0%"></div>
+                        <div class="progress-fill" style="width: ${progressValue}%"></div>
                     </div>
                 </div>
             </div>
             <div class="queue-item-actions">
-                <button class="btn btn-sm btn-text retry-btn" type="button" style="display: none;">${i18n.t('btn_retry') || '重试'}</button>
-                <button class="btn btn-sm btn-text remove-btn" type="button">${i18n.t('btn_remove_from_queue')}</button>
+                <button class="btn btn-sm btn-text retry-btn" type="button" data-action="retry" style="display: ${status === 'failed' ? 'inline-flex' : 'none'};">${i18n.t('btn_retry') || '重试'}</button>
+                <button class="btn btn-sm btn-text remove-btn" type="button" data-action="remove">${i18n.t('btn_remove_from_queue')}</button>
             </div>
         `;
 
-        const removeBtn = item.querySelector('.remove-btn');
-        removeBtn.addEventListener('click', () => {
-            AppState.removeFromQueue(task.id);
-            logger.logKey('msg_removed_from_queue', title);
-        });
-        
-        const retryBtn = item.querySelector('.retry-btn');
-        retryBtn.addEventListener('click', async () => {
-            await queueManager.retryTask(task.id);
-            renderQueue();
-        });
+        fragment.appendChild(item);
+    });
+    list.replaceChildren(fragment);
+}
 
-        list.appendChild(item);
+function initQueueListInteractions() {
+    const list = document.getElementById('queueList');
+    if (!list || list.dataset.bound === '1') return;
+    list.dataset.bound = '1';
+    
+    list.addEventListener('click', async (e) => {
+        const actionBtn = e.target.closest('[data-action]');
+        if (!actionBtn) return;
+        
+        const item = actionBtn.closest('.queue-item');
+        if (!item) return;
+        
+        const taskId = item.dataset.taskId;
+        if (!taskId) return;
+        
+        const task = AppState.downloadQueue.find(t => t && String(t.id) === String(taskId));
+        const title = task?.book_name || task?.book_id || i18n.t('queue_unknown_book');
+        
+        if (actionBtn.dataset.action === 'remove') {
+            AppState.removeFromQueue(taskId);
+            logger.logKey('msg_removed_from_queue', title);
+            return;
+        }
+        
+        if (actionBtn.dataset.action === 'retry') {
+            await queueManager.retryTask(taskId);
+            renderQueue();
+        }
     });
 }
 
@@ -1748,6 +1845,7 @@ function initializeUI(skipApiSources = false) {
     // 初始化队列
     AppState.loadQueue();
     renderQueue();
+    initQueueListInteractions();
 
     // 初始化下载接口选择（可跳过以加速启动）
     if (!skipApiSources) {
@@ -1795,6 +1893,7 @@ function initializeUI(skipApiSources = false) {
     
     // 初始化章节选择弹窗事件
     initChapterModalEvents();
+    initSearchListInteractions();
     
     // 初始化语言切换
     const langBtn = document.getElementById('langToggle');
@@ -1886,6 +1985,55 @@ function initChapterModalEvents() {
 // ========== 搜索功能 ==========
 let searchOffset = 0;
 let currentSearchKeyword = '';
+const searchBookCache = new Map();
+
+function initSearchListInteractions() {
+    const listContainer = document.getElementById('searchResultList');
+    if (!listContainer || listContainer.dataset.bound === '1') return;
+    listContainer.dataset.bound = '1';
+    
+    listContainer.addEventListener('click', (e) => {
+        const actionBtn = e.target.closest('[data-action]');
+        const item = e.target.closest('.search-item');
+        
+        if (!item) return;
+        
+        const bookId = item.dataset.bookId;
+        const bookData = searchBookCache.get(bookId);
+        
+        if (actionBtn?.dataset.action === 'toggle-desc') {
+            e.stopPropagation();
+            const desc = item.querySelector('.search-desc');
+            const isCollapsed = desc.classList.contains('collapsed');
+            desc.classList.toggle('collapsed', !isCollapsed);
+            desc.classList.toggle('expanded', isCollapsed);
+            actionBtn.innerHTML = isCollapsed
+                ? '<iconify-icon icon="line-md:chevron-small-up"></iconify-icon>'
+                : '<iconify-icon icon="line-md:chevron-small-down"></iconify-icon>';
+            return;
+        }
+        
+        if (actionBtn?.dataset.action === 'add-queue') {
+            e.stopPropagation();
+            if (bookData) {
+                handleAddToQueue(bookId, {
+                    book_name: bookData.book_name,
+                    author: bookData.author,
+                    abstract: bookData.abstract,
+                    cover_url: bookData.cover_url,
+                    chapter_count: bookData.chapter_count
+                });
+            } else {
+                handleAddToQueue(bookId);
+            }
+            return;
+        }
+        
+        if (bookId) {
+            selectBook(bookId, bookData?.book_name || item.dataset.bookName || bookId);
+        }
+    });
+}
 
 async function handleSearch() {
     const keyword = document.getElementById('searchKeyword').value.trim();
@@ -1951,6 +2099,7 @@ function displaySearchResults(books, append = false, hasMore = false) {
         // 保留加载更多按钮，清除其他内容
         listContainer.innerHTML = '';
         listContainer.appendChild(loadMoreContainer);
+        searchBookCache.clear();
     }
     
     if (books.length === 0 && !append) {
@@ -1967,10 +2116,13 @@ function displaySearchResults(books, append = false, hasMore = false) {
         return;
     }
     
+    const fragment = document.createDocumentFragment();
     books.forEach(book => {
         const item = document.createElement('div');
         item.className = 'search-item';
-        item.onclick = () => selectBook(book.book_id, book.book_name);
+        item.dataset.bookId = book.book_id;
+        item.dataset.bookName = book.book_name || '';
+        searchBookCache.set(book.book_id, book);
         
         const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + i18n.t('meta_word_count_suffix') : '';
         const chapterCount = book.chapter_count ? book.chapter_count + i18n.t('meta_chapter_count_suffix') : '';
@@ -1991,7 +2143,7 @@ function displaySearchResults(books, append = false, hasMore = false) {
         const needsExpand = abstractText.length > 100;
         
         item.innerHTML = `
-            <img class="search-cover" src="${book.cover_url || ''}" alt="" onerror="this.style.display='none'">
+            <img class="search-cover" src="${book.cover_url || ''}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">
             <div class="search-info">
                 <div class="search-title">
                     ${book.book_name}
@@ -2000,46 +2152,19 @@ function displaySearchResults(books, append = false, hasMore = false) {
                 <div class="search-meta">${book.author} · ${wordCount}${chapterCount ? ' · ' + chapterCount : ''}</div>
                 <div class="search-desc-wrapper">
                     <div class="search-desc ${needsExpand ? 'collapsed' : ''}">${abstractText}</div>
-                    ${needsExpand ? `<button class="desc-toggle" type="button"><iconify-icon icon="line-md:chevron-small-down"></iconify-icon></button>` : ''}
+                    ${needsExpand ? `<button class="desc-toggle" type="button" data-action="toggle-desc"><iconify-icon icon="line-md:chevron-small-down"></iconify-icon></button>` : ''}
                 </div>
             </div>
             <div class="search-actions">
-                <button class="btn btn-sm btn-primary" type="button">${i18n.t('btn_add_to_queue')}</button>
+                <button class="btn btn-sm btn-primary" type="button" data-action="add-queue">${i18n.t('btn_add_to_queue')}</button>
             </div>
         `;
-        
-        // 展开/收起按钮事件
-        const toggleBtn = item.querySelector('.desc-toggle');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const desc = item.querySelector('.search-desc');
-                const isCollapsed = desc.classList.contains('collapsed');
-                desc.classList.toggle('collapsed', !isCollapsed);
-                desc.classList.toggle('expanded', isCollapsed);
-                toggleBtn.innerHTML = isCollapsed 
-                    ? '<iconify-icon icon="line-md:chevron-small-up"></iconify-icon>' 
-                    : '<iconify-icon icon="line-md:chevron-small-down"></iconify-icon>';
-            });
-        }
-        
-        const addBtn = item.querySelector('.search-actions button');
-        if (addBtn) {
-            addBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                handleAddToQueue(book.book_id, {
-                    book_name: book.book_name,
-                    author: book.author,
-                    abstract: book.abstract,
-                    cover_url: book.cover_url,
-                    chapter_count: book.chapter_count
-                });
-            });
-        }
-        
-        // 插入到加载更多按钮之前
-        listContainer.insertBefore(item, loadMoreContainer);
+
+        fragment.appendChild(item);
     });
+    
+    // 插入到加载更多按钮之前
+    listContainer.insertBefore(fragment, loadMoreContainer);
     
     // 显示/隐藏加载更多按钮
     loadMoreContainer.style.display = hasMore ? 'block' : 'none';
@@ -2067,6 +2192,7 @@ function clearSearchResults() {
     document.getElementById('searchKeyword').value = '';
     searchOffset = 0;
     currentSearchKeyword = '';
+    searchBookCache.clear();
 }
 
 async function handleSelectChapters() {
