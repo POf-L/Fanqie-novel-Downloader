@@ -204,16 +204,16 @@
 }
 
 .chapter-range label:has(input:checked) {
-    background: #fff;
+    background: var(--bg-input-focus);
     color: var(--text-primary);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
     font-weight: 500;
 }
 
 /* Dark mode adjustment */
 @media (prefers-color-scheme: dark) {
     .chapter-range label:has(input:checked) {
-        background: #3a3a3c;
+        background: var(--bg-input-focus);
     }
 }
 
