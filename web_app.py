@@ -1596,8 +1596,15 @@ def check_access():
 def index():
     """主页"""
     from config import __version__
+    from platform_utils import get_window_config
     token = request.args.get('token', '')
-    return render_template('index.html', version=__version__, access_token=token)
+    window_config = get_window_config()
+    return render_template(
+        'index.html',
+        version=__version__,
+        access_token=token,
+        frameless=window_config.get('frameless', False)
+    )
 
 @app.route('/api/init', methods=['POST'])
 def api_init():

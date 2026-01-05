@@ -230,11 +230,21 @@ body {
     height: 16px;
     border-radius: 50%;
     border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     transition: opacity 0.15s;
 }
 
-.win-btn .icon { display: none; }
+.win-icon {
+    font-size: 11px;
+    line-height: 1;
+    color: rgba(0, 0, 0, 0.7);
+    font-weight: 700;
+    user-select: none;
+    pointer-events: none;
+}
 .win-close { background: #ff5f57; }
 .win-minimize { background: #febc2e; }
 .win-maximize { background: #28c840; }

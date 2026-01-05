@@ -3851,30 +3851,49 @@ document.addEventListener('keydown', (e) => {
 /* ===================== 窗口控制 (无边框模式) ===================== */
 
 function initWindowControls() {
+    const isFrameless = document.body.dataset.frameless === 'true';
+    const controls = document.querySelector('.window-controls');
     const minBtn = document.getElementById('winMinimize');
     const maxBtn = document.getElementById('winMaximize');
     const closeBtn = document.getElementById('winClose');
+    
+    if (!isFrameless) {
+        if (controls) {
+            controls.style.display = 'none';
+        }
+        return;
+    }
     
     if (!minBtn || !maxBtn || !closeBtn) return;
     
     // 检测是否在 pywebview 环境中
     const isPyWebView = () => window.pywebview && window.pywebview.api;
+    const safeCall = (fn) => {
+        try {
+            const result = fn();
+            if (result && typeof result.catch === 'function') {
+                result.catch((err) => console.warn('窗口控制失败:', err));
+            }
+        } catch (err) {
+            console.warn('窗口控制异常:', err);
+        }
+    };
     
     minBtn.addEventListener('click', () => {
         if (isPyWebView()) {
-            window.pywebview.api.minimize_window();
+            safeCall(() => window.pywebview.api.minimize_window());
         }
     });
     
     maxBtn.addEventListener('click', () => {
         if (isPyWebView()) {
-            window.pywebview.api.toggle_maximize();
+            safeCall(() => window.pywebview.api.toggle_maximize());
         }
     });
     
     closeBtn.addEventListener('click', () => {
         if (isPyWebView()) {
-            window.pywebview.api.close_window();
+            safeCall(() => window.pywebview.api.close_window());
         } else {
             window.close();
         }
