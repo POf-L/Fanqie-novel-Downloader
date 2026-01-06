@@ -78,54 +78,39 @@ def open_web_interface(port, access_token):
                     self._drag_start_y = 0
 
                 def minimize_window(self):
-                    try:
-                        if _window:
-                            _window.minimize()
-                            return {"success": True}
-                        return {"success": False, "error": "window_not_ready"}
-                    except Exception as e:
-                        return {"success": False, "error": str(e)}
+                    if _window:
+                        _window.minimize()
                 
                 def toggle_maximize(self):
-                    try:
-                        if _window:
-                            # 优先处理全屏状态
-                            is_fullscreen = getattr(_window, 'fullscreen', False)
-                            
-                            if is_fullscreen:
-                                if hasattr(_window, 'toggle_fullscreen'):
-                                    _window.toggle_fullscreen()
-                                else:
-                                    _window.restore()
-                                self._is_maximized = False
-                            elif self._is_maximized:
-                                _window.restore()
-                                self._is_maximized = False
+                    if _window:
+                        # 优先处理全屏状态
+                        is_fullscreen = getattr(_window, 'fullscreen', False)
+                        
+                        if is_fullscreen:
+                            if hasattr(_window, 'toggle_fullscreen'):
+                                _window.toggle_fullscreen()
                             else:
-                                _window.maximize()
-                                self._is_maximized = True
-                            return {"success": True, "maximized": self._is_maximized}
-                        return {"success": False, "error": "window_not_ready"}
-                    except Exception as e:
-                        return {"success": False, "error": str(e)}
+                                _window.restore()
+                            self._is_maximized = False
+                        elif self._is_maximized:
+                            _window.restore()
+                            self._is_maximized = False
+                        else:
+                            _window.maximize()
+                            self._is_maximized = True
                 
                 def close_window(self):
-                    try:
-                        if _window:
-                            # 保存窗口位置
-                            try:
-                                position_manager.save_position(
-                                    _window.x, _window.y,
-                                    _window.width, _window.height,
-                                    self._is_maximized
-                                )
-                            except Exception:
-                                pass
-                            _window.destroy()
-                            return {"success": True}
-                        return {"success": False, "error": "window_not_ready"}
-                    except Exception as e:
-                        return {"success": False, "error": str(e)}
+                    if _window:
+                        # 保存窗口位置
+                        try:
+                            position_manager.save_position(
+                                _window.x, _window.y,
+                                _window.width, _window.height,
+                                self._is_maximized
+                            )
+                        except Exception:
+                            pass
+                        _window.destroy()
                 
                 def start_drag(self, offset_x, offset_y):
                     """开始拖动窗口，记录鼠标在窗口内的偏移"""

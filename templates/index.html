@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/static/css/modal.css?v=20251214">
     <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js" defer></script>
 </head>
-<body data-frameless="{{ 'true' if frameless else 'false' }}">
+<body>
     <div class="dashboard-container">
         <!-- 顶部栏 -->
         <header class="dashboard-header">
@@ -33,9 +33,9 @@
                 </a>
                 <span class="version-tag">v<span id="version">{{ version }}</span></span>
                 <div class="window-controls">
-                    <button class="win-btn win-minimize" id="winMinimize" aria-label="最小化"><span class="win-icon">-</span></button>
-                    <button class="win-btn win-maximize" id="winMaximize" aria-label="最大化"><span class="win-icon">+</span></button>
-                    <button class="win-btn win-close" id="winClose" aria-label="关闭"><span class="win-icon">x</span></button>
+                    <button class="win-btn win-minimize" id="winMinimize"></button>
+                    <button class="win-btn win-maximize" id="winMaximize"></button>
+                    <button class="win-btn win-close" id="winClose"></button>
                 </div>
             </div>
         </header>
