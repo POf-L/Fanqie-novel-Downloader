@@ -157,7 +157,6 @@ def get_window_config() -> dict:
     Returns:
         dict: PyWebView 窗口配置参数
     """
-    os_name = _get_os_name()
     config = {
         'title': '番茄小说下载器',
         'width': 1200,
@@ -169,10 +168,6 @@ def get_window_config() -> dict:
     
     if is_frameless_supported():
         config['frameless'] = True
-
-    # macOS 下无边框窗口在部分环境会导致最小化/关闭崩溃，优先稳定性
-    if os_name == 'darwin':
-        config['frameless'] = False
     
     return config
 
