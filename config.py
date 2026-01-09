@@ -82,19 +82,24 @@ def _load_remote_config() -> Optional[Dict]:
     # 2. 从远程获取配置
     try:
         import requests
-        response = requests.get(REMOTE_CONFIG_URL, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            # 验证配置格式
-            if isinstance(data, dict) and ('api_sources' in data or 'endpoints' in data or 'config' in data):
-                # 保存到缓存
-                cache = {'_cache_time': time.time(), 'data': data}
-                try:
-                    with open(REMOTE_CONFIG_CACHE_FILE, 'w', encoding='utf-8') as f:
-                        json.dump(cache, f, ensure_ascii=False)
-                except Exception:
-                    pass
-                return data
+        # 先尝试直连（禁用代理），再尝试使用系统代理
+        for proxies in [{'http': None, 'https': None}, None]:
+            try:
+                response = requests.get(REMOTE_CONFIG_URL, timeout=10, proxies=proxies)
+                if response.status_code == 200:
+                    data = response.json()
+                    # 验证配置格式
+                    if isinstance(data, dict) and ('api_sources' in data or 'endpoints' in data or 'config' in data):
+                        # 保存到缓存
+                        cache = {'_cache_time': time.time(), 'data': data}
+                        try:
+                            with open(REMOTE_CONFIG_CACHE_FILE, 'w', encoding='utf-8') as f:
+                                json.dump(cache, f, ensure_ascii=False)
+                        except Exception:
+                            pass
+                        return data
+            except Exception:
+                continue
     except Exception:
         pass
 
