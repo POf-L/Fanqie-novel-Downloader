@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 配置管理模块 - 包含版本信息、全局配置
-API文档: http://49.232.137.12/docs
+API文档: https://qkfqapi.vv9v.cn/docs
 """
 
 __version__ = "1.1.0"
@@ -36,6 +36,7 @@ _LOCAL_CONFIG_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloade
 
 # 硬编码的 API 源配置
 HARDCODED_API_SOURCES = [
+    {"name": "中国|浙江省|宁波市|电信(HTTPS)", "base_url": "https://qkfqapi.vv9v.cn"},
     {"name": "中国|浙江省|宁波市|电信", "base_url": "http://qkfqapi.vv9v.cn"},
     {"name": "中国|北京市|腾讯云", "base_url": "http://49.232.137.12"},
     {"name": "中国|江苏省|常州市|电信", "base_url": "http://43.248.77.205:22222"},
@@ -69,13 +70,14 @@ def _load_local_pref() -> Dict:
         pass
     return {}
 
-# API 端点配置 - 对接 http://49.232.137.12/docs
+# API 端点配置 - 对接 https://qkfqapi.vv9v.cn/docs
 LOCAL_ENDPOINTS = {
     "search": "/api/search",       # 搜索书籍 (key, tab_type, offset)
     "detail": "/api/detail",       # 获取书籍详情 (book_id)
     "book": "/api/book",           # 获取书籍目录 (book_id)
     "directory": "/api/directory", # 获取简化目录 (fq_id)
     "content": "/api/content",     # 内容接口 (tab=小说/批量/下载, item_id/book_id)
+    "chapter": "/api/chapter",     # 简化章节接口 (item_id) - 备用
 }
 
 

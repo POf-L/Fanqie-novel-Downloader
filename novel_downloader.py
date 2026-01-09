@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-番茄小说下载器核心模块 - 对接官方API https://fq.shusan.cn/docs
+番茄小说下载器核心模块 - 对接官方API https://qkfqapi.vv9v.cn/docs
 """
 
 import time
@@ -31,7 +31,7 @@ requests.packages.urllib3.disable_warnings()
 # ===================== 官方API管理器 =====================
 
 class APIManager:
-    """番茄小说官方API统一管理器 - https://fq.shusan.cn/docs
+    """番茄小说官方API统一管理器 - https://qkfqapi.vv9v.cn/docs
     支持同步和异步两种调用方式
     """
     
@@ -201,8 +201,22 @@ class APIManager:
             return None
     
     def get_chapter_content(self, item_id: str) -> Optional[Dict]:
-        """获取章节内容(同步)"""
+        """获取章节内容(同步)
+        优先使用 /api/chapter 简化接口，失败时回退到 /api/content
+        """
         try:
+            # 优先尝试简化的 /api/chapter 接口（更稳定）
+            chapter_endpoint = self.endpoints.get('chapter', '/api/chapter')
+            url = f"{self.base_url}{chapter_endpoint}"
+            params = {"item_id": item_id}
+            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200 and "data" in data:
+                    return data["data"]
+            
+            # 回退到 /api/content 接口
             url = f"{self.base_url}{self.endpoints['content']}"
             params = {"tab": "小说", "item_id": item_id}
             response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
@@ -217,8 +231,11 @@ class APIManager:
                 print(t("dl_content_error", str(e)))
             return None
 
+
     async def get_chapter_content_async(self, item_id: str) -> Optional[Dict]:
-        """获取章节内容(异步)"""
+        """获取章节内容(异步)
+        优先使用 /api/chapter 简化接口，失败时回退到 /api/content
+        """
         max_retries = CONFIG.get("max_retries", 3)
         
         async with self.semaphore:
@@ -230,6 +247,35 @@ class APIManager:
                 self.last_request_time = time.time()
             
             session = await self._get_async_session()
+            
+            # 优先尝试简化的 /api/chapter 接口
+            chapter_endpoint = self.endpoints.get('chapter', '/api/chapter')
+            url = f"{self.base_url}{chapter_endpoint}"
+            params = {"item_id": item_id}
+            
+            for attempt in range(max_retries):
+                try:
+                    async with session.get(url, params=params) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if data.get("code") == 200 and "data" in data:
+                                return data["data"]
+                        elif response.status == 429:
+                            await asyncio.sleep(min(2 ** attempt, 10))
+                            continue
+                        break  # 其他错误，尝试备用接口
+                except asyncio.TimeoutError:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(CONFIG.get("retry_delay", 2) * (attempt + 1))
+                        continue
+                    break
+                except Exception:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(0.3)
+                        continue
+                    break
+            
+            # 回退到 /api/content 接口
             url = f"{self.base_url}{self.endpoints['content']}"
             params = {"tab": "小说", "item_id": item_id}
             
