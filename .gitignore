@@ -187,3 +187,6 @@ Desktop.ini
 # Local development
 *.local
 *.local.*
+
+# Cloud config file (exported for remote update)
+fanqie.json

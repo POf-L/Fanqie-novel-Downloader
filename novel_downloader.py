@@ -339,6 +339,251 @@ class APIManager:
 
             return None
 
+    # ===================== 新增API方法 =====================
+
+    def get_audiobook_content(self, item_id: str, tone_id: str = "0") -> Optional[Dict]:
+        """获取听书音频内容
+
+        Args:
+            item_id: 章节ID
+            tone_id: 音色ID，默认为"0"
+
+        Returns:
+            包含音频URL的字典，失败返回None
+        """
+        try:
+            url = f"{self.base_url}{self.endpoints['content']}"
+            params = {"tab": "听书", "item_id": item_id, "tone_id": tone_id}
+            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200 and "data" in data:
+                    return data["data"]
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"获取听书内容失败: {e}")
+            return None
+
+    def get_drama_content(self, item_id: str) -> Optional[Dict]:
+        """获取短剧视频内容
+
+        Args:
+            item_id: 视频/章节ID
+
+        Returns:
+            包含视频信息的字典，失败返回None
+        """
+        try:
+            url = f"{self.base_url}{self.endpoints['content']}"
+            params = {"tab": "短剧", "item_id": item_id}
+            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200 and "data" in data:
+                    return data["data"]
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"获取短剧内容失败: {e}")
+            return None
+
+    def get_manga_content(self, item_id: str, show_html: str = "0", async_mode: str = "1") -> Optional[Dict]:
+        """获取漫画图片内容
+
+        Args:
+            item_id: 漫画章节ID
+            show_html: 是否返回HTML格式 ("0" 或 "1")
+            async_mode: 是否异步模式 ("0" 或 "1")
+
+        Returns:
+            同步模式返回图片数据，异步模式返回任务ID
+        """
+        try:
+            url = f"{self.base_url}{self.endpoints['content']}"
+            params = {"tab": "漫画", "item_id": item_id, "show_html": show_html, "async": async_mode}
+            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200 and "data" in data:
+                    return data["data"]
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"获取漫画内容失败: {e}")
+            return None
+
+    def get_manga_progress(self, task_id: str) -> Optional[Dict]:
+        """查询漫画下载进度
+
+        Args:
+            task_id: 异步任务ID
+
+        Returns:
+            包含进度信息的字典
+        """
+        try:
+            endpoint = self.endpoints.get('manga_progress', '/api/manga/progress')
+            url = f"{self.base_url}{endpoint}/{task_id}"
+            response = self._get_session().get(url, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200 and "data" in data:
+                    return data["data"]
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"查询漫画进度失败: {e}")
+            return None
+
+    def get_ios_content(self, item_id: str) -> Optional[Dict]:
+        """通过iOS接口获取章节内容（使用8402算法签名）
+
+        Args:
+            item_id: 章节ID
+
+        Returns:
+            章节内容字典，失败返回None
+        """
+        try:
+            endpoint = self.endpoints.get('ios_content', '/api/ios/content')
+            url = f"{self.base_url}{endpoint}"
+            params = {"item_id": item_id}
+            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200 and "data" in data:
+                    return data["data"]
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"获取iOS内容失败: {e}")
+            return None
+
+    def register_ios_device(self) -> Optional[Dict]:
+        """注册新的iOS设备到设备池
+
+        Returns:
+            注册结果
+        """
+        try:
+            endpoint = self.endpoints.get('ios_register', '/api/ios/register')
+            url = f"{self.base_url}{endpoint}"
+            response = self._get_session().get(url, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200:
+                    return data.get("data", data)
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"注册iOS设备失败: {e}")
+            return None
+
+    def get_device_pool(self) -> Optional[Dict]:
+        """获取设备池整体状态
+
+        Returns:
+            所有设备状态信息
+        """
+        try:
+            endpoint = self.endpoints.get('device_pool', '/api/device/pool')
+            url = f"{self.base_url}{endpoint}"
+            response = self._get_session().get(url, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200:
+                    return data.get("data", data)
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"获取设备池状态失败: {e}")
+            return None
+
+    def register_device(self, platform: str = "android") -> Optional[Dict]:
+        """注册新设备到设备池
+
+        Args:
+            platform: 平台类型 ("android" 或 "ios")
+
+        Returns:
+            注册结果
+        """
+        try:
+            endpoint = self.endpoints.get('device_register', '/api/device/register')
+            url = f"{self.base_url}{endpoint}"
+            params = {"platform": platform}
+            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200:
+                    return data.get("data", data)
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"注册设备失败: {e}")
+            return None
+
+    def get_device_status(self, platform: str = "android") -> Optional[Dict]:
+        """获取指定平台的设备状态
+
+        Args:
+            platform: 平台类型 ("android" 或 "ios")
+
+        Returns:
+            设备状态信息
+        """
+        try:
+            endpoint = self.endpoints.get('device_status', '/api/device/status')
+            url = f"{self.base_url}{endpoint}"
+            params = {"platform": platform}
+            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200:
+                    return data.get("data", data)
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"获取设备状态失败: {e}")
+            return None
+
+    def get_raw_content(self, item_id: str) -> Optional[Dict]:
+        """获取未处理的原始章节内容
+
+        Args:
+            item_id: 章节ID
+
+        Returns:
+            完整的原始响应数据
+        """
+        try:
+            endpoint = self.endpoints.get('raw_full', '/api/raw_full')
+            url = f"{self.base_url}{endpoint}"
+            params = {"item_id": item_id}
+            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == 200 and "data" in data:
+                    return data["data"]
+            return None
+        except Exception as e:
+            with print_lock:
+                print(f"获取原始内容失败: {e}")
+            return None
+
+    # ===================== 新增API方法结束 =====================
+
     def get_full_content(self, book_id: str) -> Optional[Union[str, Dict[str, str]]]:
         """获取整本小说内容，支持多节点自动切换
 

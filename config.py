@@ -28,14 +28,22 @@ import threading
 import os
 import json
 import tempfile
-from typing import Dict
+import time
+from datetime import datetime
+from typing import Dict, Optional
 from fake_useragent import UserAgent
 from locales import t
 
 _LOCAL_CONFIG_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
 
+# 远程配置相关常量
+REMOTE_CONFIG_URL = "https://lllllllllllllllllllllll.rth1.xyz/fanqie.json"
+REMOTE_CONFIG_CACHE_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_remote_config_cache.json')
+REMOTE_CONFIG_CACHE_TTL = 3600  # 缓存有效期：1小时
+
 # 硬编码的 API 源配置
 HARDCODED_API_SOURCES = [
+    {"name": "中国|陕西省|西安市|电信", "base_url": "http://103.236.91.147:9999"},
     {"name": "中国|浙江省|宁波市|电信(HTTPS)", "base_url": "https://qkfqapi.vv9v.cn"},
     {"name": "中国|浙江省|宁波市|电信", "base_url": "http://qkfqapi.vv9v.cn"},
     {"name": "中国|北京市|腾讯云", "base_url": "http://49.232.137.12"},
@@ -70,38 +78,106 @@ def _load_local_pref() -> Dict:
         pass
     return {}
 
+def _load_remote_config() -> Optional[Dict]:
+    """从远程URL加载配置，支持缓存
+
+    Returns:
+        远程配置字典，失败返回None
+    """
+    # 1. 检查缓存是否有效
+    if os.path.exists(REMOTE_CONFIG_CACHE_FILE):
+        try:
+            with open(REMOTE_CONFIG_CACHE_FILE, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+            cache_time = cache.get('_cache_time', 0)
+            if time.time() - cache_time < REMOTE_CONFIG_CACHE_TTL:
+                return cache.get('data')
+        except Exception:
+            pass
+
+    # 2. 从远程获取配置
+    try:
+        import requests
+        response = requests.get(REMOTE_CONFIG_URL, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            # 验证配置格式
+            if isinstance(data, dict) and ('api_sources' in data or 'endpoints' in data or 'config' in data):
+                # 保存到缓存
+                cache = {'_cache_time': time.time(), 'data': data}
+                try:
+                    with open(REMOTE_CONFIG_CACHE_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(cache, f, ensure_ascii=False)
+                except Exception:
+                    pass
+                return data
+    except Exception:
+        pass
+
+    # 3. 尝试读取过期缓存作为备用
+    if os.path.exists(REMOTE_CONFIG_CACHE_FILE):
+        try:
+            with open(REMOTE_CONFIG_CACHE_FILE, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+            return cache.get('data')
+        except Exception:
+            pass
+
+    return None
+
 # API 端点配置 - 对接 https://qkfqapi.vv9v.cn/docs
 LOCAL_ENDPOINTS = {
     "search": "/api/search",       # 搜索书籍 (key, tab_type, offset)
     "detail": "/api/detail",       # 获取书籍详情 (book_id)
     "book": "/api/book",           # 获取书籍目录 (book_id)
     "directory": "/api/directory", # 获取简化目录 (fq_id)
-    "content": "/api/content",     # 内容接口 (tab=小说/批量/下载, item_id/book_id)
+    "content": "/api/content",     # 内容接口 (tab=小说/听书/短剧/漫画/批量, item_id/book_id)
     "chapter": "/api/chapter",     # 简化章节接口 (item_id) - 备用
+    # 新增端点
+    "raw_full": "/api/raw_full",           # 原始内容 (item_id)
+    "ios_content": "/api/ios/content",     # iOS内容 (item_id)
+    "ios_register": "/api/ios/register",   # iOS设备注册
+    "device_pool": "/api/device/pool",     # 设备池状态
+    "device_register": "/api/device/register",  # 设备注册 (platform)
+    "device_status": "/api/device/status",      # 设备状态 (platform)
+    "manga_progress": "/api/manga/progress",    # 漫画进度 (task_id)
 }
 
 
 def load_config() -> Dict:
-    """加载硬编码配置"""
+    """加载配置，优先使用远程配置，失败时回退到本地配置"""
     print(t("config_loading_local"))
-    
+
+    # 尝试加载远程配置
+    remote_config = _load_remote_config()
+
+    # 根据远程配置或本地配置构建最终配置
+    if remote_config:
+        api_sources = remote_config.get('api_sources', HARDCODED_API_SOURCES)
+        endpoints = remote_config.get('endpoints', LOCAL_ENDPOINTS)
+        config_params = remote_config.get('config', HARDCODED_CONFIG)
+    else:
+        api_sources = HARDCODED_API_SOURCES
+        endpoints = LOCAL_ENDPOINTS
+        config_params = HARDCODED_CONFIG
+
     config = {
         "api_base_url": "",
-        "api_sources": HARDCODED_API_SOURCES.copy(),
-        "request_timeout": HARDCODED_CONFIG["request_timeout"],
-        "max_retries": HARDCODED_CONFIG["max_retries"],
-        "connection_pool_size": HARDCODED_CONFIG["connection_pool_size"],
-        "max_workers": HARDCODED_CONFIG["max_workers"],
-        "download_delay": HARDCODED_CONFIG["request_rate_limit"],
+        "api_sources": api_sources.copy() if isinstance(api_sources, list) else HARDCODED_API_SOURCES.copy(),
+        "request_timeout": config_params.get("request_timeout", HARDCODED_CONFIG["request_timeout"]),
+        "max_retries": config_params.get("max_retries", HARDCODED_CONFIG["max_retries"]),
+        "connection_pool_size": config_params.get("connection_pool_size", HARDCODED_CONFIG["connection_pool_size"]),
+        "max_workers": config_params.get("max_workers", HARDCODED_CONFIG["max_workers"]),
+        "download_delay": config_params.get("request_rate_limit", HARDCODED_CONFIG["request_rate_limit"]),
         "retry_delay": 2,
         "status_file": ".download_status.json",
-        "download_enabled": HARDCODED_CONFIG["download_enabled"],
+        "download_enabled": config_params.get("download_enabled", HARDCODED_CONFIG["download_enabled"]),
         "verbose_logging": False,
-        "request_rate_limit": HARDCODED_CONFIG["request_rate_limit"],
-        "api_rate_limit": HARDCODED_CONFIG["api_rate_limit"],
-        "rate_limit_window": HARDCODED_CONFIG["rate_limit_window"],
-        "async_batch_size": HARDCODED_CONFIG["async_batch_size"],
-        "endpoints": LOCAL_ENDPOINTS
+        "request_rate_limit": config_params.get("request_rate_limit", HARDCODED_CONFIG["request_rate_limit"]),
+        "api_rate_limit": config_params.get("api_rate_limit", HARDCODED_CONFIG["api_rate_limit"]),
+        "rate_limit_window": config_params.get("rate_limit_window", HARDCODED_CONFIG["rate_limit_window"]),
+        "async_batch_size": config_params.get("async_batch_size", HARDCODED_CONFIG["async_batch_size"]),
+        "endpoints": endpoints if isinstance(endpoints, dict) else LOCAL_ENDPOINTS
     }
 
     # 读取本地偏好（手动/自动选择均可复用）
@@ -153,10 +229,31 @@ def get_headers() -> Dict[str, str]:
         "Content-Type": "application/json"
     }
 
+def export_config_to_file(filepath: str = "fanqie.txt") -> str:
+    """导出当前配置到文件
+
+    Args:
+        filepath: 导出文件路径，默认为 fanqie.txt
+
+    Returns:
+        导出的文件路径
+    """
+    config_data = {
+        "version": __version__,
+        "updated_at": datetime.now().isoformat(),
+        "api_sources": HARDCODED_API_SOURCES,
+        "endpoints": LOCAL_ENDPOINTS,
+        "config": HARDCODED_CONFIG
+    }
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(config_data, f, ensure_ascii=False, indent=2)
+    return filepath
+
 __all__ = [
     "CONFIG",
     "print_lock",
     "get_headers",
+    "export_config_to_file",
     "__version__",
     "__author__",
     "__description__",
