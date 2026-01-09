@@ -19,6 +19,17 @@ import logging
 
 # 预先导入版本信息（确保在模块加载时就获取正确版本）
 from config import __version__ as APP_VERSION
+from config import CONFIG, ConfigLoadError
+
+def _check_config():
+    """检查配置是否已加载，返回错误响应或 None"""
+    if CONFIG is None:
+        return jsonify({
+            'success': False,
+            'error': '配置加载失败，请检查网络连接',
+            'message': '无法连接到配置服务器，应用需要网络连接才能正常使用'
+        }), 503
+    return None
 
 # 禁用Flask默认日志
 log = logging.getLogger('werkzeug')
@@ -1242,7 +1253,8 @@ def init_modules(skip_api_select=False):
 def _get_api_sources() -> list:
     """从配置获取可选 API 接口列表"""
     try:
-        from config import CONFIG
+        if CONFIG is None:
+            return []
         sources = CONFIG.get('api_sources') or []
         normalized = []
         for s in sources:
@@ -1311,7 +1323,8 @@ def _probe_api_source(base_url: str, timeout: float = 1.5) -> dict:
 
 def _apply_api_base_url(base_url: str) -> None:
     """应用 API base_url 到运行时（CONFIG + APIManager）"""
-    from config import CONFIG
+    if CONFIG is None:
+        return
 
     base_url = _normalize_base_url(base_url)
     if not base_url:
@@ -1334,7 +1347,8 @@ def _ensure_api_base_url(force_mode=None) -> str:
     Returns:
         str: 当前/选中的 base_url（可能为空）
     """
-    from config import CONFIG
+    if CONFIG is None:
+        return ''
 
     sources = _get_api_sources()
     if not sources:
@@ -1621,8 +1635,12 @@ def api_status():
 @app.route('/api/api-sources', methods=['GET'])
 def api_api_sources():
     """获取可用的下载接口列表，并返回可用性探测结果（并发探测）"""
-    from config import CONFIG
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # 检查配置是否可用
+    config_error = _check_config()
+    if config_error:
+        return config_error
 
     local_cfg = _read_local_config()
     mode = str(local_cfg.get('api_base_url_mode', 'auto') or 'auto').lower()
