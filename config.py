@@ -45,14 +45,14 @@ HARDCODED_API_SOURCES = [
 
 # 硬编码的配置参数
 HARDCODED_CONFIG = {
-    "max_workers": 2,
+    "max_workers": 10,              # 并发线程数，提高下载速度
     "max_retries": 3,
     "request_timeout": 30,
-    "request_rate_limit": 0.5,
+    "request_rate_limit": 0.05,     # 请求间隔降低到50ms，允许快速并发
     "connection_pool_size": 100,
-    "api_rate_limit": 5,
+    "api_rate_limit": 20,           # 每秒最大请求数
     "rate_limit_window": 1.0,
-    "async_batch_size": 30,
+    "async_batch_size": 50,         # 增大批量处理大小
     "download_enabled": True
 }
 

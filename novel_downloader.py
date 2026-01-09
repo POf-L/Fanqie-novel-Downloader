@@ -30,11 +30,46 @@ requests.packages.urllib3.disable_warnings()
 
 # ===================== 官方API管理器 =====================
 
+class TokenBucket:
+    """令牌桶算法实现并发速率限制，允许真正的并发请求"""
+
+    def __init__(self, rate: float, capacity: int):
+        """
+        rate: 每秒生成的令牌数
+        capacity: 桶的最大容量
+        """
+        self.rate = rate
+        self.capacity = capacity
+        self.tokens = capacity
+        self.last_update = time.time()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self):
+        """获取一个令牌，如果没有则等待"""
+        async with self._lock:
+            now = time.time()
+            # 补充令牌
+            elapsed = now - self.last_update
+            self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+            self.last_update = now
+
+            if self.tokens >= 1:
+                self.tokens -= 1
+                return
+
+            # 计算需要等待的时间
+            wait_time = (1 - self.tokens) / self.rate
+
+        # 在锁外等待，允许其他协程获取锁
+        await asyncio.sleep(wait_time)
+        await self.acquire()
+
+
 class APIManager:
     """番茄小说官方API统一管理器 - https://qkfqapi.vv9v.cn/docs
     支持同步和异步两种调用方式
     """
-    
+
     def __init__(self):
         # 优先使用已选择的 api_base_url；否则回退到 api_sources 第一个
         preferred_base_url = (CONFIG.get("api_base_url") or "").strip().rstrip('/')
@@ -54,8 +89,8 @@ class APIManager:
         self._tls = threading.local()
         self._async_session: Optional[aiohttp.ClientSession] = None
         self.semaphore = None
-        self.last_request_time = 0
-        self.request_lock = asyncio.Lock()
+        # 使用令牌桶替代全局锁，允许真正的并发
+        self.rate_limiter: Optional[TokenBucket] = None
 
     def _get_session(self) -> requests.Session:
         """获取同步HTTP会话"""
@@ -87,20 +122,24 @@ class APIManager:
         if self._async_session is None or self._async_session.closed:
             timeout = aiohttp.ClientTimeout(total=CONFIG["request_timeout"], connect=5, sock_read=15)
             connector = aiohttp.TCPConnector(
-                limit=CONFIG.get("connection_pool_size", 10),
-                limit_per_host=CONFIG.get("connection_pool_size", 10),
+                limit=CONFIG.get("connection_pool_size", 100),
+                limit_per_host=CONFIG.get("max_workers", 10) * 2,  # 每个主机的连接数
                 ttl_dns_cache=300,
                 enable_cleanup_closed=True,
                 force_close=False,
                 keepalive_timeout=30
             )
             self._async_session = aiohttp.ClientSession(
-                headers=get_headers(), 
-                timeout=timeout, 
+                headers=get_headers(),
+                timeout=timeout,
                 connector=connector,
                 trust_env=True
             )
-            self.semaphore = asyncio.Semaphore(CONFIG.get("max_workers", 5))
+            self.semaphore = asyncio.Semaphore(CONFIG.get("max_workers", 10))
+            # 初始化令牌桶：每秒允许 api_rate_limit 个请求，突发容量为 max_workers
+            rate = CONFIG.get("api_rate_limit", 20)
+            capacity = CONFIG.get("max_workers", 10)
+            self.rate_limiter = TokenBucket(rate=rate, capacity=capacity)
         return self._async_session
 
     async def close_async(self):
@@ -235,24 +274,21 @@ class APIManager:
     async def get_chapter_content_async(self, item_id: str) -> Optional[Dict]:
         """获取章节内容(异步)
         优先使用 /api/chapter 简化接口，失败时回退到 /api/content
+        使用令牌桶算法实现真正的并发速率限制
         """
         max_retries = CONFIG.get("max_retries", 3)
-        
+        session = await self._get_async_session()
+
+        # 使用令牌桶进行速率限制，允许真正的并发
         async with self.semaphore:
-            async with self.request_lock:
-                current_time = time.time()
-                time_since_last = current_time - self.last_request_time
-                if time_since_last < CONFIG.get("download_delay", 0.5):
-                    await asyncio.sleep(CONFIG.get("download_delay", 0.5) - time_since_last)
-                self.last_request_time = time.time()
-            
-            session = await self._get_async_session()
-            
+            if self.rate_limiter:
+                await self.rate_limiter.acquire()
+
             # 优先尝试简化的 /api/chapter 接口
             chapter_endpoint = self.endpoints.get('chapter', '/api/chapter')
             url = f"{self.base_url}{chapter_endpoint}"
             params = {"item_id": item_id}
-            
+
             for attempt in range(max_retries):
                 try:
                     async with session.get(url, params=params) as response:
@@ -274,11 +310,11 @@ class APIManager:
                         await asyncio.sleep(0.3)
                         continue
                     break
-            
+
             # 回退到 /api/content 接口
             url = f"{self.base_url}{self.endpoints['content']}"
             params = {"tab": "小说", "item_id": item_id}
-            
+
             for attempt in range(max_retries):
                 try:
                     async with session.get(url, params=params) as response:
@@ -300,7 +336,7 @@ class APIManager:
                         await asyncio.sleep(0.3)
                         continue
                     return None
-            
+
             return None
 
     def get_full_content(self, book_id: str) -> Optional[Union[str, Dict[str, str]]]:
