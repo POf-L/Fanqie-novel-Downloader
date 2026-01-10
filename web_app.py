@@ -41,10 +41,43 @@ CORS(app)
 # 访问令牌（由main.py在启动时设置）
 ACCESS_TOKEN = None
 
+# 节点探测结果缓存（启动时探测，下载时复用）
+# 格式: {base_url: {'available': bool, 'latency_ms': int, 'supports_full_download': bool}}
+PROBED_NODES_CACHE = {}
+
 def set_access_token(token):
     """设置访问令牌"""
     global ACCESS_TOKEN
     ACCESS_TOKEN = token
+
+def get_available_nodes() -> list:
+    """获取可用节点列表（已探测通过的节点）"""
+    return [url for url, info in PROBED_NODES_CACHE.items() if info.get('available')]
+
+def get_full_download_nodes() -> list:
+    """获取支持整本下载的可用节点列表"""
+    return [url for url, info in PROBED_NODES_CACHE.items()
+            if info.get('available') and info.get('supports_full_download')]
+
+def is_node_available(base_url: str) -> bool:
+    """检查节点是否可用"""
+    base_url = _normalize_base_url(base_url)
+    if base_url in PROBED_NODES_CACHE:
+        return PROBED_NODES_CACHE[base_url].get('available', False)
+    return True  # 未探测的节点默认可用
+
+def update_probed_cache(probed_results: list):
+    """更新节点探测缓存"""
+    global PROBED_NODES_CACHE
+    for result in probed_results:
+        base_url = _normalize_base_url(result.get('base_url', ''))
+        if base_url:
+            PROBED_NODES_CACHE[base_url] = {
+                'available': result.get('available', False),
+                'latency_ms': result.get('latency_ms'),
+                'supports_full_download': result.get('supports_full_download', True),
+                'error': result.get('error')
+            }
 
 # 配置文件路径 - 保存到系统临时目录（跨平台兼容）
 TEMP_DIR = tempfile.gettempdir()
@@ -1644,6 +1677,9 @@ def api_api_sources():
             except Exception as e:
                 probe = {'available': False, 'latency_ms': None, 'status_code': None, 'error': str(e)}
             probed.append({**src, **probe})
+
+    # 更新节点探测缓存（供下载时使用，跳过不可用节点）
+    update_probed_cache(probed)
 
     # 按延迟排序
     probed.sort(key=lambda x: (not x.get('available'), x.get('latency_ms') or 999999))

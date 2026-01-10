@@ -650,19 +650,60 @@ class APIManager:
         if not endpoint:
             return None
 
-        # 构建要尝试的节点列表（优先当前 base_url）
+        # 尝试导入节点缓存（web_app模块可能未加载）
+        try:
+            from web_app import PROBED_NODES_CACHE
+        except ImportError:
+            PROBED_NODES_CACHE = {}
+
+        def _is_node_available(url: str) -> bool:
+            """检查节点是否可用（启动时探测通过）"""
+            url = (url or "").strip().rstrip('/')
+            if not PROBED_NODES_CACHE:
+                return True  # 缓存为空时默认可用
+            if url not in PROBED_NODES_CACHE:
+                return True  # 未探测的节点默认可用
+            return PROBED_NODES_CACHE[url].get('available', False)
+
+        def _supports_full_download(url: str) -> bool:
+            """检查节点是否支持整本下载"""
+            url = (url or "").strip().rstrip('/')
+            if not PROBED_NODES_CACHE:
+                return True  # 缓存为空时默认支持
+            if url not in PROBED_NODES_CACHE:
+                return True  # 未探测的节点默认支持
+            return PROBED_NODES_CACHE[url].get('supports_full_download', True)
+
+        # 构建要尝试的节点列表（优先当前 base_url，跳过不可用和不支持整本下载的节点）
         urls_to_try: List[str] = []
-        if self.base_url:
+        if self.base_url and _is_node_available(self.base_url) and _supports_full_download(self.base_url):
             urls_to_try.append(self.base_url)
         for source in api_sources:
             base = ""
+            supports_full = True
             if isinstance(source, dict):
                 base = source.get("base_url", "") or source.get("api_base_url", "")
+                supports_full = source.get("supports_full_download", True)
             elif isinstance(source, str):
                 base = source
             base = (base or "").strip().rstrip('/')
             if base and base not in urls_to_try:
+                # 跳过不支持整本下载的节点
+                if not supports_full:
+                    with print_lock:
+                        print(f"[DEBUG] 跳过不支持整本下载的节点: {base}")
+                    continue
+                # 跳过启动时探测失败的节点
+                if not _is_node_available(base):
+                    with print_lock:
+                        print(f"[DEBUG] 跳过不可用节点: {base}")
+                    continue
                 urls_to_try.append(base)
+
+        if not urls_to_try:
+            with print_lock:
+                print("[DEBUG] 没有可用的支持整本下载的节点")
+            return None
 
         # 下载模式：批量模式优先（可按 item_id 对齐）
         download_modes = [
