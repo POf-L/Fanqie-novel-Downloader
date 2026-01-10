@@ -4,7 +4,7 @@ on:
   schedule:
     # 每天中国时间12:00运行 (UTC+8，所以是UTC 04:00)
     - cron: '0 4 * * *'
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch: # 允许手动触发
 
 permissions:
   issues: write
@@ -13,34 +13,136 @@ jobs:
   close-stale-issues:
     runs-on: ubuntu-latest
     steps:
-      - name: Close stale issues
-        uses: actions/stale@v9
+      - name: Process stale issues
+        uses: actions/github-script@v7
         with:
-          # Issue 配置
-          days-before-issue-stale: 7
-          days-before-issue-close: 0
-          stale-issue-label: 'stale'
-          stale-issue-message: |
-            此 issue 已超过 7 天没有新的回应，将被自动关闭。
-            如果问题仍然存在，请重新打开或创建新的 issue。
+          script: |
+            const DAYS_BEFORE_STALE = 1;
+            const DAYS_BEFORE_CLOSE = 2;
+            const STALE_LABEL = 'stale';
+            const EXEMPT_LABELS = ['pinned', 'enhancement', 'bug', 'help wanted'];
 
-            This issue has been inactive for more than 7 days and will be automatically closed.
-            If the problem persists, please reopen or create a new issue.
-          close-issue-message: |
-            此 issue 因长时间无回应已被自动关闭。
-            如有需要，欢迎重新打开或提交新的 issue。
+            const now = new Date();
+            const staleDate = new Date(now - DAYS_BEFORE_STALE * 24 * 60 * 60 * 1000);
+            const closeDate = new Date(now - DAYS_BEFORE_CLOSE * 24 * 60 * 60 * 1000);
 
-            This issue has been automatically closed due to inactivity.
-            Feel free to reopen or submit a new issue if needed.
+            // 获取所有 open 的 issues
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
 
-          # PR 配置（不处理PR）
-          days-before-pr-stale: -1
-          days-before-pr-close: -1
+            for (const issue of issues) {
+              // 跳过 PR
+              if (issue.pull_request) continue;
 
-          # 排除配置
-          exempt-issue-labels: 'pinned,enhancement,bug,help wanted'
-          exempt-all-assignees: true
+              // 跳过有豁免标签的 issue
+              const issueLabels = issue.labels.map(l => l.name);
+              if (EXEMPT_LABELS.some(label => issueLabels.includes(label))) continue;
 
-          # 其他配置
-          remove-stale-when-updated: true
-          operations-per-run: 100
+              // 跳过有 assignee 的 issue
+              if (issue.assignees && issue.assignees.length > 0) continue;
+
+              // 获取最后一条非 bot 的评论
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                per_page: 100
+              });
+
+              // 过滤掉 github-actions[bot] 的评论
+              const humanComments = comments.data.filter(c =>
+                !c.user.login.includes('[bot]') && c.user.type !== 'Bot'
+              );
+
+              // 获取最后活动时间（最后一条人类评论或 issue 创建时间）
+              const lastActivity = humanComments.length > 0
+                ? new Date(humanComments[humanComments.length - 1].created_at)
+                : new Date(issue.created_at);
+
+              const hasStaleLabel = issueLabels.includes(STALE_LABEL);
+
+              if (hasStaleLabel) {
+                // 已有 stale 标签，检查是否需要关闭
+                // 找到添加 stale 标签的时间
+                const events = await github.rest.issues.listEvents({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  per_page: 100
+                });
+
+                const staleLabelEvent = events.data
+                  .filter(e => e.event === 'labeled' && e.label?.name === STALE_LABEL)
+                  .pop();
+
+                if (staleLabelEvent) {
+                  const staleLabelDate = new Date(staleLabelEvent.created_at);
+
+                  // 检查添加 stale 标签后是否有新的人类回复
+                  const newHumanComments = humanComments.filter(c =>
+                    new Date(c.created_at) > staleLabelDate
+                  );
+
+                  if (newHumanComments.length > 0) {
+                    // 有新回复，移除 stale 标签
+                    await github.rest.issues.removeLabel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issue.number,
+                      name: STALE_LABEL
+                    });
+                    console.log(`Removed stale label from #${issue.number} due to new activity`);
+                  } else if (now - staleLabelDate >= DAYS_BEFORE_CLOSE * 24 * 60 * 60 * 1000) {
+                    // 超过关闭期限，关闭 issue
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issue.number,
+                      body: `此 issue 因超过 ${DAYS_BEFORE_STALE + DAYS_BEFORE_CLOSE} 天无回应已被自动关闭。\n如有需要，欢迎重新打开或提交新的 issue。\n\nThis issue has been automatically closed due to ${DAYS_BEFORE_STALE + DAYS_BEFORE_CLOSE} days of inactivity.\nFeel free to reopen or submit a new issue if needed.`
+                    });
+                    await github.rest.issues.update({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issue.number,
+                      state: 'closed',
+                      state_reason: 'not_planned'
+                    });
+                    console.log(`Closed stale issue #${issue.number}`);
+                  }
+                }
+              } else if (lastActivity < staleDate) {
+                // 没有 stale 标签且超过 stale 期限，添加标签和提醒
+                const closeDateTime = new Date(now.getTime() + DAYS_BEFORE_CLOSE * 24 * 60 * 60 * 1000);
+                const closeDateStr = closeDateTime.toLocaleDateString('zh-CN', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  timeZone: 'Asia/Shanghai'
+                });
+                const closeDateStrEn = closeDateTime.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  timeZone: 'Asia/Shanghai'
+                });
+
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: [STALE_LABEL]
+                });
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `⚠️ 此 issue 已超过 ${DAYS_BEFORE_STALE} 天没有新的回应。\n如果没有任何回复，此 issue 将于 **${closeDateStr}** 自动关闭。\n如果问题仍然存在，请回复此 issue 以保持其开启状态。\n\n⚠️ This issue has been inactive for more than ${DAYS_BEFORE_STALE} day(s).\nIf there is no response, this issue will be automatically closed on **${closeDateStrEn}**.\nIf the problem persists, please reply to this issue to keep it open.`
+                });
+                console.log(`Marked issue #${issue.number} as stale, will close on ${closeDateStr}`);
+              }
+            }
