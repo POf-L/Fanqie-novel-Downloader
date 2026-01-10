@@ -255,6 +255,7 @@ jobs:
             ${{ matrix.build_flags }} \
             --add-data "static${SEP}static" \
             --add-data "templates${SEP}templates" \
+            --add-data "fanqie.json${SEP}." \
             --hidden-import=flask \
             --hidden-import=flask_cors \
             --hidden-import=webview \
@@ -396,6 +397,7 @@ jobs:
             pyinstaller --onefile \
               --name=TomatoNovelDownloader-termux \
               --console \
+              --add-data "fanqie.json:." \
               --hidden-import=requests \
               --hidden-import=aiohttp \
               --hidden-import=PIL \
