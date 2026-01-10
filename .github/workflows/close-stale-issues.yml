@@ -23,9 +23,15 @@ jobs:
           stale-issue-message: |
             此 issue 已超过 7 天没有新的回应，将被自动关闭。
             如果问题仍然存在，请重新打开或创建新的 issue。
+
+            This issue has been inactive for more than 7 days and will be automatically closed.
+            If the problem persists, please reopen or create a new issue.
           close-issue-message: |
             此 issue 因长时间无回应已被自动关闭。
             如有需要，欢迎重新打开或提交新的 issue。
+
+            This issue has been automatically closed due to inactivity.
+            Feel free to reopen or submit a new issue if needed.
 
           # PR 配置（不处理PR）
           days-before-pr-stale: -1
