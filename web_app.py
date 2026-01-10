@@ -1169,7 +1169,7 @@ def update_download_worker(url, save_path, filename):
                 completed_chunks.sort(key=lambda x: x[0])
                 
                 with open(full_path, 'wb') as outfile:
-                    for chunk_id, temp_file in completed_chunks:
+                    for chunk_id, start, end, temp_file in completed_chunks:
                         if os.path.exists(temp_file):
                             with open(temp_file, 'rb') as infile:
                                 outfile.write(infile.read())
@@ -1177,7 +1177,7 @@ def update_download_worker(url, save_path, filename):
                             print(f'[DEBUG] Merged chunk {chunk_id}')
             else:
                 # 清理临时文件
-                for _, temp_file in completed_chunks:
+                for chunk_id, start, end, temp_file in completed_chunks:
                     if os.path.exists(temp_file):
                         os.remove(temp_file)
         
