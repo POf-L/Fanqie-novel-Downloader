@@ -1,0 +1,38 @@
+{
+  "version": "1.1.0",
+  "updated_at": "2026-01-09T14:20:00Z",
+  "api_sources": [
+    {"name": "中国|北京市|腾讯云", "base_url": "http://49.232.137.12"},
+    {"name": "中国|浙江省|宁波市|电信", "base_url": "http://qkfqapi.vv9v.cn"},
+    {"name": "中国|浙江省|宁波市|电信", "base_url": "https://qkfqapi.vv9v.cn"},
+    {"name": "中国|陕西省|西安市|电信", "base_url": "http://103.236.91.147:9999"},
+    {"name": "中国|江苏省|常州市|电信", "base_url": "http://43.248.77.205:22222"},
+    {"name": "日本|东京", "base_url": "https://fq.shusan.cn"}
+  ],
+  "endpoints": {
+    "search": "/api/search",
+    "detail": "/api/detail",
+    "book": "/api/book",
+    "directory": "/api/directory",
+    "content": "/api/content",
+    "chapter": "/api/chapter",
+    "raw_full": "/api/raw_full",
+    "ios_content": "/api/ios/content",
+    "ios_register": "/api/ios/register",
+    "device_pool": "/api/device/pool",
+    "device_register": "/api/device/register",
+    "device_status": "/api/device/status",
+    "manga_progress": "/api/manga/progress"
+  },
+  "config": {
+    "max_workers": 10,
+    "max_retries": 3,
+    "request_timeout": 30,
+    "request_rate_limit": 0.05,
+    "connection_pool_size": 100,
+    "api_rate_limit": 20,
+    "rate_limit_window": 1.0,
+    "async_batch_size": 50,
+    "download_enabled": true
+  }
+}

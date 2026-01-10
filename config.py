@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 配置管理模块 - 包含版本信息、全局配置
-完全依赖远程配置，无网络则无法使用
+使用本地配置文件 fanqie.json
 """
 
 __version__ = "1.1.0"
@@ -35,10 +35,8 @@ from fake_useragent import UserAgent
 
 _LOCAL_CONFIG_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
 
-# 远程配置相关常量
-REMOTE_CONFIG_URL = "https://lllllllllllllllllllllll.rth1.xyz/fanqie.json"
-REMOTE_CONFIG_CACHE_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_remote_config_cache.json')
-REMOTE_CONFIG_CACHE_TTL = 3600  # 缓存有效期：1小时
+# 本地配置文件路径
+LOCAL_CONFIG_JSON = os.path.join(os.path.dirname(__file__), 'fanqie.json')
 
 
 class ConfigLoadError(Exception):
@@ -62,87 +60,55 @@ def _load_local_pref() -> Dict:
     return {}
 
 
-def _load_remote_config() -> Optional[Dict]:
-    """从远程URL加载配置，支持缓存
+def _load_local_config() -> Optional[Dict]:
+    """从本地 fanqie.json 文件加载配置
 
     Returns:
-        远程配置字典，失败返回None
+        本地配置字典，失败返回None
     """
-    # 1. 检查缓存是否有效
-    if os.path.exists(REMOTE_CONFIG_CACHE_FILE):
-        try:
-            with open(REMOTE_CONFIG_CACHE_FILE, 'r', encoding='utf-8') as f:
-                cache = json.load(f)
-            cache_time = cache.get('_cache_time', 0)
-            if time.time() - cache_time < REMOTE_CONFIG_CACHE_TTL:
-                return cache.get('data')
-        except Exception:
-            pass
-
-    # 2. 从远程获取配置
     try:
-        import requests
-        # 先尝试直连（禁用代理），再尝试使用系统代理
-        for proxies in [{'http': None, 'https': None}, None]:
-            try:
-                response = requests.get(REMOTE_CONFIG_URL, timeout=10, proxies=proxies)
-                if response.status_code == 200:
-                    data = response.json()
-                    # 验证配置格式
-                    if isinstance(data, dict) and ('api_sources' in data or 'endpoints' in data or 'config' in data):
-                        # 保存到缓存
-                        cache = {'_cache_time': time.time(), 'data': data}
-                        try:
-                            with open(REMOTE_CONFIG_CACHE_FILE, 'w', encoding='utf-8') as f:
-                                json.dump(cache, f, ensure_ascii=False)
-                        except Exception:
-                            pass
-                        return data
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-    # 3. 尝试读取过期缓存作为备用（离线模式）
-    if os.path.exists(REMOTE_CONFIG_CACHE_FILE):
-        try:
-            with open(REMOTE_CONFIG_CACHE_FILE, 'r', encoding='utf-8') as f:
-                cache = json.load(f)
-            return cache.get('data')
-        except Exception:
-            pass
+        if os.path.exists(LOCAL_CONFIG_JSON):
+            with open(LOCAL_CONFIG_JSON, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            # 验证配置格式
+            if isinstance(data, dict) and ('api_sources' in data or 'endpoints' in data or 'config' in data):
+                return data
+        else:
+            print(f"警告: 本地配置文件不存在: {LOCAL_CONFIG_JSON}")
+    except Exception as e:
+        print(f"读取本地配置文件失败: {e}")
 
     return None
 
 
 def load_config() -> Dict:
-    """加载配置，完全依赖远程配置
+    """加载配置，使用本地 fanqie.json 文件
 
     Raises:
-        ConfigLoadError: 无法获取远程配置时抛出异常
+        ConfigLoadError: 无法获取本地配置时抛出异常
     """
-    print("正在从云端加载配置...")
+    print("正在加载本地配置...")
 
-    # 尝试加载远程配置
-    remote_config = _load_remote_config()
+    # 尝试加载本地配置
+    local_config = _load_local_config()
 
-    if not remote_config:
+    if not local_config:
         raise ConfigLoadError(
-            "无法加载配置！请检查网络连接。\n"
-            f"配置地址: {REMOTE_CONFIG_URL}\n"
-            "应用需要网络连接才能正常使用。"
+            "无法加载配置！请检查本地配置文件。\n"
+            f"配置文件路径: {LOCAL_CONFIG_JSON}\n"
+            "请确保 fanqie.json 文件存在且格式正确。"
         )
 
-    # 从远程配置中提取各部分
-    api_sources = remote_config.get('api_sources', [])
-    endpoints = remote_config.get('endpoints', {})
-    config_params = remote_config.get('config', {})
+    # 从本地配置中提取各部分
+    api_sources = local_config.get('api_sources', [])
+    endpoints = local_config.get('endpoints', {})
+    config_params = local_config.get('config', {})
 
     if not api_sources:
-        raise ConfigLoadError("远程配置无效：缺少 api_sources")
+        raise ConfigLoadError("本地配置无效：缺少 api_sources")
 
     if not endpoints:
-        raise ConfigLoadError("远程配置无效：缺少 endpoints")
+        raise ConfigLoadError("本地配置无效：缺少 endpoints")
 
     config = {
         "api_base_url": "",
