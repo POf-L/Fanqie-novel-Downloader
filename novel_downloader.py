@@ -24,6 +24,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from watermark import apply_watermark_to_chapter
 from locales import t
+from async_logger import async_print, safe_print
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 requests.packages.urllib3.disable_warnings()
@@ -45,24 +46,24 @@ class TokenBucket:
         self._lock = asyncio.Lock()
 
     async def acquire(self):
-        """获取一个令牌，如果没有则等待"""
-        async with self._lock:
-            now = time.time()
-            # 补充令牌
-            elapsed = now - self.last_update
-            self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
-            self.last_update = now
+        """获取一个令牌，如果没有则等待（优化版：移除递归调用）"""
+        while True:
+            async with self._lock:
+                now = time.time()
+                # 补充令牌
+                elapsed = now - self.last_update
+                self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+                self.last_update = now
 
-            if self.tokens >= 1:
-                self.tokens -= 1
-                return
+                if self.tokens >= 1:
+                    self.tokens -= 1
+                    return
 
-            # 计算需要等待的时间
-            wait_time = (1 - self.tokens) / self.rate
+                # 计算需要等待的时间
+                wait_time = (1 - self.tokens) / self.rate
 
-        # 在锁外等待，允许其他协程获取锁
-        await asyncio.sleep(wait_time)
-        await self.acquire()
+            # 在锁外等待
+            await asyncio.sleep(wait_time)
 
 
 class APIManager:
@@ -122,8 +123,8 @@ class APIManager:
         if self._async_session is None or self._async_session.closed:
             timeout = aiohttp.ClientTimeout(total=CONFIG["request_timeout"], connect=5, sock_read=15)
             connector = aiohttp.TCPConnector(
-                limit=CONFIG.get("connection_pool_size", 100),
-                limit_per_host=CONFIG.get("max_workers", 10) * 2,  # 每个主机的连接数
+                limit=CONFIG.get("connection_pool_size", 200),
+                limit_per_host=CONFIG.get("max_workers", 30) * 2,  # 每个主机的连接数提升到60
                 ttl_dns_cache=300,
                 enable_cleanup_closed=True,
                 force_close=False,
@@ -135,10 +136,10 @@ class APIManager:
                 connector=connector,
                 trust_env=True
             )
-            self.semaphore = asyncio.Semaphore(CONFIG.get("max_workers", 10))
+            self.semaphore = asyncio.Semaphore(CONFIG.get("max_workers", 30))
             # 初始化令牌桶：每秒允许 api_rate_limit 个请求，突发容量为 max_workers
-            rate = CONFIG.get("api_rate_limit", 20)
-            capacity = CONFIG.get("max_workers", 10)
+            rate = CONFIG.get("api_rate_limit", 50)
+            capacity = CONFIG.get("max_workers", 30)
             self.rate_limiter = TokenBucket(rate=rate, capacity=capacity)
         return self._async_session
 
@@ -160,8 +161,7 @@ class APIManager:
                     return data
             return None
         except Exception as e:
-            with print_lock:
-                print(t("dl_search_error", str(e)))
+            safe_print(t("dl_search_error", str(e)))
             return None
     
     def get_book_detail(self, book_id: str) -> Optional[Dict]:
@@ -190,8 +190,7 @@ class APIManager:
                     return level1_data
             return None
         except Exception as e:
-            with print_lock:
-                print(t("dl_detail_error", str(e)))
+            safe_print(t("dl_detail_error", str(e)))
             return None
     
     def get_directory(self, book_id: str) -> Optional[List[Dict]]:
@@ -216,15 +215,13 @@ class APIManager:
     def get_chapter_list(self, book_id: str) -> Optional[List[Dict]]:
         """获取章节列表"""
         try:
-            with print_lock:
-                print(t("dl_chapter_list_start", book_id))
+            safe_print(t("dl_chapter_list_start", book_id))
                 
             url = f"{self.base_url}{self.endpoints['book']}"
             params = {"book_id": book_id}
             response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
             
-            with print_lock:
-                print(t("dl_chapter_list_resp", response.status_code))
+            safe_print(t("dl_chapter_list_resp", response.status_code))
             
             if response.status_code == 200:
                 data = response.json()
@@ -235,8 +232,7 @@ class APIManager:
                     return level1_data
             return None
         except Exception as e:
-            with print_lock:
-                print(t("dl_chapter_list_error", str(e)))
+            safe_print(t("dl_chapter_list_error", str(e)))
             return None
     
     def get_chapter_content(self, item_id: str) -> Optional[Dict]:
@@ -266,8 +262,7 @@ class APIManager:
                     return data["data"]
             return None
         except Exception as e:
-            with print_lock:
-                print(t("dl_content_error", str(e)))
+            safe_print(t("dl_content_error", str(e)))
             return None
 
 
@@ -959,6 +954,55 @@ def parse_novel_text(text: str) -> List[Dict]:
         chapters.append(current_chapter)
     
     return chapters
+
+
+class APIManagerExt(APIManager):
+    """扩展的API管理器，添加异步批量下载功能"""
+    
+    async def download_chapters_async(self, chapters: List[Dict], progress_callback=None) -> Dict[int, Dict]:
+        """异步批量下载章节 - 替代ThreadPoolExecutor的高性能实现"""
+        results = {}
+        semaphore = asyncio.Semaphore(CONFIG.get("max_workers", 30))
+        
+        async def download_single(chapter):
+            async with semaphore:
+                if self.rate_limiter:
+                    await self.rate_limiter.acquire()
+                content = await self.get_chapter_content_async(chapter["id"])
+                if content and content.get('content'):
+                    return chapter['index'], {
+                        'title': chapter['title'],
+                        'content': content.get('content', '')
+                    }
+                return None
+        
+        # 创建任务列表
+        tasks = [download_single(ch) for ch in chapters]
+        
+        # 批量执行
+        completed = 0
+        for coro in asyncio.as_completed(tasks):
+            result = await coro
+            if result:
+                idx, data = result
+                results[idx] = data
+                completed += 1
+                if progress_callback:
+                    progress = int((completed / len(chapters)) * 100)
+                    progress_callback(progress, f"已下载 {completed}/{len(chapters)} 章")
+        
+        return results
+
+    def download_chapters(self, chapters: List[Dict], progress_callback=None) -> Dict[int, Dict]:
+        """下载章节列表（保持向后兼容）"""
+        # 检查是否在异步环境中
+        try:
+            loop = asyncio.get_running_loop()
+            # 在异步环境中，创建任务
+            return loop.create_task(self.download_chapters_async(chapters, progress_callback))
+        except RuntimeError:
+            # 不在异步环境中，运行新的事件循环
+            return asyncio.run(self.download_chapters_async(chapters, progress_callback))
 
 
 # 全局API管理器实例

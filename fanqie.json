@@ -25,12 +25,12 @@
     "manga_progress": "/api/manga/progress"
   },
   "config": {
-    "max_workers": 10,
+    "max_workers": 30,
     "max_retries": 3,
     "request_timeout": 30,
-    "request_rate_limit": 0.05,
-    "connection_pool_size": 100,
-    "api_rate_limit": 20,
+    "request_rate_limit": 0.02,
+    "connection_pool_size": 200,
+    "api_rate_limit": 50,
     "rate_limit_window": 1.0,
     "async_batch_size": 50,
     "download_enabled": true
