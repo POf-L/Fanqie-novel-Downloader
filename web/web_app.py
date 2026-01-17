@@ -1513,7 +1513,7 @@ def init_modules(skip_api_select=False):
             _ensure_api_base_url()
 
         from core.novel_downloader import NovelDownloader, get_api_manager
-        novel_downloader = __import__('novel_downloader')
+        from core import novel_downloader
         api = NovelDownloader()
         api_manager = get_api_manager()
         downloader_instance = api
@@ -3010,7 +3010,7 @@ def api_get_update_assets():
     """获取更新文件的下载选项"""
     try:
         from utils.updater import get_latest_release, parse_release_assets
-        from config import __github_repo__
+        from config.config import __github_repo__
         import platform
         
         # 获取最新版本信息

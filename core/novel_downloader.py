@@ -744,7 +744,7 @@ class APIManager:
 
         # 尝试导入节点缓存（web_app模块可能未加载）
         try:
-            from web_app import PROBED_NODES_CACHE
+            from web.web_app import PROBED_NODES_CACHE
         except ImportError:
             PROBED_NODES_CACHE = {}
 

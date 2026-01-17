@@ -755,7 +755,7 @@ def can_auto_update() -> bool:
 
 if __name__ == '__main__':
     # 测试代码
-    from config import __version__, __github_repo__
+    from config.config import __version__, __github_repo__
     
     print(f'当前版本: {__version__}')
     print(f'检查仓库: {__github_repo__}')
