@@ -88,8 +88,8 @@ jobs:
             | 🌿 **分支/Tag** | `${{ github.ref_name }}` |
             | 🔗 **Commit** | `${{ github.sha }}` |
           draft: false
-          prerelease: false
-          make_latest: true
+          prerelease: true
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
