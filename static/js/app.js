@@ -543,10 +543,25 @@ class FolderBrowser {
 
             let currentPath = initialPath;
             let parentPath = null;
+            let selectedPath = null; // 当前选中的文件夹路径
 
             const close = (result) => {
                 modal.remove();
                 resolve(result);
+            };
+
+            const updatePathDisplay = () => {
+                // 更新路径显示：如果有选中的文件夹，显示选中的路径，否则显示当前路径
+                const displayPath = selectedPath || currentPath;
+                pathInput.value = displayPath;
+
+                // 更新确认按钮的状态和文本
+                const selectedFolder = selectedPath ? selectedPath.split(/[/\\]/).pop() : null;
+                if (selectedFolder) {
+                    selectBtn.innerHTML = `<iconify-icon icon="line-md:confirm"></iconify-icon> 选择 "${selectedFolder}"`;
+                } else {
+                    selectBtn.innerHTML = `<iconify-icon icon="line-md:confirm"></iconify-icon> 选择当前文件夹`;
+                }
             };
 
             const loadDirectory = async (path) => {
@@ -572,8 +587,11 @@ class FolderBrowser {
                     if (result.success) {
                         currentPath = result.data.current_path;
                         parentPath = result.data.parent_path;
-                        pathInput.value = currentPath;
+                        selectedPath = null; // 重置选中状态
                         navUp.disabled = result.data.is_root;
+
+                        // 更新路径显示
+                        updatePathDisplay();
                         
                         // 显示快捷路径
                         if (result.data.quick_paths && result.data.quick_paths.length > 0) {
@@ -616,10 +634,27 @@ class FolderBrowser {
                             
                             listContainer.querySelectorAll('.folder-item').forEach(item => {
                                 item.addEventListener('dblclick', () => loadDirectory(item.dataset.path));
-                                item.addEventListener('click', () => {
+                                item.addEventListener('click', (e) => {
+                                    e.stopPropagation(); // 阻止事件冒泡
+                                    // 移除所有选中状态
                                     listContainer.querySelectorAll('.folder-item').forEach(i => i.classList.remove('selected'));
+                                    // 选中当前项
                                     item.classList.add('selected');
+                                    // 设置选中的路径
+                                    selectedPath = item.dataset.path;
+                                    // 更新路径显示
+                                    updatePathDisplay();
                                 });
+                            });
+
+                            // 点击空白区域取消选中
+                            listContainer.addEventListener('click', (e) => {
+                                if (e.target === listContainer) {
+                                    // 清除所有选中状态
+                                    listContainer.querySelectorAll('.folder-item').forEach(i => i.classList.remove('selected'));
+                                    selectedPath = null;
+                                    updatePathDisplay();
+                                }
                             });
                         }
                     } else {
@@ -643,7 +678,10 @@ class FolderBrowser {
             });
 
             selectBtn.addEventListener('click', async () => {
-                if (currentPath) {
+                // 使用选中的路径，如果没有选中则使用当前路径
+                const pathToSelect = selectedPath || currentPath;
+
+                if (pathToSelect) {
                     try {
                         const headers = { 'Content-Type': 'application/json' };
                         if (AppState.accessToken) {
@@ -652,12 +690,12 @@ class FolderBrowser {
                         await fetch('/api/select-folder', {
                             method: 'POST',
                             headers: headers,
-                            body: JSON.stringify({ path: currentPath })
+                            body: JSON.stringify({ path: pathToSelect })
                         });
                     } catch (e) {
                         console.error('Save path failed:', e);
                     }
-                    close(currentPath);
+                    close(pathToSelect);
                 }
             });
 
