@@ -4,12 +4,37 @@
 支持多平台：Windows, macOS, Linux, Termux
 """
 
+import sys
+import os
+import traceback
+
+# 全局异常处理 - 确保打包后能看到错误
+def _global_exception_handler(exc_type, exc_value, exc_tb):
+    """全局异常处理器，确保错误信息不会丢失"""
+    error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    try:
+        print(f"\n{'='*50}\n程序发生错误:\n{error_msg}\n{'='*50}")
+    except:
+        pass
+    # 打包环境下暂停以便查看错误
+    if getattr(sys, 'frozen', False):
+        try:
+            input("\n按回车键退出...")
+        except:
+            import time
+            time.sleep(10)
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+sys.excepthook = _global_exception_handler
+
 # 打包兼容性修复 - 必须在所有其他导入之前
 try:
     from utils.packaging_fixes import apply_all_fixes
     apply_all_fixes()
 except ImportError:
     pass
+except Exception as e:
+    print(f"打包修复模块加载失败: {e}")
 
 # 一劳永逸的编码处理 - 必须在所有其他导入之前
 try:
@@ -21,17 +46,15 @@ try:
     print = safe_print  # 确保当前模块使用安全版本
 except ImportError:
     # 如果编码工具不存在，使用基本的编码设置
-    import os
-    import sys
     if sys.platform == 'win32':
         try:
             os.system('chcp 65001 >nul 2>&1')
             os.environ['PYTHONIOENCODING'] = 'utf-8'
         except:
             pass
+except Exception as e:
+    print(f"编码工具加载失败: {e}")
 
-import os
-import sys
 import subprocess
 import time
 import threading

@@ -26,23 +26,30 @@ def setup_utf8_encoding():
         os.environ['PYTHONIOENCODING'] = 'utf-8'
 
         # 重新包装 stdout 和 stderr 为 UTF-8
-        if hasattr(sys.stdout, 'buffer'):
-            sys.stdout = io.TextIOWrapper(
-                sys.stdout.buffer,
-                encoding='utf-8',
-                errors='replace',
-                newline=None,
-                line_buffering=True
-            )
+        # 注意：在打包环境中需要额外检查 buffer 是否可用
+        try:
+            if hasattr(sys.stdout, 'buffer') and sys.stdout.buffer is not None:
+                sys.stdout = io.TextIOWrapper(
+                    sys.stdout.buffer,
+                    encoding='utf-8',
+                    errors='replace',
+                    newline=None,
+                    line_buffering=True
+                )
+        except Exception:
+            pass  # 打包环境可能没有 buffer，忽略
 
-        if hasattr(sys.stderr, 'buffer'):
-            sys.stderr = io.TextIOWrapper(
-                sys.stderr.buffer,
-                encoding='utf-8',
-                errors='replace',
-                newline=None,
-                line_buffering=True
-            )
+        try:
+            if hasattr(sys.stderr, 'buffer') and sys.stderr.buffer is not None:
+                sys.stderr = io.TextIOWrapper(
+                    sys.stderr.buffer,
+                    encoding='utf-8',
+                    errors='replace',
+                    newline=None,
+                    line_buffering=True
+                )
+        except Exception:
+            pass  # 打包环境可能没有 buffer，忽略
 
 
 def safe_str(obj: Any) -> str:
