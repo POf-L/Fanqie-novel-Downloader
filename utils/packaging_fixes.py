@@ -25,6 +25,12 @@ def fix_frozen_path():
         # 添加到Python路径
         if base_path not in sys.path:
             sys.path.insert(0, base_path)
+        
+        # 添加子目录到路径（确保模块可以被导入）
+        for subdir in ['utils', 'core', 'config', 'web']:
+            subdir_path = os.path.join(base_path, subdir)
+            if os.path.isdir(subdir_path) and subdir_path not in sys.path:
+                sys.path.insert(0, subdir_path)
 
         return base_path
     else:

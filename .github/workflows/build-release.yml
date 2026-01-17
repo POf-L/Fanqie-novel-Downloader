@@ -261,6 +261,8 @@ jobs:
             --add-data "config/fanqie.json${SEP}config" \
             --add-data "utils${SEP}utils" \
             --add-data "core${SEP}core" \
+            --add-data "web${SEP}web" \
+            --add-data "config${SEP}config" \
             --hidden-import=flask \
             --hidden-import=flask_cors \
             --hidden-import=webview \
@@ -276,12 +278,19 @@ jobs:
             --hidden-import=config \
             --hidden-import=config.config \
             --hidden-import=version \
+            --hidden-import=web \
+            --hidden-import=web.web_app \
+            --hidden-import=utils \
             --hidden-import=utils.updater \
             --hidden-import=utils.locales \
             --hidden-import=utils.encoding_utils \
             --hidden-import=utils.platform_utils \
             --hidden-import=utils.packaging_fixes \
+            --hidden-import=utils.watermark \
+            --hidden-import=utils.async_logger \
+            --hidden-import=core \
             --hidden-import=core.novel_downloader \
+            --hidden-import=core.cli \
             --hidden-import=packaging \
             --hidden-import=packaging.version \
             --hidden-import=tempfile \
@@ -437,7 +446,9 @@ jobs:
               --console \
               --icon=assets/icons/icon.png \
               --add-data "config/fanqie.json:config" \
+              --add-data "config:config" \
               --add-data "utils:utils" \
+              --add-data "core:core" \
               --hidden-import=requests \
               --hidden-import=aiohttp \
               --hidden-import=asyncio \
@@ -451,10 +462,15 @@ jobs:
               --hidden-import=config \
               --hidden-import=config.config \
               --hidden-import=version \
+              --hidden-import=utils \
               --hidden-import=utils.locales \
               --hidden-import=utils.encoding_utils \
               --hidden-import=utils.packaging_fixes \
               --hidden-import=utils.updater \
+              --hidden-import=utils.watermark \
+              --hidden-import=utils.async_logger \
+              --hidden-import=core \
+              --hidden-import=core.novel_downloader \
               --hidden-import=packaging \
               --hidden-import=packaging.version \
               --hidden-import=tempfile \

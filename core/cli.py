@@ -3,6 +3,24 @@
 命令行界面入口 - 支持 Termux 和无 GUI 环境
 """
 
+import sys
+import os
+
+# 添加父目录到路径以便导入其他模块（打包环境和开发环境都需要）
+if getattr(sys, 'frozen', False):
+    # 打包环境
+    if hasattr(sys, '_MEIPASS'):
+        _base_path = sys._MEIPASS
+    else:
+        _base_path = os.path.dirname(sys.executable)
+    if _base_path not in sys.path:
+        sys.path.insert(0, _base_path)
+else:
+    # 开发环境
+    _parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _parent_dir not in sys.path:
+        sys.path.insert(0, _parent_dir)
+
 # 一劳永逸的编码处理 - 必须在所有其他导入之前
 try:
     from utils.encoding_utils import setup_utf8_encoding, patch_print, safe_print
@@ -13,8 +31,6 @@ try:
     print = safe_print  # 确保当前模块使用安全版本
 except ImportError:
     # 如果编码工具不存在，使用基本的编码设置
-    import os
-    import sys
     if sys.platform == 'win32':
         try:
             os.system('chcp 65001 >nul 2>&1')
@@ -23,12 +39,7 @@ except ImportError:
             pass
 
 import argparse
-import sys
-import os
 from typing import Optional
-
-# 确保能导入项目模块
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.platform_utils import detect_platform, get_feature_status_report
 from utils.locales import t

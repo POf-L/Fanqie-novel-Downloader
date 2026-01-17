@@ -3,7 +3,25 @@
 番茄小说下载器核心模块 - 对接官方API https://qkfqapi.vv9v.cn/docs
 """
 
-# 打包兼容性修复
+# 打包兼容性修复 - 必须在最开始
+import sys
+import os
+
+# 添加父目录到路径以便导入其他模块（打包环境和开发环境都需要）
+if getattr(sys, 'frozen', False):
+    # 打包环境
+    if hasattr(sys, '_MEIPASS'):
+        _base_path = sys._MEIPASS
+    else:
+        _base_path = os.path.dirname(sys.executable)
+    if _base_path not in sys.path:
+        sys.path.insert(0, _base_path)
+else:
+    # 开发环境
+    _parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _parent_dir not in sys.path:
+        sys.path.insert(0, _parent_dir)
+
 try:
     from utils.packaging_fixes import apply_all_fixes
     apply_all_fixes()
@@ -13,12 +31,10 @@ except ImportError:
 import time
 import requests
 import re
-import os
 import json
 import urllib3
 import threading
 import signal
-import sys
 import inspect
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import asyncio
@@ -28,9 +44,6 @@ from ebooklib import epub
 import aiohttp
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-
-# 添加父目录到路径以便导入其他模块
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.config import CONFIG, print_lock, get_headers
 from utils.watermark import apply_watermark_to_chapter

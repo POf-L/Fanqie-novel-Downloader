@@ -14,8 +14,20 @@ import re
 import requests
 import sys
 
-# 添加父目录到路径以便导入其他模块
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 添加父目录到路径以便导入其他模块（打包环境和开发环境都需要）
+if getattr(sys, 'frozen', False):
+    # 打包环境
+    if hasattr(sys, '_MEIPASS'):
+        _base_path = sys._MEIPASS
+    else:
+        _base_path = os.path.dirname(sys.executable)
+    if _base_path not in sys.path:
+        sys.path.insert(0, _base_path)
+else:
+    # 开发环境
+    _parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _parent_dir not in sys.path:
+        sys.path.insert(0, _parent_dir)
 
 from utils.locales import t
 from flask import Flask, render_template, request, jsonify, send_from_directory
