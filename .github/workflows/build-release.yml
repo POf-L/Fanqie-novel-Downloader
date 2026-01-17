@@ -613,6 +613,7 @@ jobs:
             | 🔗 **Commit** | `${{ github.sha }}` |
           draft: false
           prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -621,11 +622,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          name: "⚠️ TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}"
+          name: "⚠️ TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }} (部分构建)"
           body: |
             ## ⚠️ TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
             
-            > 部分平台构建失败，但已完成的版本可正常使用。
+            > **预发布版本** - 部分平台构建失败，但已完成的版本可正常使用。
             
             ### 🔄 构建状态
             
@@ -645,6 +646,7 @@ jobs:
             | 🕒 **构建时间** | ${{ needs.prepare-release.outputs.build_time }} |
             | 🔗 **Commit** | `${{ github.sha }}` |
           draft: false
-          prerelease: false
+          prerelease: true
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
