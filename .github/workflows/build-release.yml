@@ -317,15 +317,8 @@ jobs:
           target="dist/${{ matrix.executable }}${{ matrix.ext }}"
           echo "🧪 Testing executable: $target"
 
-          # 复制测试脚本到dist目录
-          cp test_packaging.py dist/
-
           # 运行基本测试（超时30秒）
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            timeout 30s "$target" --help || echo "Help command test completed"
-          else
-            timeout 30s "$target" --help || echo "Help command test completed"
-          fi
+          timeout 30s "$target" --help || echo "Help command test completed"
 
           echo "✅ Executable test completed"
         shell: bash
