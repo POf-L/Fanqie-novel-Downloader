@@ -9,6 +9,10 @@ import io
 from typing import Any
 
 
+# 保留原始 print，避免在 patch_print 后递归调用
+_ORIGINAL_PRINT = print
+
+
 def setup_utf8_encoding():
     """
     设置全局UTF-8编码环境
@@ -85,11 +89,11 @@ def safe_print(*args, **kwargs):
     try:
         # 安全处理所有参数
         safe_args = [safe_str(arg) for arg in args]
-        print(*safe_args, **kwargs)
+        _ORIGINAL_PRINT(*safe_args, **kwargs)
     except Exception as e:
         # 如果还是失败，使用最基本的错误处理
         try:
-            print(f"<print error: {e}>", **kwargs)
+            _ORIGINAL_PRINT(f"<print error: {e}>", **kwargs)
         except:
             pass
 
