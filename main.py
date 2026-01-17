@@ -4,6 +4,13 @@
 支持多平台：Windows, macOS, Linux, Termux
 """
 
+# 打包兼容性修复 - 必须在所有其他导入之前
+try:
+    from utils.packaging_fixes import apply_all_fixes
+    apply_all_fixes()
+except ImportError:
+    pass
+
 # 一劳永逸的编码处理 - 必须在所有其他导入之前
 try:
     from utils.encoding_utils import setup_utf8_encoding, patch_print, safe_print
@@ -263,34 +270,60 @@ def main():
     # 查找可用端口
     port = find_free_port()
     
-    # 检查更新(异步，不阻塞启动)
+    # 检查更新(异步，不阻塞启动) - 优化版：移除延迟，增加超时控制
     def check_update_async():
         try:
             from utils.updater import check_and_notify
-            import time
-            time.sleep(2)
+            # 移除 time.sleep(2) 延迟，立即开始检查
+            # 使用更短的超时时间，避免长时间阻塞
             check_and_notify(__version__, __github_repo__, silent=False)
         except Exception:
+            # 静默处理异常，不影响主程序启动
             pass
-    
+
+    # 使用守护线程，程序退出时自动结束
     update_thread = threading.Thread(target=check_update_async, daemon=True)
     update_thread.start()
     
-    # 检查依赖
+    # 检查依赖 - 优化版：并行检查，减少阻塞时间
     print("\n" + t("main_check_deps"))
     required_packages = {
         'flask': 'Flask',
         'flask_cors': 'Flask-CORS',
     }
-    
-    missing_packages = []
-    for module, name in required_packages.items():
+
+    def check_package(module_name):
+        """检查单个包是否可用"""
         try:
-            __import__(module)
-            print(f"[OK] {name}")
+            __import__(module_name)
+            return module_name, True
         except ImportError:
-            print(f"[X] {name}")
-            missing_packages.append(name)
+            return module_name, False
+
+    # 并行检查所有依赖
+    import concurrent.futures
+    missing_packages = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        # 提交所有检查任务
+        future_to_module = {
+            executor.submit(check_package, module): (module, name)
+            for module, name in required_packages.items()
+        }
+
+        # 收集结果
+        for future in concurrent.futures.as_completed(future_to_module):
+            module, name = future_to_module[future]
+            try:
+                _, available = future.result(timeout=2)  # 2秒超时
+                if available:
+                    print(f"[OK] {name}")
+                else:
+                    print(f"[X] {name}")
+                    missing_packages.append(name)
+            except Exception:
+                print(f"[X] {name}")
+                missing_packages.append(name)
     
     if missing_packages:
         print(f"\n{t('main_missing_deps', ', '.join(missing_packages))}")

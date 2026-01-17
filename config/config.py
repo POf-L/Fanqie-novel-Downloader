@@ -35,8 +35,37 @@ from fake_useragent import UserAgent
 
 _LOCAL_CONFIG_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
 
-# 本地配置文件路径
-LOCAL_CONFIG_JSON = os.path.join(os.path.dirname(__file__), 'fanqie.json')
+# 本地配置文件路径 - 支持打包环境
+def _get_config_path():
+    """获取配置文件路径，支持打包和开发环境"""
+    import sys
+
+    if getattr(sys, 'frozen', False):
+        # 打包环境
+        if hasattr(sys, '_MEIPASS'):
+            # PyInstaller
+            base_path = sys._MEIPASS
+        else:
+            # 其他打包工具
+            base_path = os.path.dirname(sys.executable)
+
+        # 尝试多个可能的位置
+        possible_paths = [
+            os.path.join(base_path, 'config', 'fanqie.json'),
+            os.path.join(base_path, 'fanqie.json'),
+        ]
+
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+
+        # 如果都找不到，返回第一个作为默认
+        return possible_paths[0]
+    else:
+        # 开发环境
+        return os.path.join(os.path.dirname(__file__), 'fanqie.json')
+
+LOCAL_CONFIG_JSON = _get_config_path()
 
 
 class ConfigLoadError(Exception):

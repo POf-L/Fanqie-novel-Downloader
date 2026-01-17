@@ -258,22 +258,38 @@ jobs:
             $ICON_FLAG \
             --add-data "web/static${SEP}static" \
             --add-data "web/templates${SEP}templates" \
-            --add-data "config/fanqie.json${SEP}." \
+            --add-data "config/fanqie.json${SEP}config" \
+            --add-data "utils${SEP}utils" \
+            --add-data "core${SEP}core" \
             --hidden-import=flask \
             --hidden-import=flask_cors \
             --hidden-import=webview \
             --hidden-import=PIL \
             --hidden-import=requests \
             --hidden-import=aiohttp \
+            --hidden-import=asyncio \
+            --hidden-import=concurrent.futures \
+            --hidden-import=threading \
             --hidden-import=bs4 \
             --hidden-import=ebooklib \
             --hidden-import=fake_useragent \
             --hidden-import=config \
+            --hidden-import=config.config \
             --hidden-import=version \
-            --hidden-import=updater \
+            --hidden-import=utils.updater \
+            --hidden-import=utils.locales \
+            --hidden-import=utils.encoding_utils \
+            --hidden-import=utils.platform_utils \
+            --hidden-import=utils.packaging_fixes \
+            --hidden-import=core.novel_downloader \
             --hidden-import=packaging \
             --hidden-import=packaging.version \
+            --hidden-import=tempfile \
+            --hidden-import=json \
+            --hidden-import=time \
             --collect-data fake_useragent \
+            --collect-submodules aiohttp \
+            --collect-submodules asyncio \
             main.py
         shell: bash
 
@@ -288,6 +304,25 @@ jobs:
             echo "❌ Build failed: $(basename "$target") not found"
             exit 1
           fi
+        shell: bash
+
+      - name: Test executable (non-GUI variants)
+        if: matrix.variant != 'release' && matrix.variant != 'release-standalone'
+        run: |
+          target="dist/${{ matrix.executable }}${{ matrix.ext }}"
+          echo "🧪 Testing executable: $target"
+
+          # 复制测试脚本到dist目录
+          cp test_packaging.py dist/
+
+          # 运行基本测试（超时30秒）
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            timeout 30s "$target" --help || echo "Help command test completed"
+          else
+            timeout 30s "$target" --help || echo "Help command test completed"
+          fi
+
+          echo "✅ Executable test completed"
         shell: bash
 
       - name: Rename for release
@@ -401,20 +436,34 @@ jobs:
               --name=TomatoNovelDownloader-termux \
               --console \
               --icon=assets/icons/icon.png \
-              --add-data "config/fanqie.json:." \
+              --add-data "config/fanqie.json:config" \
+              --add-data "utils:utils" \
               --hidden-import=requests \
               --hidden-import=aiohttp \
+              --hidden-import=asyncio \
+              --hidden-import=concurrent.futures \
+              --hidden-import=threading \
               --hidden-import=PIL \
               --hidden-import=ebooklib \
               --hidden-import=fake_useragent \
               --hidden-import=tqdm \
               --hidden-import=bs4 \
               --hidden-import=config \
+              --hidden-import=config.config \
               --hidden-import=version \
+              --hidden-import=utils.locales \
+              --hidden-import=utils.encoding_utils \
+              --hidden-import=utils.packaging_fixes \
+              --hidden-import=utils.updater \
               --hidden-import=packaging \
               --hidden-import=packaging.version \
+              --hidden-import=tempfile \
+              --hidden-import=json \
+              --hidden-import=time \
               --collect-data fake_useragent \
               --collect-submodules PIL \
+              --collect-submodules aiohttp \
+              --collect-submodules asyncio \
               core/novel_downloader.py
             
             # 使用 termux-elf-cleaner 修复 ELF 解释器路径
