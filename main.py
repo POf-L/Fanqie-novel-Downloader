@@ -8,44 +8,72 @@ import sys
 import os
 import traceback
 
+# 使用最底层的方式写入错误信息（不依赖print）
+def _write_error(msg):
+    """直接写入stderr，不经过任何包装"""
+    try:
+        if hasattr(sys, '__stderr__') and sys.__stderr__:
+            sys.__stderr__.write(msg + '\n')
+            sys.__stderr__.flush()
+        elif hasattr(sys, 'stderr') and sys.stderr:
+            sys.stderr.write(msg + '\n')
+            sys.stderr.flush()
+    except:
+        pass
+
 # 全局异常处理 - 确保打包后能看到错误
 def _global_exception_handler(exc_type, exc_value, exc_tb):
     """全局异常处理器，确保错误信息不会丢失"""
-    error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
     try:
-        print(f"\n{'='*50}\n程序发生错误:\n{error_msg}\n{'='*50}")
-    except:
-        pass
+        error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        _write_error("\n" + "="*50)
+        _write_error("程序发生错误:")
+        _write_error(error_msg)
+        _write_error("="*50)
+    except Exception as e:
+        _write_error(f"无法格式化错误: {e}")
+    
     # 打包环境下暂停以便查看错误
     if getattr(sys, 'frozen', False):
         try:
-            input("\n按回车键退出...")
+            _write_error("\n按回车键退出...")
+            input()
         except:
             import time
             time.sleep(10)
-    sys.__excepthook__(exc_type, exc_value, exc_tb)
 
 sys.excepthook = _global_exception_handler
 
-# 打包兼容性修复 - 必须在所有其他导入之前
+# 添加打包环境路径 - 必须在所有其他导入之前
+if getattr(sys, 'frozen', False):
+    if hasattr(sys, '_MEIPASS'):
+        _base = sys._MEIPASS
+    else:
+        _base = os.path.dirname(sys.executable)
+    if _base not in sys.path:
+        sys.path.insert(0, _base)
+    _write_error(f"[DEBUG] 打包环境路径: {_base}")
+    _write_error(f"[DEBUG] sys.path: {sys.path[:3]}...")
+
+# 打包兼容性修复
 try:
     from utils.packaging_fixes import apply_all_fixes
     apply_all_fixes()
-except ImportError:
-    pass
+    _write_error("[DEBUG] packaging_fixes 加载成功")
+except ImportError as e:
+    _write_error(f"[DEBUG] packaging_fixes 导入失败: {e}")
 except Exception as e:
-    print(f"打包修复模块加载失败: {e}")
+    _write_error(f"[DEBUG] packaging_fixes 执行失败: {e}")
 
-# 一劳永逸的编码处理 - 必须在所有其他导入之前
+# 编码处理
 try:
     from utils.encoding_utils import setup_utf8_encoding, patch_print, safe_print
-    # 设置全局UTF-8编码环境
     setup_utf8_encoding()
-    # 替换print函数为编码安全版本
     patch_print()
-    print = safe_print  # 确保当前模块使用安全版本
-except ImportError:
-    # 如果编码工具不存在，使用基本的编码设置
+    print = safe_print
+    _write_error("[DEBUG] encoding_utils 加载成功")
+except ImportError as e:
+    _write_error(f"[DEBUG] encoding_utils 导入失败: {e}")
     if sys.platform == 'win32':
         try:
             os.system('chcp 65001 >nul 2>&1')
@@ -53,7 +81,7 @@ except ImportError:
         except:
             pass
 except Exception as e:
-    print(f"编码工具加载失败: {e}")
+    _write_error(f"[DEBUG] encoding_utils 执行失败: {e}")
 
 import subprocess
 import time
