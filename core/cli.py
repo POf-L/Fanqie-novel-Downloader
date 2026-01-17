@@ -40,6 +40,12 @@ except ImportError:
 
 import argparse
 from typing import Optional
+import asyncio
+import subprocess
+import json
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from utils.platform_utils import detect_platform, get_feature_status_report
 from utils.locales import t
@@ -276,6 +282,226 @@ def cmd_download(args):
         return 1
 
 
+def cmd_batch_download(args):
+    """批量下载书籍命令"""
+    from core.novel_downloader import get_api_manager, Run
+    import os
+    import time
+
+    # 解析书籍ID列表
+    book_ids = []
+    if args.book_ids:
+        # 从命令行参数获取
+        for book_id in args.book_ids:
+            # 从 URL 提取 ID
+            if 'fanqienovel.com' in book_id:
+                import re
+                match = re.search(r'/page/(\d+)', book_id)
+                if match:
+                    book_id = match.group(1)
+
+            if book_id.isdigit():
+                book_ids.append(book_id)
+            else:
+                print(f"警告: 跳过无效的书籍ID: {book_id}")
+
+    if args.file:
+        # 从文件读取书籍ID列表
+        try:
+            with open(args.file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        # 支持 ID 或 URL 格式
+                        if 'fanqienovel.com' in line:
+                            import re
+                            match = re.search(r'/page/(\d+)', line)
+                            if match:
+                                book_ids.append(match.group(1))
+                        elif line.isdigit():
+                            book_ids.append(line)
+        except FileNotFoundError:
+            print(f"错误: 文件不存在: {args.file}")
+            return 1
+        except Exception as e:
+            print(f"错误: 读取文件失败: {e}")
+            return 1
+
+    if not book_ids:
+        print("错误: 请提供至少一个书籍ID")
+        return 1
+
+    # 确定保存路径
+    save_path = args.path
+    if not save_path:
+        home = os.path.expanduser('~')
+        save_path = os.path.join(home, 'Downloads', 'FanqieNovels')
+
+    # 确保目录存在
+    os.makedirs(save_path, exist_ok=True)
+
+    # 确定格式
+    file_format = args.format or 'txt'
+    if file_format not in ['txt', 'epub']:
+        print(f"警告: 不支持的格式 '{file_format}'，使用默认格式 txt")
+        file_format = 'txt'
+
+    # 并发设置
+    max_concurrent = min(args.concurrent or 3, 5)  # 最大5个并发
+
+    print(f"开始批量下载 {len(book_ids)} 本书籍")
+    print(f"保存路径: {save_path}")
+    print(f"文件格式: {file_format}")
+    print(f"并发数量: {max_concurrent}")
+    print("-" * 50)
+
+    # 批量下载状态跟踪
+    download_results = {}
+    download_lock = threading.Lock()
+
+    def download_single_book(book_id, index):
+        """下载单本书籍"""
+        try:
+            print(f"[{index+1}/{len(book_ids)}] 开始下载书籍: {book_id}")
+
+            # 进度回调
+            def progress_callback(progress, message):
+                if progress >= 0:
+                    print(f"[{index+1}/{len(book_ids)}] [{progress:3d}%] {message}")
+                else:
+                    print(f"[{index+1}/{len(book_ids)}]        {message}")
+
+            # 执行下载
+            success = Run(
+                book_id=book_id,
+                save_path=save_path,
+                file_format=file_format,
+                gui_callback=progress_callback
+            )
+
+            with download_lock:
+                download_results[book_id] = {
+                    'success': success,
+                    'index': index + 1,
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+
+            if success:
+                print(f"[{index+1}/{len(book_ids)}] ✓ 下载完成: {book_id}")
+            else:
+                print(f"[{index+1}/{len(book_ids)}] ✗ 下载失败: {book_id}")
+
+            return success
+
+        except Exception as e:
+            print(f"[{index+1}/{len(book_ids)}] ✗ 下载异常: {book_id} - {e}")
+            with download_lock:
+                download_results[book_id] = {
+                    'success': False,
+                    'error': str(e),
+                    'index': index + 1,
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+            return False
+
+    # 使用线程池执行并发下载
+    start_time = time.time()
+    successful_downloads = 0
+    failed_downloads = 0
+
+    with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+        # 提交所有下载任务
+        future_to_book = {
+            executor.submit(download_single_book, book_id, i): (book_id, i)
+            for i, book_id in enumerate(book_ids)
+        }
+
+        # 等待所有任务完成
+        for future in as_completed(future_to_book):
+            book_id, index = future_to_book[future]
+            try:
+                success = future.result()
+                if success:
+                    successful_downloads += 1
+                else:
+                    failed_downloads += 1
+            except Exception as e:
+                print(f"任务执行异常: {book_id} - {e}")
+                failed_downloads += 1
+
+    # 显示批量下载结果
+    end_time = time.time()
+    duration = end_time - start_time
+
+    print("\n" + "=" * 60)
+    print("批量下载完成!")
+    print(f"总计: {len(book_ids)} 本书籍")
+    print(f"成功: {successful_downloads} 本")
+    print(f"失败: {failed_downloads} 本")
+    print(f"用时: {duration:.1f} 秒")
+
+    # 显示详细结果
+    if download_results:
+        print("\n详细结果:")
+        headers = ['序号', '书籍ID', '状态', '时间']
+        rows = []
+        for book_id, result in download_results.items():
+            status = "✓ 成功" if result['success'] else "✗ 失败"
+            if 'error' in result:
+                status += f" ({result['error'][:30]}...)" if len(result.get('error', '')) > 30 else f" ({result.get('error', '')})"
+            rows.append([
+                result['index'],
+                book_id,
+                status,
+                result['timestamp']
+            ])
+
+        # 按序号排序
+        rows.sort(key=lambda x: x[0])
+        print(format_table(headers, rows))
+
+    # Git提交功能
+    if args.commit and successful_downloads > 0:
+        print("\n" + "-" * 50)
+        print("正在执行Git提交...")
+
+        try:
+            # 检查是否在Git仓库中
+            result = subprocess.run(['git', 'rev-parse', '--git-dir'],
+                                  capture_output=True, text=True, cwd=save_path)
+            if result.returncode != 0:
+                print("警告: 当前目录不是Git仓库，跳过提交")
+            else:
+                # 添加所有新文件
+                subprocess.run(['git', 'add', '.'], cwd=save_path, check=True)
+
+                # 创建提交信息
+                commit_msg = f"批量下载完成: {successful_downloads}本书籍 ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
+                if failed_downloads > 0:
+                    commit_msg += f" (失败: {failed_downloads}本)"
+
+                # 执行提交
+                result = subprocess.run(['git', 'commit', '-m', commit_msg],
+                                      capture_output=True, text=True, cwd=save_path)
+
+                if result.returncode == 0:
+                    print(f"✓ Git提交成功: {commit_msg}")
+                else:
+                    print(f"Git提交失败: {result.stderr}")
+
+        except subprocess.CalledProcessError as e:
+            print(f"Git操作失败: {e}")
+        except FileNotFoundError:
+            print("警告: 未找到Git命令，请确保Git已安装")
+
+    print("=" * 60)
+
+    # 返回状态码
+    return 0 if failed_downloads == 0 else 1
+
+
+
+
 def cmd_status(args):
     """显示平台状态命令"""
     report = get_feature_status_report()
@@ -291,11 +517,13 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  %(prog)s search "斗破苍穹"          搜索书籍
-  %(prog)s info 12345                 查看书籍信息
-  %(prog)s download 12345             下载书籍
-  %(prog)s download 12345 -f epub     下载为 EPUB 格式
-  %(prog)s status                     显示平台状态
+  %(prog)s search "斗破苍穹"                    搜索书籍
+  %(prog)s info 12345                           查看书籍信息
+  %(prog)s download 12345                       下载书籍
+  %(prog)s download 12345 -f epub               下载为 EPUB 格式
+  %(prog)s batch-download 12345 67890 --commit  批量下载并提交
+  %(prog)s batch-download -i books.txt --commit 从文件批量下载
+  %(prog)s status                               显示平台状态
         """
     )
     
@@ -321,7 +549,20 @@ def create_parser() -> argparse.ArgumentParser:
     download_parser.add_argument('-f', '--format', choices=['txt', 'epub'],
                                 default='txt', help='输出格式 (默认: txt)')
     download_parser.set_defaults(func=cmd_download)
-    
+
+    # batch-download 命令
+    batch_parser = subparsers.add_parser('batch-download', help='批量下载书籍')
+    batch_parser.add_argument('book_ids', nargs='*', help='书籍ID或URL列表')
+    batch_parser.add_argument('-i', '--file', help='包含书籍ID列表的文件路径')
+    batch_parser.add_argument('-p', '--path', help='保存路径')
+    batch_parser.add_argument('-f', '--format', choices=['txt', 'epub'],
+                             default='txt', help='输出格式 (默认: txt)')
+    batch_parser.add_argument('-c', '--concurrent', type=int, default=3,
+                             help='并发下载数量 (默认: 3, 最大: 5)')
+    batch_parser.add_argument('--commit', action='store_true',
+                             help='下载完成后自动Git提交')
+    batch_parser.set_defaults(func=cmd_batch_download)
+
     # status 命令
     status_parser = subparsers.add_parser('status', help='显示平台状态')
     status_parser.set_defaults(func=cmd_status)
