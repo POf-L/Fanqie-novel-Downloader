@@ -12,14 +12,19 @@ import tempfile
 import subprocess
 import re
 import requests
-from locales import t
+import sys
+
+# 添加父目录到路径以便导入其他模块
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from utils.locales import t
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
 import logging
 
 # 预先导入版本信息（确保在模块加载时就获取正确版本）
-from config import __version__ as APP_VERSION
-from config import CONFIG, ConfigLoadError
+from config.config import __version__ as APP_VERSION
+from config.config import CONFIG, ConfigLoadError
 
 def _check_config():
     """检查配置是否已加载，返回错误响应或 None"""
@@ -1258,7 +1263,7 @@ def init_modules(skip_api_select=False):
         if not skip_api_select:
             _ensure_api_base_url()
 
-        from novel_downloader import NovelDownloader, get_api_manager
+        from core.novel_downloader import NovelDownloader, get_api_manager
         novel_downloader = __import__('novel_downloader')
         api = NovelDownloader()
         api_manager = get_api_manager()
@@ -1531,7 +1536,7 @@ def download_worker():
                     try:
                         history_manager = get_download_history_manager()
                         # 构建保存路径
-                        from novel_downloader import sanitize_filename, generate_filename
+                        from core.novel_downloader import sanitize_filename, generate_filename
                         safe_book_name = sanitize_filename(book_name)
                         author_name = book_detail.get('author', '')
                         output_filename = generate_filename(safe_book_name, author_name, file_format)
@@ -2350,7 +2355,7 @@ def api_download_resume_check():
     
     # 从 novel_downloader 导入状态加载函数
     try:
-        from novel_downloader import load_status, _get_status_file_path
+        from core.novel_downloader import load_status, _get_status_file_path
         
         downloaded_ids = load_status(book_id)
         has_saved_state = len(downloaded_ids) > 0
@@ -2407,7 +2412,7 @@ def update_batch_status(**kwargs):
 
 def batch_download_worker(book_ids, save_path, file_format):
     """批量下载工作线程"""
-    from novel_downloader import batch_downloader
+    from core.novel_downloader import batch_downloader
     
     def progress_callback(current, total, book_name, status, message):
         update_batch_status(
@@ -2499,7 +2504,7 @@ def api_batch_status():
 @app.route('/api/batch-cancel', methods=['POST'])
 def api_batch_cancel():
     """取消批量下载"""
-    from novel_downloader import batch_downloader
+    from core.novel_downloader import batch_downloader
     
     try:
         batch_downloader.cancel()
@@ -2732,7 +2737,7 @@ def api_check_update():
                 'message': '源代码运行模式，不检查更新'
             })
         
-        from updater import check_and_notify
+        from utils.updater import check_and_notify
         from config import __version__, __github_repo__
         
         update_info = check_and_notify(__version__, __github_repo__, silent=True)
@@ -2755,7 +2760,7 @@ def api_check_update():
 def api_get_update_assets():
     """获取更新文件的下载选项"""
     try:
-        from updater import get_latest_release, parse_release_assets
+        from utils.updater import get_latest_release, parse_release_assets
         from config import __github_repo__
         import platform
         
@@ -2830,7 +2835,7 @@ def api_get_update_status_route():
 def api_can_auto_update():
     """检查是否支持自动更新"""
     try:
-        from updater import can_auto_update
+        from utils.updater import can_auto_update
         return jsonify({
             'success': True,
             'can_auto_update': can_auto_update()
@@ -2843,7 +2848,7 @@ def api_apply_update():
     """应用已下载的更新（支持 Windows/Linux/macOS）"""
     print('[DEBUG] api_apply_update called')
     try:
-        from updater import apply_update, can_auto_update
+        from utils.updater import apply_update, can_auto_update
         import sys
         
         print(f'[DEBUG] sys.frozen: {getattr(sys, "frozen", False)}')

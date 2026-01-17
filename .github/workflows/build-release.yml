@@ -171,7 +171,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: config/requirements.txt
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -210,7 +210,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --prefer-binary -r requirements.txt
+          python -m pip install --prefer-binary -r config/requirements.txt
           python -m pip install --prefer-binary pyinstaller
         shell: bash
 
@@ -246,19 +246,19 @@ jobs:
           # Determine separator for add-data based on OS
           if [ "${{ runner.os }}" == "Windows" ]; then
             SEP=";"
-            ICON_FLAG="--icon=icons/icon.ico"
+            ICON_FLAG="--icon=assets/icons/icon.ico"
           else
             SEP=":"
-            ICON_FLAG="--icon=icons/icon.png"
+            ICON_FLAG="--icon=assets/icons/icon.png"
           fi
 
           python -m PyInstaller --onefile \
             --name=${{ matrix.executable }} \
             ${{ matrix.build_flags }} \
             $ICON_FLAG \
-            --add-data "static${SEP}static" \
-            --add-data "templates${SEP}templates" \
-            --add-data "fanqie.json${SEP}." \
+            --add-data "web/static${SEP}static" \
+            --add-data "web/templates${SEP}templates" \
+            --add-data "config/fanqie.json${SEP}." \
             --hidden-import=flask \
             --hidden-import=flask_cors \
             --hidden-import=webview \
@@ -393,15 +393,15 @@ jobs:
             pip install --upgrade pip setuptools wheel
             # Install dependencies with extended timeout and binary preference
             # Try to find manylinux_aarch64 wheels to avoid compilation on QEMU
-            pip install --default-timeout=3600 --prefer-binary -r requirements-termux.txt
+            pip install --default-timeout=3600 --prefer-binary -r config/requirements-termux.txt
             pip install --default-timeout=3600 --prefer-binary pyinstaller
             
             # 构建命令行版本 (使用 novel_downloader.py 作为入口)
             pyinstaller --onefile \
               --name=TomatoNovelDownloader-termux \
               --console \
-              --icon=icons/icon.png \
-              --add-data "fanqie.json:." \
+              --icon=assets/icons/icon.png \
+              --add-data "config/fanqie.json:." \
               --hidden-import=requests \
               --hidden-import=aiohttp \
               --hidden-import=PIL \
@@ -415,7 +415,7 @@ jobs:
               --hidden-import=packaging.version \
               --collect-data fake_useragent \
               --collect-submodules PIL \
-              novel_downloader.py
+              core/novel_downloader.py
             
             # 使用 termux-elf-cleaner 修复 ELF 解释器路径
             termux-elf-cleaner dist/TomatoNovelDownloader-termux || echo "termux-elf-cleaner warning (non-fatal)"

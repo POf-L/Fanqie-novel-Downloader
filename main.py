@@ -6,7 +6,7 @@
 
 # 一劳永逸的编码处理 - 必须在所有其他导入之前
 try:
-    from encoding_utils import setup_utf8_encoding, patch_print, safe_print
+    from utils.encoding_utils import setup_utf8_encoding, patch_print, safe_print
     # 设置全局UTF-8编码环境
     setup_utf8_encoding()
     # 替换print函数为编码安全版本
@@ -32,10 +32,10 @@ import requests
 import secrets
 import socket
 from pathlib import Path
-from locales import t
-from platform_utils import (
-    detect_platform, 
-    get_window_config, 
+from utils.locales import t
+from utils.platform_utils import (
+    detect_platform,
+    get_window_config,
     is_feature_available,
     get_feature_status_report,
     get_unavailable_feature_message,
@@ -58,7 +58,7 @@ def run_flask_app(port, access_token):
         os.chdir(script_dir)
         
         # 启动 Flask 应用
-        from web_app import app, set_access_token
+        from web.web_app import app, set_access_token
         
         # 设置访问令牌
         set_access_token(access_token)
@@ -241,7 +241,7 @@ def main():
         print("\n提示: Termux 环境请使用 CLI 模式: python cli.py --help")
     
     # 显示版本信息
-    from config import __version__, __github_repo__
+    from config.config import __version__, __github_repo__
     print(t("main_version", __version__))
     
     # 显示配置文件路径
@@ -266,7 +266,7 @@ def main():
     # 检查更新(异步，不阻塞启动)
     def check_update_async():
         try:
-            from updater import check_and_notify
+            from utils.updater import check_and_notify
             import time
             time.sleep(2)
             check_and_notify(__version__, __github_repo__, silent=False)

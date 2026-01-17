@@ -18,13 +18,17 @@ import asyncio
 from tqdm import tqdm
 from typing import Optional, Dict, List, Union
 from ebooklib import epub
-from config import CONFIG, print_lock, get_headers
 import aiohttp
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from watermark import apply_watermark_to_chapter
-from locales import t
-from async_logger import async_print, safe_print
+
+# 添加父目录到路径以便导入其他模块
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from config.config import CONFIG, print_lock, get_headers
+from utils.watermark import apply_watermark_to_chapter
+from utils.locales import t
+from utils.async_logger import async_print, safe_print
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 requests.packages.urllib3.disable_warnings()
