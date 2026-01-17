@@ -1354,24 +1354,37 @@ const api = new APIClient();
 
 /* ===================== 路径字体自适应 ===================== */
 
-function adjustPathFontSize(input) {
+function adjustPathFontSize(input, retryCount = 0) {
     if (!input || !input.value) return;
-    
+
     const maxFontSize = 12;
     const minFontSize = 9;
-    
+    const maxRetries = 5; // 增加重试次数
+
     // 获取输入框可用宽度（减去 padding）
     const inputStyle = window.getComputedStyle(input);
     const paddingLeft = parseFloat(inputStyle.paddingLeft) || 0;
     const paddingRight = parseFloat(inputStyle.paddingRight) || 0;
     const availableWidth = input.clientWidth - paddingLeft - paddingRight;
-    
-    // 如果可用宽度太小（DOM 未完全渲染），使用默认字体
+
+    // 如果可用宽度太小（DOM 未完全渲染），智能重试
     if (availableWidth < 100) {
-        input.style.fontSize = maxFontSize + 'px';
-        return;
+        if (retryCount < maxRetries) {
+            // 延迟重试，等待DOM完全渲染
+            setTimeout(() => {
+                requestAnimationFrame(() => {
+                    adjustPathFontSize(input, retryCount + 1);
+                });
+            }, 150 * (retryCount + 1)); // 增加延迟：150ms, 300ms, 450ms...
+            return;
+        } else {
+            // 重试次数用尽，使用默认字体
+            input.style.fontSize = maxFontSize + 'px';
+            input.style.letterSpacing = '0px';
+            return;
+        }
     }
-    
+
     // 创建临时测量元素
     const measureSpan = document.createElement('span');
     measureSpan.style.cssText = `
@@ -1381,32 +1394,68 @@ function adjustPathFontSize(input) {
         font-family: monospace;
     `;
     document.body.appendChild(measureSpan);
-    
-    // 先设置最大字体，检查是否需要缩小
+
+    // 先尝试最大字体，看是否需要调整
+    let bestFontSize = maxFontSize;
+    let bestLetterSpacing = 0;
+
     measureSpan.style.fontSize = maxFontSize + 'px';
+    measureSpan.style.letterSpacing = '0px';
     measureSpan.textContent = input.value;
-    
+
     if (measureSpan.offsetWidth <= availableWidth) {
-        // 不需要缩小，使用最大字体
-        input.style.fontSize = maxFontSize + 'px';
-        document.body.removeChild(measureSpan);
-        return;
-    }
-    
-    // 需要缩小，从最大字体开始逐步减小
-    for (let size = maxFontSize - 1; size >= minFontSize; size--) {
-        measureSpan.style.fontSize = size + 'px';
-        measureSpan.textContent = input.value;
-        
-        if (measureSpan.offsetWidth <= availableWidth) {
-            input.style.fontSize = size + 'px';
-            document.body.removeChild(measureSpan);
-            return;
+        // 文字宽度小于容器，尝试增加字符间距来占满空间
+        const textLength = input.value.length;
+        if (textLength > 1) {
+            const extraSpace = availableWidth - measureSpan.offsetWidth;
+            const letterSpacing = Math.min(extraSpace / (textLength - 1), 2); // 最大间距2px
+
+            measureSpan.style.letterSpacing = letterSpacing + 'px';
+
+            // 验证调整后是否仍然适合
+            if (measureSpan.offsetWidth <= availableWidth) {
+                bestLetterSpacing = letterSpacing;
+            }
+        }
+    } else {
+        // 文字太长，需要缩小字体
+        for (let size = maxFontSize - 1; size >= minFontSize; size--) {
+            measureSpan.style.fontSize = size + 'px';
+            measureSpan.style.letterSpacing = '0px';
+            measureSpan.textContent = input.value;
+
+            if (measureSpan.offsetWidth <= availableWidth) {
+                bestFontSize = size;
+
+                // 尝试在这个字体大小下增加字符间距
+                const textLength = input.value.length;
+                if (textLength > 1) {
+                    const extraSpace = availableWidth - measureSpan.offsetWidth;
+                    const letterSpacing = Math.min(extraSpace / (textLength - 1), 1.5); // 小字体时减少最大间距
+
+                    if (letterSpacing > 0) {
+                        measureSpan.style.letterSpacing = letterSpacing + 'px';
+
+                        if (measureSpan.offsetWidth <= availableWidth) {
+                            bestLetterSpacing = letterSpacing;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        // 如果最小字体还是放不下，就用最小字体，不加间距
+        if (bestFontSize === maxFontSize) {
+            bestFontSize = minFontSize;
+            bestLetterSpacing = 0;
         }
     }
-    
-    // 最小字体还是放不下，就用最小字体
-    input.style.fontSize = minFontSize + 'px';
+
+    // 应用最佳设置
+    input.style.fontSize = bestFontSize + 'px';
+    input.style.letterSpacing = bestLetterSpacing + 'px';
+
     document.body.removeChild(measureSpan);
 }
 
@@ -1897,6 +1946,28 @@ function initializeUI(skipApiSources = false) {
     api.getSavePath().then(path => {
         if (path) {
             AppState.setSavePath(path);
+            // 多重保障：确保路径缩放在各种情况下都能执行
+            const ensurePathAdjustment = () => {
+                const pathInput = document.getElementById('savePath');
+                if (pathInput && pathInput.value) {
+                    adjustPathFontSize(pathInput);
+                }
+            };
+
+            // 立即尝试
+            setTimeout(ensurePathAdjustment, 100);
+
+            // DOM完全加载后再次尝试
+            if (document.readyState === 'complete') {
+                setTimeout(ensurePathAdjustment, 300);
+            } else {
+                window.addEventListener('load', () => {
+                    setTimeout(ensurePathAdjustment, 300);
+                }, { once: true });
+            }
+
+            // 最终保障：页面完全稳定后再次尝试
+            setTimeout(ensurePathAdjustment, 1000);
         }
     });
     

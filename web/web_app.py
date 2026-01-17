@@ -1633,7 +1633,7 @@ def check_access():
 @app.route('/')
 def index():
     """主页"""
-    from config import __version__
+    from config.config import __version__
     token = request.args.get('token', '')
     return render_template('index.html', version=__version__, access_token=token)
 
@@ -1647,7 +1647,7 @@ def api_init():
 @app.route('/api/version', methods=['GET'])
 def api_version():
     """获取当前版本号"""
-    from config import __version__
+    from config.config import __version__
     return jsonify({'success': True, 'version': __version__})
 
 @app.route('/api/status', methods=['GET'])
@@ -2738,7 +2738,7 @@ def api_check_update():
             })
         
         from utils.updater import check_and_notify
-        from config import __version__, __github_repo__
+        from config.config import __version__, __github_repo__
         
         update_info = check_and_notify(__version__, __github_repo__, silent=True)
         
