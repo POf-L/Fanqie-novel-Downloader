@@ -40,7 +40,25 @@ def _check_config():
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
-app = Flask(__name__, template_folder='templates', static_folder='static')
+# 获取模板和静态文件路径（支持打包环境）
+def _get_web_paths():
+    """获取模板和静态文件的绝对路径，支持打包环境"""
+    if getattr(sys, 'frozen', False):
+        # 打包环境
+        if hasattr(sys, '_MEIPASS'):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(sys.executable)
+        template_folder = os.path.join(base_path, 'templates')
+        static_folder = os.path.join(base_path, 'static')
+    else:
+        # 开发环境
+        template_folder = os.path.join(os.path.dirname(__file__), 'templates')
+        static_folder = os.path.join(os.path.dirname(__file__), 'static')
+    return template_folder, static_folder
+
+_template_folder, _static_folder = _get_web_paths()
+app = Flask(__name__, template_folder=_template_folder, static_folder=_static_folder)
 CORS(app)
 
 # 访问令牌（由main.py在启动时设置）
