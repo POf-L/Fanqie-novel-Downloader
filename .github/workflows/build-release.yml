@@ -258,7 +258,7 @@ jobs:
             $ICON_FLAG \
             --add-data "web/static${SEP}static" \
             --add-data "web/templates${SEP}templates" \
-            --add-data "config/fanqie.json${SEP}config" \
+            --add-data "config/fanqie.json${SEP}." \
             --hidden-import=flask \
             --hidden-import=flask_cors \
             --hidden-import=webview \
@@ -441,7 +441,7 @@ jobs:
               --name=TomatoNovelDownloader-termux \
               --console \
               --icon=assets/icons/icon.png \
-              --add-data "config/fanqie.json:config" \
+              --add-data "config/fanqie.json:." \
               --hidden-import=requests \
               --hidden-import=aiohttp \
               --hidden-import=asyncio \
