@@ -246,13 +246,16 @@ jobs:
           # Determine separator for add-data based on OS
           if [ "${{ runner.os }}" == "Windows" ]; then
             SEP=";"
+            ICON_FLAG="--icon=icons/icon.ico"
           else
             SEP=":"
+            ICON_FLAG="--icon=icons/icon.png"
           fi
-          
+
           python -m PyInstaller --onefile \
             --name=${{ matrix.executable }} \
             ${{ matrix.build_flags }} \
+            $ICON_FLAG \
             --add-data "static${SEP}static" \
             --add-data "templates${SEP}templates" \
             --add-data "fanqie.json${SEP}." \
@@ -397,6 +400,7 @@ jobs:
             pyinstaller --onefile \
               --name=TomatoNovelDownloader-termux \
               --console \
+              --icon=icons/icon.png \
               --add-data "fanqie.json:." \
               --hidden-import=requests \
               --hidden-import=aiohttp \

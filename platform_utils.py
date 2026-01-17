@@ -86,10 +86,7 @@ def _get_os_name() -> str:
 def _get_os_version() -> str:
     """获取操作系统版本"""
     try:
-        version = platform.version()
-        # 安全编码处理，避免控制台编码问题
-        # 移除或替换可能导致编码错误的非ASCII字符
-        return version.encode('ascii', 'ignore').decode('ascii')
+        return platform.version()
     except Exception:
         return 'unknown'
 

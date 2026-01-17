@@ -4,6 +4,25 @@
 支持多平台：Windows, macOS, Linux, Termux
 """
 
+# 一劳永逸的编码处理 - 必须在所有其他导入之前
+try:
+    from encoding_utils import setup_utf8_encoding, patch_print, safe_print
+    # 设置全局UTF-8编码环境
+    setup_utf8_encoding()
+    # 替换print函数为编码安全版本
+    patch_print()
+    print = safe_print  # 确保当前模块使用安全版本
+except ImportError:
+    # 如果编码工具不存在，使用基本的编码设置
+    import os
+    import sys
+    if sys.platform == 'win32':
+        try:
+            os.system('chcp 65001 >nul 2>&1')
+            os.environ['PYTHONIOENCODING'] = 'utf-8'
+        except:
+            pass
+
 import os
 import sys
 import subprocess
