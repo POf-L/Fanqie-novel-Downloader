@@ -38,15 +38,16 @@ except ImportError:
 def parse_requirements(requirements_file='requirements.txt'):
     """
     解析 requirements.txt 文件，提取所有包名
-    
+
     Args:
         requirements_file: requirements.txt 文件路径
-        
+
     Returns:
         list: 包名列表
     """
     packages = []
-    req_path = Path(__file__).parent / requirements_file
+    # 修复路径：requirements.txt 位于 config/ 目录，而不是 tools/ 目录
+    req_path = Path(__file__).parent.parent / 'config' / requirements_file
     
     if not req_path.exists():
         return packages
