@@ -8,6 +8,8 @@ import re
 import hashlib
 import time
 
+URL_PATTERN = re.compile(r"(https?://[^\s]+)")
+
 # 扩展隐形字符集（这些字符不会影响URL识别）
 ENHANCED_INVISIBLE_CHARS = [
     '\u200B',  # 零宽空格 Zero-width space
@@ -36,31 +38,54 @@ def generate_random_invisible_sequence(min_len: int, max_len: int) -> str:
     return ''.join(random.choice(ENHANCED_INVISIBLE_CHARS) for _ in range(length))
 
 
-def add_enhanced_invisible_chars(text: str) -> str:
-    """
-    增强版隐形字符插入 - 仅使用隐形字符，保持URL可点击性
-    """
+def _add_invisible_chars_to_segment(text: str) -> str:
     result = []
-    for i, char in enumerate(text):
+    for char in text:
         result.append(char)
 
-        # 智能插入概率 - 在不影响URL识别的位置插入
-        insertion_rate = 0.4  # 基础概率
+        insertion_rate = 0.4
         if char in '/.:-':
-            insertion_rate = 0.6  # 分隔符后适度增加
+            insertion_rate = 0.6
         elif char in 'aeiouAEIOU':
-            insertion_rate = 0.3  # 元音后降低概率
+            insertion_rate = 0.3
         elif char.isdigit():
-            insertion_rate = 0.4  # 数字后保持基础概率
+            insertion_rate = 0.4
 
         if random.random() < insertion_rate:
-            # 随机选择1-2个隐形字符
             num_chars = random.randint(1, 2)
             for _ in range(num_chars):
                 invisible_char = random.choice(ENHANCED_INVISIBLE_CHARS)
                 result.append(invisible_char)
 
     return ''.join(result)
+
+
+def add_enhanced_invisible_chars(text: str) -> str:
+    """
+    增强版隐形字符插入 - 保持URL片段完全可点击
+    """
+    if not text:
+        return text
+
+    processed_segments = []
+    last_index = 0
+
+    for match in URL_PATTERN.finditer(text):
+        safe_segment = text[last_index:match.start()]
+        if safe_segment:
+            processed_segments.append(_add_invisible_chars_to_segment(safe_segment))
+
+        processed_segments.append(match.group(0))
+        last_index = match.end()
+
+    tail_segment = text[last_index:]
+    if tail_segment:
+        processed_segments.append(_add_invisible_chars_to_segment(tail_segment))
+
+    if not processed_segments:
+        return ''
+
+    return ''.join(processed_segments)
 
 
 def embed_content_fingerprint(content: str) -> str:
@@ -145,7 +170,7 @@ def add_invisible_chars_to_text(text: str, insertion_rate: float = 0.3) -> str:
     return ''.join(result)
 
 
-def insert_watermark(content: str, watermark_text: str = None, num_insertions: int = None) -> str:
+def insert_watermark(content: str, watermark_text: str | None = None, num_insertions: int | None = None) -> str:
     """
     ⚠️ 已弃用：此函数会在文章中间插入水印，影响阅读体验
     建议使用 apply_watermark_to_chapter() 替代
@@ -176,8 +201,12 @@ def apply_watermark_to_chapter(content: str) -> str:
     if not content:
         return content
 
-    # 固定水印文本（强调开源免费，防止倒卖欺骗）
-    base_watermark = "本小说使用开源免费工具下载：https://github.com/POf-L/Fanqie-novel-Downloader 如付费购买请立即退款举报！"
+    # 固定水印文本（强调开源免费与仓库地址）
+    base_watermark = (
+        "本小说由开源免费项目 Fanqie-novel-Downloader 自动下载，"
+        "项目地址：https://github.com/POf-L/Fanqie-novel-Downloader "
+        "如遇收费兜售，请立即退款并向平台举报。"
+    )
 
     # 应用多层防护（仅使用隐形字符，不改变可见字符）
     protected_watermark = apply_multi_layer_protection(base_watermark, content)
