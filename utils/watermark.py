@@ -28,6 +28,14 @@ INVISIBLE_CHARS = [
     '\uFEFF',  # 零宽不换行空格 Zero-width no-break space
 ]
 
+# URL 内零宽字符需保持更高兼容性，避免方向性影响
+URL_SAFE_INVISIBLE_CHARS = [
+    '\u200B',
+    '\u200C',
+    '\u200D',
+    '\u2060',
+]
+
 
 def generate_random_invisible_sequence(min_len: int, max_len: int) -> str:
     """生成随机长度的隐形字符序列"""
@@ -85,7 +93,7 @@ def add_enhanced_invisible_chars(text: str) -> str:
     return ''.join(processed_segments)
 
 
-def add_zero_width_to_url(url: str, insertion_rate: float = 0.45) -> str:
+def add_zero_width_to_url(url: str, insertion_rate: float = 0.4) -> str:
     """在URL内部插入零宽字符，降低批量替换概率"""
     if not url:
         return url
@@ -101,7 +109,7 @@ def add_zero_width_to_url(url: str, insertion_rate: float = 0.45) -> str:
 
         if char.isalnum() and next_char.isalnum():
             if random.random() < insertion_rate:
-                protected.append(random.choice(ENHANCED_INVISIBLE_CHARS))
+                protected.append(random.choice(URL_SAFE_INVISIBLE_CHARS))
 
     return ''.join(protected)
 
@@ -220,12 +228,14 @@ def apply_watermark_to_chapter(content: str) -> str:
         return content
 
     plain_url = "https://github.com/POf-L/Fanqie-novel-Downloader"
+    hardened_url = add_zero_width_to_url(plain_url)
 
-    # 生成可见文本并仅在非 URL 区域添加零宽字符，避免复制到浏览器时顺序错乱
+    # 生成可见文本，URL 采用零宽保护版，其余文本继续注入零宽字符
     visible_watermark = (
         f"Fanqie-novel-Downloader 开源免费下载：{plain_url}，发现收费请立刻举报"
     )
-    base_watermark = add_enhanced_invisible_chars(visible_watermark)
+    hardened_watermark = visible_watermark.replace(plain_url, hardened_url, 1)
+    base_watermark = add_enhanced_invisible_chars(hardened_watermark)
 
     # 应用多层防护（仅使用隐形字符，不改变可见字符）
     protected_watermark = apply_multi_layer_protection(base_watermark, content)
