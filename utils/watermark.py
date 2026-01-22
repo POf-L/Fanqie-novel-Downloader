@@ -88,6 +88,27 @@ def add_enhanced_invisible_chars(text: str) -> str:
     return ''.join(processed_segments)
 
 
+def add_zero_width_to_url(url: str, insertion_rate: float = 0.45) -> str:
+    """在URL内部插入零宽字符，降低批量替换概率"""
+    if not url:
+        return url
+
+    protected = []
+    for idx, char in enumerate(url):
+        protected.append(char)
+
+        # 仅在字母或数字之间插入，以降低解析风险
+        next_char = url[idx + 1] if idx + 1 < len(url) else None
+        if not next_char:
+            continue
+
+        if char.isalnum() and next_char.isalnum():
+            if random.random() < insertion_rate:
+                protected.append(random.choice(ENHANCED_INVISIBLE_CHARS))
+
+    return ''.join(protected)
+
+
 def embed_content_fingerprint(content: str) -> str:
     """基于内容特征嵌入指纹"""
     # 计算内容哈希
@@ -201,11 +222,15 @@ def apply_watermark_to_chapter(content: str) -> str:
     if not content:
         return content
 
-    # 固定水印文本（强调开源免费与仓库地址）
+    plain_url = "https://github.com/POf-L/Fanqie-novel-Downloader"
+    hardened_url = add_zero_width_to_url(plain_url)
+
+    # 固定水印文本（强调开源免费与仓库地址，同时提供零宽保护版）
     base_watermark = (
         "本小说由开源免费项目 Fanqie-novel-Downloader 自动下载，"
-        "项目地址：https://github.com/POf-L/Fanqie-novel-Downloader "
-        "如遇收费兜售，请立即退款并向平台举报。"
+        "如遇收费兜售，请立即退款并向平台举报。\n"
+        f"项目地址（直接打开）：{plain_url}\n"
+        f"项目地址（零宽字符版，浏览器可自动忽略，若无法访问请重试或删去不可见字符）：{hardened_url}"
     )
 
     # 应用多层防护（仅使用隐形字符，不改变可见字符）
