@@ -18,9 +18,6 @@ ENHANCED_INVISIBLE_CHARS = [
     '\uFEFF',  # 零宽不换行空格 Zero-width no-break space
     '\u2060',  # 词连接符 Word joiner
     '\u180E',  # 蒙古文元音分隔符 Mongolian vowel separator
-    '\u061C',  # 阿拉伯字母标记 Arabic letter mark
-    '\u200E',  # 从左到右标记 Left-to-right mark
-    '\u200F',  # 从右到左标记 Right-to-left mark
 ]
 
 # 保持向后兼容的原始隐形字符列表
@@ -116,10 +113,10 @@ def embed_content_fingerprint(content: str) -> str:
 
     # 将哈希值转换为隐形字符序列
     char_map = {
-        '0': '\u200B', '1': '\u200C', '2': '\u200D', '3': '\uFEFF',
-        '4': '\u2060', '5': '\u180E', '6': '\u061C', '7': '\u200E',
-        '8': '\u200F', '9': '\u202A', 'a': '\u202B', 'b': '\u202C',
-        'c': '\u202D', 'd': '\u202E', 'e': '\u2066', 'f': '\u2067'
+        '0': '\u200B', '1': '\u200C', '2': '\u200D', '3': '\u2060',
+        '4': '\uFEFF', '5': '\u180E', '6': '\u200B\u200C', '7': '\u200B\u200D',
+        '8': '\u200C\u200D', '9': '\u200D\u200C', 'a': '\u200B\u2060', 'b': '\u200C\u2060',
+        'c': '\u200D\u2060', 'd': '\u200B\u180E', 'e': '\u200C\u180E', 'f': '\u200D\u180E'
     }
 
     fingerprint = ''.join(char_map.get(c, '\u200B') for c in content_hash)
@@ -223,15 +220,12 @@ def apply_watermark_to_chapter(content: str) -> str:
         return content
 
     plain_url = "https://github.com/POf-L/Fanqie-novel-Downloader"
-    hardened_url = add_zero_width_to_url(plain_url)
 
-    # 固定水印文本（强调开源免费与仓库地址，同时提供零宽保护版）
-    base_watermark = (
-        "本小说由开源免费项目 Fanqie-novel-Downloader 自动下载，"
-        "如遇收费兜售，请立即退款并向平台举报。\n"
-        f"项目地址（直接打开）：{plain_url}\n"
-        f"项目地址（零宽字符版，浏览器可自动忽略，若无法访问请重试或删去不可见字符）：{hardened_url}"
+    # 生成可见文本并仅在非 URL 区域添加零宽字符，避免复制到浏览器时顺序错乱
+    visible_watermark = (
+        f"Fanqie-novel-Downloader 开源免费下载：{plain_url}，发现收费请立刻举报"
     )
+    base_watermark = add_enhanced_invisible_chars(visible_watermark)
 
     # 应用多层防护（仅使用隐形字符，不改变可见字符）
     protected_watermark = apply_multi_layer_protection(base_watermark, content)
