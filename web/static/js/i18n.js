@@ -7,6 +7,7 @@ const translations = {
         "tab_search": "搜索书籍",
         "tab_download": "手动下载",
         "tab_queue": "待下载",
+        "tab_settings": "设置",
         
         // Search Pane
         "search_placeholder": "输入书名或作者名搜索...",
@@ -195,7 +196,43 @@ const translations = {
         "api_check_failed": "接口检测失败: {0}",
         "api_select_failed": "接口选择失败",
         "api_status_auto": "自动选择接口中...",
-        "api_status_manual": "手动选择接口: {0} ({1}ms)"
+        "api_status_manual": "手动选择接口: {0} ({1}ms)",
+
+        // Settings Page
+        "settings_download_title": "下载设置",
+        "settings_retry_title": "重试设置",
+        "settings_api_title": "接口设置",
+        "settings_max_workers": "最大并发数",
+        "settings_max_workers_hint": "同时下载的任务数量（1-100）",
+        "settings_request_rate_limit": "请求速率限制",
+        "settings_request_rate_limit_hint": "每个请求之间的最小间隔秒数",
+        "settings_connection_pool_size": "连接池大小",
+        "settings_connection_pool_size_hint": "HTTP连接池的最大连接数（10-500）",
+        "settings_async_batch_size": "异步批量大小",
+        "settings_async_batch_size_hint": "异步处理时的批量大小（1-200）",
+        "settings_max_retries": "最大重试次数",
+        "settings_max_retries_hint": "下载失败时的最大重试次数（1-10）",
+        "settings_request_timeout": "请求超时时间",
+        "settings_request_timeout_hint": "单个请求的超时时间（秒，5-120）",
+        "settings_api_rate_limit": "接口速率限制",
+        "settings_api_rate_limit_hint": "每秒最多的API调用次数（1-200）",
+        "settings_rate_limit_window": "速率限制窗口",
+        "settings_rate_limit_window_hint": "速率限制的时间窗口（秒）",
+        "btn_save_settings": "保存设置",
+        "btn_reset_settings": "恢复默认",
+        "settings_save_success": "设置已保存",
+        "settings_save_error": "保存设置失败",
+        "settings_load_error": "加载设置失败，使用默认配置",
+        "settings_reset_confirm": "确定要恢复默认设置吗？",
+        "settings_reset_success": "已恢复默认设置",
+        "settings_validation_max_workers": "最大并发数必须在 1-100 之间",
+        "settings_validation_rate_limit": "请求速率限制必须大于等于 0",
+        "settings_validation_pool_size": "连接池大小必须在 10-500 之间",
+        "settings_validation_batch_size": "异步批量大小必须在 1-200 之间",
+        "settings_validation_retries": "最大重试次数必须在 1-10 之间",
+        "settings_validation_timeout": "请求超时时间必须在 5-120 秒之间",
+        "settings_validation_api_rate": "接口速率限制必须在 1-200 之间",
+        "settings_validation_window": "速率限制窗口必须大于 0"
     },
     "en": {
         // Header
@@ -205,6 +242,7 @@ const translations = {
         "tab_search": "Search Books",
         "tab_download": "Manual Download",
         "tab_queue": "Queue",
+        "tab_settings": "Settings",
         
         // Search Pane
         "search_placeholder": "Enter book title or author...",
@@ -393,7 +431,43 @@ const translations = {
         "api_check_failed": "Source check failed: {0}",
         "api_select_failed": "Source selection failed",
         "api_status_auto": "Auto selecting source...",
-        "api_status_manual": "Manual source: {0} ({1}ms)"
+        "api_status_manual": "Manual source: {0} ({1}ms)",
+
+        // Settings Page
+        "settings_download_title": "Download Settings",
+        "settings_retry_title": "Retry Settings",
+        "settings_api_title": "API Settings",
+        "settings_max_workers": "Max Workers",
+        "settings_max_workers_hint": "Number of concurrent download tasks (1-100)",
+        "settings_request_rate_limit": "Request Rate Limit",
+        "settings_request_rate_limit_hint": "Minimum interval between requests (seconds)",
+        "settings_connection_pool_size": "Connection Pool Size",
+        "settings_connection_pool_size_hint": "Maximum connections in HTTP pool (10-500)",
+        "settings_async_batch_size": "Async Batch Size",
+        "settings_async_batch_size_hint": "Batch size for async processing (1-200)",
+        "settings_max_retries": "Max Retries",
+        "settings_max_retries_hint": "Maximum retry attempts on failure (1-10)",
+        "settings_request_timeout": "Request Timeout",
+        "settings_request_timeout_hint": "Timeout for single request in seconds (5-120)",
+        "settings_api_rate_limit": "API Rate Limit",
+        "settings_api_rate_limit_hint": "Max API calls per second (1-200)",
+        "settings_rate_limit_window": "Rate Limit Window",
+        "settings_rate_limit_window_hint": "Time window for rate limiting (seconds)",
+        "btn_save_settings": "Save Settings",
+        "btn_reset_settings": "Reset to Default",
+        "settings_save_success": "Settings saved successfully",
+        "settings_save_error": "Failed to save settings",
+        "settings_load_error": "Failed to load settings, using defaults",
+        "settings_reset_confirm": "Are you sure you want to reset to default settings?",
+        "settings_reset_success": "Settings reset to default",
+        "settings_validation_max_workers": "Max workers must be between 1-100",
+        "settings_validation_rate_limit": "Request rate limit must be >= 0",
+        "settings_validation_pool_size": "Connection pool size must be between 10-500",
+        "settings_validation_batch_size": "Async batch size must be between 1-200",
+        "settings_validation_retries": "Max retries must be between 1-10",
+        "settings_validation_timeout": "Request timeout must be between 5-120 seconds",
+        "settings_validation_api_rate": "API rate limit must be between 1-200",
+        "settings_validation_window": "Rate limit window must be > 0"
     }
 };
 

@@ -58,6 +58,10 @@
                             <iconify-icon icon="line-md:list-3"></iconify-icon>
                             <span class="tab-label" data-i18n="tab_queue">队列</span>
                         </button>
+                        <button class="tab-btn" data-tab="settings" title="设置">
+                            <iconify-icon icon="line-md:cog-loop"></iconify-icon>
+                            <span class="tab-label" data-i18n="tab_settings">设置</span>
+                        </button>
                     </div>
 
                     <!-- 内容区域 -->
@@ -255,6 +259,112 @@
                                         <div class="empty-state-text" data-i18n="queue_empty">空</div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- 设置面板 -->
+                        <div class="tab-pane scrollable" id="tab-settings">
+                            <div class="settings-container">
+                                <!-- 下载设置 -->
+                                <div class="settings-section">
+                                    <h3 class="settings-section-title">
+                                        <iconify-icon icon="line-md:download-loop"></iconify-icon>
+                                        <span data-i18n="settings_download_title">下载设置</span>
+                                    </h3>
+                                    <div class="settings-grid">
+                                        <div class="setting-item">
+                                            <label class="setting-label" data-i18n="settings_max_workers">最大并发数</label>
+                                            <div class="setting-control">
+                                                <input type="number" id="setting_max_workers" class="form-input" min="1" max="100" value="30">
+                                                <span class="setting-hint" data-i18n="settings_max_workers_hint">同时下载的任务数量</span>
+                                            </div>
+                                        </div>
+                                        <div class="setting-item">
+                                            <label class="setting-label" data-i18n="settings_request_rate_limit">请求间隔(秒)</label>
+                                            <div class="setting-control">
+                                                <input type="number" id="setting_request_rate_limit" class="form-input" min="0" max="10" step="0.01" value="0.02">
+                                                <span class="setting-hint" data-i18n="settings_request_rate_limit_hint">每次请求之间的延迟</span>
+                                            </div>
+                                        </div>
+                                        <div class="setting-item">
+                                            <label class="setting-label" data-i18n="settings_connection_pool_size">连接池大小</label>
+                                            <div class="setting-control">
+                                                <input type="number" id="setting_connection_pool_size" class="form-input" min="10" max="500" value="200">
+                                                <span class="setting-hint" data-i18n="settings_connection_pool_size_hint">HTTP连接池的大小</span>
+                                            </div>
+                                        </div>
+                                        <div class="setting-item">
+                                            <label class="setting-label" data-i18n="settings_async_batch_size">异步批次大小</label>
+                                            <div class="setting-control">
+                                                <input type="number" id="setting_async_batch_size" class="form-input" min="1" max="200" value="50">
+                                                <span class="setting-hint" data-i18n="settings_async_batch_size_hint">每批次处理的任务数</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 重试设置 -->
+                                <div class="settings-section">
+                                    <h3 class="settings-section-title">
+                                        <iconify-icon icon="line-md:backup-restore"></iconify-icon>
+                                        <span data-i18n="settings_retry_title">重试设置</span>
+                                    </h3>
+                                    <div class="settings-grid">
+                                        <div class="setting-item">
+                                            <label class="setting-label" data-i18n="settings_max_retries">最大重试次数</label>
+                                            <div class="setting-control">
+                                                <input type="number" id="setting_max_retries" class="form-input" min="0" max="10" value="3">
+                                                <span class="setting-hint" data-i18n="settings_max_retries_hint">失败后最多重试次数</span>
+                                            </div>
+                                        </div>
+                                        <div class="setting-item">
+                                            <label class="setting-label" data-i18n="settings_request_timeout">请求超时(秒)</label>
+                                            <div class="setting-control">
+                                                <input type="number" id="setting_request_timeout" class="form-input" min="5" max="300" value="30">
+                                                <span class="setting-hint" data-i18n="settings_request_timeout_hint">单个请求的超时时间</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- API设置 -->
+                                <div class="settings-section">
+                                    <h3 class="settings-section-title">
+                                        <iconify-icon icon="line-md:cloud-up-twotone-loop"></iconify-icon>
+                                        <span data-i18n="settings_api_title">API设置</span>
+                                    </h3>
+                                    <div class="settings-grid">
+                                        <div class="setting-item">
+                                            <label class="setting-label" data-i18n="settings_api_rate_limit">API速率限制</label>
+                                            <div class="setting-control">
+                                                <input type="number" id="setting_api_rate_limit" class="form-input" min="1" max="200" value="50">
+                                                <span class="setting-hint" data-i18n="settings_api_rate_limit_hint">每秒最大请求数</span>
+                                            </div>
+                                        </div>
+                                        <div class="setting-item">
+                                            <label class="setting-label" data-i18n="settings_rate_limit_window">速率窗口(秒)</label>
+                                            <div class="setting-control">
+                                                <input type="number" id="setting_rate_limit_window" class="form-input" min="0.1" max="10" step="0.1" value="1.0">
+                                                <span class="setting-hint" data-i18n="settings_rate_limit_window_hint">速率计算的时间窗口</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 操作按钮 -->
+                                <div class="settings-actions">
+                                    <button class="btn btn-primary" id="saveSettingsBtn">
+                                        <iconify-icon icon="line-md:confirm"></iconify-icon>
+                                        <span data-i18n="btn_save_settings">保存设置</span>
+                                    </button>
+                                    <button class="btn btn-secondary" id="resetSettingsBtn">
+                                        <iconify-icon icon="line-md:close"></iconify-icon>
+                                        <span data-i18n="btn_reset_settings">恢复默认</span>
+                                    </button>
+                                </div>
+
+                                <!-- 保存提示 -->
+                                <div class="settings-message" id="settingsMessage" style="display: none;"></div>
                             </div>
                         </div>
                     </div>
