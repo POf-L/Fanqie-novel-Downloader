@@ -1662,3 +1662,118 @@ iconify-icon {
 .pixel-icon, .pixel-tomato, .glitch, .scp-warning-banner, .scp-stamp {
     display: none !important;
 }
+
+/* ===================== 设置页面样式 ===================== */
+
+.settings-container {
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.settings-section {
+    margin-bottom: 32px;
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    border: 1px solid var(--border);
+}
+
+.settings-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: var(--text-primary);
+}
+
+.settings-section-title iconify-icon {
+    font-size: 20px;
+    color: var(--primary);
+}
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+.setting-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.setting-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.setting-control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.setting-control .form-input {
+    width: 100%;
+}
+
+.setting-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.settings-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 32px;
+    padding: 0 24px;
+}
+
+.settings-actions .btn {
+    min-width: 140px;
+}
+
+.settings-message {
+    margin-top: 20px;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    text-align: center;
+    font-size: 14px;
+    animation: slideDown 0.3s ease;
+}
+
+.settings-message.success {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.settings-message.error {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (min-width: 768px) {
+    .settings-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

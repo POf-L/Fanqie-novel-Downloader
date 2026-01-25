@@ -4061,3 +4061,204 @@ function initWindowDrag() {
 
 // 初始化窗口控制
 document.addEventListener('DOMContentLoaded', initWindowControls);
+
+/* ===================== 设置页面功能 ===================== */
+
+class SettingsManager {
+    constructor() {
+        this.defaultSettings = {
+            max_workers: 30,
+            request_rate_limit: 0.02,
+            connection_pool_size: 200,
+            async_batch_size: 50,
+            max_retries: 3,
+            request_timeout: 30,
+            api_rate_limit: 50,
+            rate_limit_window: 1.0
+        };
+        this.currentSettings = { ...this.defaultSettings };
+    }
+
+    // 初始化设置页面
+    async init() {
+        await this.loadSettings();
+        this.bindEvents();
+        this.updateUI();
+    }
+
+    // 绑定事件
+    bindEvents() {
+        const saveBtn = document.getElementById('saveSettingsBtn');
+        const resetBtn = document.getElementById('resetSettingsBtn');
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => this.saveSettings());
+        }
+
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => this.resetSettings());
+        }
+    }
+
+    // 加载设置
+    async loadSettings() {
+        try {
+            const response = await fetch('/api/settings/get', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.settings) {
+                    this.currentSettings = { ...this.defaultSettings, ...data.settings };
+                }
+            }
+        } catch (error) {
+            console.error('加载设置失败:', error);
+            Toast.warning(i18n.t('settings_load_error') || '加载设置失败,使用默认配置');
+        }
+    }
+
+    // 保存设置
+    async saveSettings() {
+        const settings = this.getFormValues();
+
+        // 验证设置值
+        if (!this.validateSettings(settings)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/settings/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ settings })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.currentSettings = settings;
+                this.showMessage('success', i18n.t('settings_save_success') || '设置已保存');
+                Toast.success(i18n.t('settings_save_success') || '设置已保存');
+            } else {
+                this.showMessage('error', data.error || (i18n.t('settings_save_error') || '保存失败'));
+                Toast.error(data.error || (i18n.t('settings_save_error') || '保存失败'));
+            }
+        } catch (error) {
+            console.error('保存设置失败:', error);
+            this.showMessage('error', i18n.t('settings_save_error') || '保存失败');
+            Toast.error(i18n.t('settings_save_error') || '保存失败');
+        }
+    }
+
+    // 重置为默认设置
+    resetSettings() {
+        if (confirm(i18n.t('settings_reset_confirm') || '确定要恢复默认设置吗?')) {
+            this.currentSettings = { ...this.defaultSettings };
+            this.updateUI();
+            Toast.info(i18n.t('settings_reset_done') || '已恢复默认设置,请点击保存按钮');
+        }
+    }
+
+    // 获取表单值
+    getFormValues() {
+        return {
+            max_workers: parseInt(document.getElementById('setting_max_workers')?.value || this.defaultSettings.max_workers),
+            request_rate_limit: parseFloat(document.getElementById('setting_request_rate_limit')?.value || this.defaultSettings.request_rate_limit),
+            connection_pool_size: parseInt(document.getElementById('setting_connection_pool_size')?.value || this.defaultSettings.connection_pool_size),
+            async_batch_size: parseInt(document.getElementById('setting_async_batch_size')?.value || this.defaultSettings.async_batch_size),
+            max_retries: parseInt(document.getElementById('setting_max_retries')?.value || this.defaultSettings.max_retries),
+            request_timeout: parseInt(document.getElementById('setting_request_timeout')?.value || this.defaultSettings.request_timeout),
+            api_rate_limit: parseInt(document.getElementById('setting_api_rate_limit')?.value || this.defaultSettings.api_rate_limit),
+            rate_limit_window: parseFloat(document.getElementById('setting_rate_limit_window')?.value || this.defaultSettings.rate_limit_window)
+        };
+    }
+
+    // 验证设置值
+    validateSettings(settings) {
+        if (settings.max_workers < 1 || settings.max_workers > 100) {
+            Toast.warning(i18n.t('settings_validate_max_workers') || '最大并发数必须在1-100之间');
+            return false;
+        }
+
+        if (settings.request_rate_limit < 0 || settings.request_rate_limit > 10) {
+            Toast.warning(i18n.t('settings_validate_rate_limit') || '请求间隔必须在0-10秒之间');
+            return false;
+        }
+
+        if (settings.connection_pool_size < 10 || settings.connection_pool_size > 500) {
+            Toast.warning(i18n.t('settings_validate_pool_size') || '连接池大小必须在10-500之间');
+            return false;
+        }
+
+        if (settings.async_batch_size < 1 || settings.async_batch_size > 200) {
+            Toast.warning(i18n.t('settings_validate_batch_size') || '异步批次大小必须在1-200之间');
+            return false;
+        }
+
+        if (settings.max_retries < 0 || settings.max_retries > 10) {
+            Toast.warning(i18n.t('settings_validate_retries') || '最大重试次数必须在0-10之间');
+            return false;
+        }
+
+        if (settings.request_timeout < 5 || settings.request_timeout > 300) {
+            Toast.warning(i18n.t('settings_validate_timeout') || '请求超时必须在5-300秒之间');
+            return false;
+        }
+
+        if (settings.api_rate_limit < 1 || settings.api_rate_limit > 200) {
+            Toast.warning(i18n.t('settings_validate_api_rate') || 'API速率限制必须在1-200之间');
+            return false;
+        }
+
+        if (settings.rate_limit_window < 0.1 || settings.rate_limit_window > 10) {
+            Toast.warning(i18n.t('settings_validate_rate_window') || '速率窗口必须在0.1-10秒之间');
+            return false;
+        }
+
+        return true;
+    }
+
+    // 更新UI
+    updateUI() {
+        document.getElementById('setting_max_workers').value = this.currentSettings.max_workers;
+        document.getElementById('setting_request_rate_limit').value = this.currentSettings.request_rate_limit;
+        document.getElementById('setting_connection_pool_size').value = this.currentSettings.connection_pool_size;
+        document.getElementById('setting_async_batch_size').value = this.currentSettings.async_batch_size;
+        document.getElementById('setting_max_retries').value = this.currentSettings.max_retries;
+        document.getElementById('setting_request_timeout').value = this.currentSettings.request_timeout;
+        document.getElementById('setting_api_rate_limit').value = this.currentSettings.api_rate_limit;
+        document.getElementById('setting_rate_limit_window').value = this.currentSettings.rate_limit_window;
+    }
+
+    // 显示消息
+    showMessage(type, message) {
+        const messageEl = document.getElementById('settingsMessage');
+        if (!messageEl) return;
+
+        messageEl.className = `settings-message ${type}`;
+        messageEl.textContent = message;
+        messageEl.style.display = 'block';
+
+        setTimeout(() => {
+            messageEl.style.display = 'none';
+        }, 3000);
+    }
+}
+
+// 初始化设置管理器
+const settingsManager = new SettingsManager();
+
+// 在DOMContentLoaded事件中初始化设置页面
+document.addEventListener('DOMContentLoaded', () => {
+    // 延迟初始化,等待国际化加载完成
+    setTimeout(() => {
+        settingsManager.init();
+    }, 500);
+});

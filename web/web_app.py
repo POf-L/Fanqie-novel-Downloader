@@ -3121,10 +3121,10 @@ def api_open_folder():
     """打开文件夹"""
     data = request.get_json()
     path = data.get('path')
-    
+
     if not path or not os.path.exists(path):
         return jsonify({'success': False, 'message': t('web_path_not_exist')}), 400
-        
+
     try:
         if os.name == 'nt':
             os.startfile(path)
@@ -3136,7 +3136,107 @@ def api_open_folder():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+# ===================== 设置管理 API =====================
+
+@app.route('/api/settings/get', methods=['GET'])
+def api_get_settings():
+    """获取用户设置"""
+    try:
+        # 从本地配置文件读取用户设置
+        settings = _read_local_config()
+
+        # 如果没有保存的设置,返回默认值
+        if not settings or 'user_settings' not in settings:
+            default_settings = {
+                'max_workers': 30,
+                'request_rate_limit': 0.02,
+                'connection_pool_size': 200,
+                'async_batch_size': 50,
+                'max_retries': 3,
+                'request_timeout': 30,
+                'api_rate_limit': 50,
+                'rate_limit_window': 1.0
+            }
+            return jsonify({'success': True, 'settings': default_settings})
+
+        return jsonify({'success': True, 'settings': settings.get('user_settings', {})})
+    except Exception as e:
+        print(f"[ERROR] get-settings: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/settings/save', methods=['POST'])
+def api_save_settings():
+    """保存用户设置"""
+    try:
+        data = request.get_json()
+        settings = data.get('settings', {})
+
+        if not settings:
+            return jsonify({'success': False, 'error': '无效的设置数据'}), 400
+
+        # 验证设置值
+        validation_errors = []
+
+        # 验证数值范围
+        if 'max_workers' in settings:
+            value = settings['max_workers']
+            if not isinstance(value, (int, float)) or value < 1 or value > 100:
+                validation_errors.append('最大并发数必须在1-100之间')
+
+        if 'request_rate_limit' in settings:
+            value = settings['request_rate_limit']
+            if not isinstance(value, (int, float)) or value < 0 or value > 10:
+                validation_errors.append('请求间隔必须在0-10秒之间')
+
+        if 'connection_pool_size' in settings:
+            value = settings['connection_pool_size']
+            if not isinstance(value, (int, float)) or value < 10 or value > 500:
+                validation_errors.append('连接池大小必须在10-500之间')
+
+        if 'async_batch_size' in settings:
+            value = settings['async_batch_size']
+            if not isinstance(value, (int, float)) or value < 1 or value > 200:
+                validation_errors.append('异步批次大小必须在1-200之间')
+
+        if 'max_retries' in settings:
+            value = settings['max_retries']
+            if not isinstance(value, (int, float)) or value < 0 or value > 10:
+                validation_errors.append('最大重试次数必须在0-10之间')
+
+        if 'request_timeout' in settings:
+            value = settings['request_timeout']
+            if not isinstance(value, (int, float)) or value < 5 or value > 300:
+                validation_errors.append('请求超时必须在5-300秒之间')
+
+        if 'api_rate_limit' in settings:
+            value = settings['api_rate_limit']
+            if not isinstance(value, (int, float)) or value < 1 or value > 200:
+                validation_errors.append('API速率限制必须在1-200之间')
+
+        if 'rate_limit_window' in settings:
+            value = settings['rate_limit_window']
+            if not isinstance(value, (int, float)) or value < 0.1 or value > 10:
+                validation_errors.append('速率窗口必须在0.1-10秒之间')
+
+        if validation_errors:
+            return jsonify({'success': False, 'error': '; '.join(validation_errors)}), 400
+
+        # 保存到本地配置文件
+        success = _write_local_config({'user_settings': settings})
+
+        if success:
+            return jsonify({'success': True, 'message': '设置已保存'})
+        else:
+            return jsonify({'success': False, 'error': '保存设置失败'}), 500
+
+    except Exception as e:
+        print(f"[ERROR] save-settings: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     print(f'配置文件位置: {CONFIG_FILE}')
     print(t('web_server_started'))
     app.run(host='127.0.0.1', port=5000, debug=False)
+
