@@ -7,6 +7,7 @@
     {"name": "中国|浙江省|宁波市|电信", "base_url": "https://qkfqapi.vv9v.cn", "supports_full_download": true},
     {"name": "中国|陕西省|西安市|电信", "base_url": "http://103.236.91.147:9999", "supports_full_download": false},
     {"name": "中国|江苏省|常州市|电信", "base_url": "http://43.248.77.205:22222", "supports_full_download": false},
+    {"name": "中国|四川省|成都市|阿里云", "base_url": "http://47.108.80.161:5005", "supports_full_download": false},
     {"name": "日本|东京", "base_url": "https://fq.shusan.cn", "supports_full_download": true}
   ],
   "endpoints": {
