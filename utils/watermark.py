@@ -216,7 +216,7 @@ def insert_watermark(content: str, watermark_text: str | None = None, num_insert
 
 def apply_watermark_to_chapter(content: str) -> str:
     """
-    增强版章节末尾水印 - 仅在章节末尾添加，多层防护，保持URL完全可点击
+    在正文内随机插入水印 - 每50000字插入一次，多层防护，保持URL完全可点击
 
     Args:
         content: 章节内容
@@ -230,18 +230,51 @@ def apply_watermark_to_chapter(content: str) -> str:
     plain_url = "https://github.com/POf-L/Fanqie-novel-Downloader"
     hardened_url = add_zero_width_to_url(plain_url)
 
-    # 生成可见文本，URL 采用零宽保护版，其余文本继续注入零宽字符
-    visible_watermark = (
-        f"Fanqie-novel-Downloader 开源免费下载：{plain_url}，发现收费请立刻举报"
-    )
+    # 新的水印文本
+    visible_watermark = f"【使用此项目进行下载：{plain_url}】"
     hardened_watermark = visible_watermark.replace(plain_url, hardened_url, 1)
     base_watermark = add_enhanced_invisible_chars(hardened_watermark)
 
     # 应用多层防护（仅使用隐形字符，不改变可见字符）
     protected_watermark = apply_multi_layer_protection(base_watermark, content)
 
-    # 在章节末尾添加水印（随机2-4个换行）
-    random_newlines = '\n' * random.randint(2, 4)
-    final_content = content + random_newlines + protected_watermark
+    content_length = len(content)
+    interval = 50000
 
-    return final_content
+    # 如果内容少于50000字，在中间位置插入一次
+    if content_length < interval:
+        # 在中间位置随机插入（中间位置±20%范围内）
+        mid_point = content_length // 2
+        variation = int(content_length * 0.2)
+        insert_pos = random.randint(max(0, mid_point - variation), min(content_length, mid_point + variation))
+
+        # 插入水印（前后加换行）
+        watermark_with_newlines = '\n' + protected_watermark + '\n'
+        final_content = content[:insert_pos] + watermark_with_newlines + content[insert_pos:]
+        return final_content
+
+    # 如果内容大于等于50000字，每50000字插入一次
+    num_insertions = content_length // interval
+
+    # 计算插入位置（在每个区间内随机选择位置）
+    insert_positions = []
+    for i in range(num_insertions):
+        # 每个区间的起始和结束位置
+        segment_start = i * interval
+        segment_end = (i + 1) * interval
+
+        # 在区间内随机选择位置（避免太靠近边界）
+        margin = int(interval * 0.1)  # 10%的边界
+        insert_pos = random.randint(segment_start + margin, segment_end - margin)
+        insert_positions.append(insert_pos)
+
+    # 从后往前插入，避免位置偏移
+    insert_positions.sort(reverse=True)
+
+    result = content
+    watermark_with_newlines = '\n' + protected_watermark + '\n'
+
+    for pos in insert_positions:
+        result = result[:pos] + watermark_with_newlines + result[pos:]
+
+    return result

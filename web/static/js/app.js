@@ -1826,17 +1826,28 @@ function renderApiSourcesUI(data) {
     autoOpt.textContent = i18n.t('api_auto_select');
     select.appendChild(autoOpt);
 
-    sources.forEach(src => {
+    // 过滤节点：只显示有动态位置信息且测速成功的节点
+    const filteredSources = sources.filter(src => {
+        // 必须有动态位置名称（说明IP解析和位置查询成功）
+        // 且必须测速成功（available=true）
+        return src.dynamic_name && src.available;
+    });
+
+    filteredSources.forEach(src => {
         const opt = document.createElement('option');
         opt.value = src.base_url;
 
-        const name = src.name || src.base_url;
-        if (src.available) {
-            const ms = typeof src.latency_ms === 'number' ? src.latency_ms : '?';
-            opt.textContent = `${name} (${ms}ms)`;
+        // 使用动态获取的位置名称
+        const name = src.dynamic_name;
+        const ms = typeof src.latency_ms === 'number' ? src.latency_ms : '?';
+
+        // 显示格式：位置名称 [IP地址] (延迟ms)
+        if (src.resolved_ip) {
+            opt.textContent = `${name} [${src.resolved_ip}] (${ms}ms)`;
         } else {
-            opt.textContent = `${name} (${i18n.t('api_unavailable')})`;
+            opt.textContent = `${name} (${ms}ms)`;
         }
+
         select.appendChild(opt);
     });
 
@@ -1848,9 +1859,10 @@ function renderApiSourcesUI(data) {
     }
 
     // Log status
-    const currentSrc = sources.find(s => s.base_url === current);
+    const currentSrc = filteredSources.find(s => s.base_url === current);
     if (current && currentSrc) {
-        const currentName = currentSrc.name || current;
+        // 使用动态获取的位置名称
+        const currentName = currentSrc.dynamic_name;
         if (currentSrc.available) {
             const ms = typeof currentSrc.latency_ms === 'number' ? currentSrc.latency_ms : '?';
             logger.logKey(mode === 'auto' ? 'api_status_auto' : 'api_status_manual', currentName, ms);

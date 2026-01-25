@@ -1381,36 +1381,154 @@ def _get_api_sources() -> list:
         return []
 
 
+def _get_ip_location(ip: str, timeout: float = 2.0) -> dict:
+    """查询IP地理位置信息（英文）
+
+    Args:
+        ip: IP地址
+        timeout: 超时时间（秒）
+
+    Returns:
+        包含位置信息的字典，格式: {'country': 'China', 'region': 'Sichuan', 'city': 'Chengdu', 'isp': 'Alibaba'}
+    """
+    try:
+        # 使用免费的IP查询API（英文）
+        url = f"http://ip-api.com/json/{ip}?lang=en&fields=status,country,regionName,city,isp"
+        resp = requests.get(url, timeout=timeout)
+
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('status') == 'success':
+                return {
+                    'country': data.get('country', ''),
+                    'region': data.get('regionName', ''),
+                    'city': data.get('city', ''),
+                    'isp': data.get('isp', '')
+                }
+    except Exception:
+        pass
+
+    return {}
+
+
+def _format_location_name(location: dict) -> str:
+    """格式化位置信息为节点名称
+
+    Args:
+        location: 位置信息字典
+
+    Returns:
+        格式化的名称，如 "中国|四川省|成都市|阿里云"
+    """
+    parts = []
+    if location.get('country'):
+        parts.append(location['country'])
+    if location.get('region'):
+        parts.append(location['region'])
+    if location.get('city'):
+        parts.append(location['city'])
+    if location.get('isp'):
+        parts.append(location['isp'])
+
+    return '|'.join(parts) if parts else ''
+
+
 def _probe_api_source(base_url: str, timeout: float = 1.5) -> dict:
-    """HTTP 探活（仅 ping 域名根路径，快速超时）"""
+    """HTTP 探活（ping 域名根路径 + 检测全量下载支持）"""
     import requests
     from urllib.parse import urlparse
+    import socket
 
     base_url = _normalize_base_url(base_url)
     parsed = urlparse(base_url)
     ping_url = f"{parsed.scheme}://{parsed.netloc}/"
 
     start = time.perf_counter()
+    resolved_ip = None
+    location = {}
+    dynamic_name = None
+    supports_full_download = False
+
     try:
+        # 解析域名获取IP地址
+        hostname = parsed.hostname
+        if hostname:
+            try:
+                resolved_ip = socket.gethostbyname(hostname)
+                # 查询IP地理位置（仅对可用节点查询，节省时间）
+                location = _get_ip_location(resolved_ip, timeout=1.5)
+                if location:
+                    dynamic_name = _format_location_name(location)
+            except Exception:
+                pass
+
         resp = requests.head(ping_url, timeout=timeout, allow_redirects=True)
         latency_ms = int((time.perf_counter() - start) * 1000)
 
         # 只要能连上就认为可用
         available = resp.status_code < 500
-        return {
+
+        # 如果节点可用，测试是否支持全量下载
+        if available:
+            try:
+                # 测试 /api/content 接口是否支持 book_id 参数（全量下载特征）
+                test_url = f"{base_url}/api/content"
+                # 使用一个测试book_id，如果接口支持会返回特定响应
+                test_params = {"book_id": "0", "tab": "小说"}
+                test_resp = requests.get(test_url, params=test_params, timeout=2.0)
+
+                # 判断是否支持全量下载：
+                # 1. 返回200且有JSON响应（即使book_id无效，接口也会返回结构化响应）
+                # 2. 或者返回特定的错误码（说明接口识别了book_id参数）
+                if test_resp.status_code == 200:
+                    try:
+                        data = test_resp.json()
+                        # 如果返回了code字段，说明接口支持该参数格式
+                        if 'code' in data:
+                            supports_full_download = True
+                    except Exception:
+                        pass
+            except Exception:
+                # 测试失败默认不支持，不影响节点可用性判断
+                supports_full_download = False
+
+        result = {
             'available': available,
             'latency_ms': latency_ms,
             'status_code': resp.status_code,
-            'error': None
+            'error': None,
+            'supports_full_download': supports_full_download
         }
+
+        # 添加IP和位置信息
+        if resolved_ip:
+            result['resolved_ip'] = resolved_ip
+        if location:
+            result['location'] = location
+        if dynamic_name:
+            result['dynamic_name'] = dynamic_name
+
+        return result
+
     except Exception as e:
         latency_ms = int((time.perf_counter() - start) * 1000)
-        return {
+        result = {
             'available': False,
             'latency_ms': latency_ms,
             'status_code': None,
-            'error': str(e)
+            'error': str(e),
+            'supports_full_download': False
         }
+
+        # 即使失败也尝试添加IP信息
+        if resolved_ip:
+            result['resolved_ip'] = resolved_ip
+        if location:
+            result['location'] = location
+        if dynamic_name:
+            result['dynamic_name'] = dynamic_name
+
+        return result
 
 
 def _apply_api_base_url(base_url: str) -> None:
@@ -1476,9 +1594,12 @@ def _ensure_api_base_url(force_mode=None) -> str:
                 probe = {'available': False, 'latency_ms': None, 'status_code': None, 'error': str(e)}
             results.append({**src, **probe})
 
-    # 按延迟排序，选择最快的可用节点
+    # 按优先级排序：1. 支持全量下载优先 2. 延迟最低
     available = [r for r in results if r.get('available')]
-    available.sort(key=lambda x: (x.get('latency_ms') or 999999))
+    available.sort(key=lambda x: (
+        not x.get('supports_full_download', False),  # False排前面（支持全量下载的优先）
+        x.get('latency_ms') or 999999  # 然后按延迟排序
+    ))
 
     if available:
         best = available[0]['base_url']
@@ -1754,8 +1875,12 @@ def api_api_sources():
     # 更新节点探测缓存（供下载时使用，跳过不可用节点）
     update_probed_cache(probed)
 
-    # 按延迟排序
-    probed.sort(key=lambda x: (not x.get('available'), x.get('latency_ms') or 999999))
+    # 按优先级排序：1. 可用性 2. 支持全量下载 3. 延迟最低
+    probed.sort(key=lambda x: (
+        not x.get('available'),  # 不可用的排后面
+        not x.get('supports_full_download', False),  # 不支持全量下载的排后面
+        x.get('latency_ms') or 999999  # 延迟低的排前面
+    ))
 
     # 自动模式下选择最快的可用节点
     current = _normalize_base_url(str(CONFIG.get('api_base_url', '') or ''))
