@@ -1,0 +1,187 @@
+name: Download Novels
+
+on:
+  workflow_dispatch:
+    inputs:
+      book_ids:
+        description: '书籍ID列表（用逗号或空格分隔，例如：7372503659137005093, 7372528691033300280）'
+        required: true
+        type: string
+      file_format:
+        description: '输出格式'
+        required: true
+        type: choice
+        options:
+          - txt
+          - epub
+        default: 'txt'
+      save_path:
+        description: '保存路径（相对于项目根目录）'
+        required: false
+        type: string
+        default: 'downloads'
+      concurrent:
+        description: '并发下载数量（1-5）'
+        required: false
+        type: number
+        default: 3
+
+permissions:
+  contents: read
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    name: 下载小说
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: config/requirements.txt
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libheif1 libheif-dev
+
+      - name: 安装 Python 依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install --prefer-binary -r config/requirements.txt
+
+      - name: 解析书籍ID列表
+        id: parse_ids
+        run: |
+          # 将输入的书籍ID转换为数组
+          IDS="${{ github.event.inputs.book_ids }}"
+          # 替换逗号和多个空格为单个空格
+          IDS=$(echo "$IDS" | tr ',' ' ' | tr -s ' ')
+          echo "Parsed book IDs: $IDS"
+          echo "book_ids=$IDS" >> $GITHUB_OUTPUT
+
+          # 计算书籍数量
+          COUNT=$(echo "$IDS" | wc -w)
+          echo "Total books: $COUNT"
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: 创建下载目录
+        run: |
+          mkdir -p "${{ github.event.inputs.save_path }}"
+          echo "下载目录: ${{ github.event.inputs.save_path }}"
+
+      - name: 执行批量下载
+        id: download
+        run: |
+          echo "开始下载 ${{ steps.parse_ids.outputs.count }} 本小说..."
+          echo "格式: ${{ github.event.inputs.file_format }}"
+          echo "并发数: ${{ github.event.inputs.concurrent }}"
+          echo "保存路径: ${{ github.event.inputs.save_path }}"
+          echo ""
+
+          # 使用 CLI 批量下载
+          python core/cli.py batch-download \
+            ${{ steps.parse_ids.outputs.book_ids }} \
+            --path "${{ github.event.inputs.save_path }}" \
+            --format "${{ github.event.inputs.file_format }}" \
+            --concurrent ${{ github.event.inputs.concurrent }}
+
+          EXIT_CODE=$?
+
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✅ 下载完成"
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ 下载过程中出现错误（退出码: $EXIT_CODE）"
+            echo "status=partial" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 统计下载结果
+        id: stats
+        run: |
+          SAVE_PATH="${{ github.event.inputs.save_path }}"
+
+          if [ -d "$SAVE_PATH" ]; then
+            FILE_COUNT=$(find "$SAVE_PATH" -type f -name "*.${{ github.event.inputs.file_format }}" | wc -l)
+            TOTAL_SIZE=$(du -sh "$SAVE_PATH" | cut -f1)
+
+            echo "📊 下载统计:"
+            echo "- 文件数量: $FILE_COUNT"
+            echo "- 总大小: $TOTAL_SIZE"
+            echo ""
+            echo "📁 文件列表:"
+            find "$SAVE_PATH" -type f -name "*.${{ github.event.inputs.file_format }}" -exec ls -lh {} \; | awk '{print "  - " $9 " (" $5 ")"}'
+
+            echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
+            echo "total_size=$TOTAL_SIZE" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ 下载目录不存在"
+            echo "file_count=0" >> $GITHUB_OUTPUT
+            echo "total_size=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 上传下载文件为 Artifact
+        if: steps.stats.outputs.file_count > 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: novels-${{ github.event.inputs.file_format }}-${{ github.run_number }}
+          path: ${{ github.event.inputs.save_path }}/**/*.${{ github.event.inputs.file_format }}
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 生成下载报告
+        if: always()
+        run: |
+          echo "## 📚 小说下载报告" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 下载配置" >> $GITHUB_STEP_SUMMARY
+          echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📖 书籍数量 | ${{ steps.parse_ids.outputs.count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📄 输出格式 | \`${{ github.event.inputs.file_format }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔢 并发数 | ${{ github.event.inputs.concurrent }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📁 保存路径 | \`${{ github.event.inputs.save_path }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 📊 下载结果" >> $GITHUB_STEP_SUMMARY
+          echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ 成功文件 | ${{ steps.stats.outputs.file_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 💾 总大小 | ${{ steps.stats.outputs.total_size }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📦 Artifact | \`novels-${{ github.event.inputs.file_format }}-${{ github.run_number }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.stats.outputs.file_count }}" -gt "0" ]; then
+            echo "### 📥 如何下载" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "1. 进入本次运行的 **Summary** 页面" >> $GITHUB_STEP_SUMMARY
+            echo "2. 在页面底部找到 **Artifacts** 区域" >> $GITHUB_STEP_SUMMARY
+            echo "3. 点击 \`novels-${{ github.event.inputs.file_format }}-${{ github.run_number }}\` 下载压缩包" >> $GITHUB_STEP_SUMMARY
+            echo "4. 解压后即可获得所有下载的小说文件" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> 💡 **提示**: Artifact 将保留 30 天" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ⚠️ 下载失败" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "没有成功下载任何文件，请检查:" >> $GITHUB_STEP_SUMMARY
+            echo "- 书籍ID是否正确" >> $GITHUB_STEP_SUMMARY
+            echo "- API服务是否可用" >> $GITHUB_STEP_SUMMARY
+            echo "- 查看上方日志了解详细错误信息" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 下载完成通知
+        if: always()
+        run: |
+          if [ "${{ steps.stats.outputs.file_count }}" -gt "0" ]; then
+            echo "✅ 下载任务完成！成功下载 ${{ steps.stats.outputs.file_count }} 个文件"
+          else
+            echo "❌ 下载任务失败，请查看日志"
+            exit 1
+          fi
