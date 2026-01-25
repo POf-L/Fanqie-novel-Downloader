@@ -145,15 +145,33 @@ class APIManager:
             self._tls.session = sess
         return sess
 
+    def _get_async_state(self) -> dict:
+        """获取线程局部的异步会话状态（避免跨线程/跨事件循环共享 aiohttp 会话）"""
+        state = getattr(self._tls, 'async_state', None)
+        if state is None:
+            state = {
+                'session': None,
+                'initialized': False,
+                'init_lock': asyncio.Lock(),
+                'semaphore': None,
+                'rate_limiter': None,
+            }
+            self._tls.async_state = state
+        return state
+
     async def _get_async_session(self) -> aiohttp.ClientSession:
         """获取异步HTTP会话 - 优化版：减少重复初始化"""
-        if self._session_initialized and self._async_session and not self._async_session.closed:
-            return self._async_session
+        state = self._get_async_state()
+        session = state.get('session')
+        if state.get('initialized') and session and not session.closed:
+            return session
 
-        async with self._init_lock:
-            # 双重检查锁定模式
-            if self._session_initialized and self._async_session and not self._async_session.closed:
-                return self._async_session
+        init_lock = state.get('init_lock')
+        async with init_lock:
+            # 双重检查锁定模式（线程局部）
+            session = state.get('session')
+            if state.get('initialized') and session and not session.closed:
+                return session
 
             # 优化连接参数以减少初始化时间
             timeout = aiohttp.ClientTimeout(
@@ -170,26 +188,50 @@ class APIManager:
                 keepalive_timeout=60,  # 增加keepalive时间
                 use_dns_cache=True  # 启用DNS缓存
             )
-            self._async_session = aiohttp.ClientSession(
+            session = aiohttp.ClientSession(
                 headers=get_headers(),
                 timeout=timeout,
                 connector=connector,
                 trust_env=True
             )
-            self.semaphore = asyncio.Semaphore(CONFIG.get("max_workers", 30))
+            semaphore = asyncio.Semaphore(CONFIG.get("max_workers", 30))
             # 优化令牌桶参数：提高突发处理能力
             rate = CONFIG.get("api_rate_limit", 50)
             capacity = max(CONFIG.get("max_workers", 30), rate)  # 容量至少等于速率
-            self.rate_limiter = TokenBucket(rate=rate, capacity=capacity)
+            rate_limiter = TokenBucket(rate=rate, capacity=capacity)
+
+            state['session'] = session
+            state['semaphore'] = semaphore
+            state['rate_limiter'] = rate_limiter
+            state['initialized'] = True
+
+            # 兼容：保留旧字段，但不再作为共享状态使用
+            self._async_session = session
+            self.semaphore = semaphore
+            self.rate_limiter = rate_limiter
             self._session_initialized = True
 
-        return self._async_session
+        return session
 
     async def close_async(self):
         """关闭异步会话"""
-        if self._async_session:
+        state = getattr(self._tls, 'async_state', None)
+        if state:
+            session = state.get('session')
+            if session and not session.closed:
+                await session.close()
+            state['session'] = None
+            state['semaphore'] = None
+            state['rate_limiter'] = None
+            state['initialized'] = False
+
+        # 兼容：同步旧字段（仅反映当前线程状态）
+        if self._async_session and not self._async_session.closed:
             await self._async_session.close()
-            self._session_initialized = False
+        self._async_session = None
+        self.semaphore = None
+        self.rate_limiter = None
+        self._session_initialized = False
 
     async def pre_initialize(self):
         """预初始化异步会话，减少首次调用延迟"""
@@ -203,12 +245,15 @@ class APIManager:
         """异步获取简化目录（更快，标题与整本下载内容一致）"""
         try:
             session = await self._get_async_session()
+            state = self._get_async_state()
+            semaphore = state.get('semaphore')
+            rate_limiter = state.get('rate_limiter')
             url = f"{self.base_url}/api/directory"
             params = {"fq_id": book_id}
 
-            async with self.semaphore:
-                if self.rate_limiter:
-                    await self.rate_limiter.acquire()
+            async with semaphore:
+                if rate_limiter:
+                    await rate_limiter.acquire()
 
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
@@ -225,12 +270,15 @@ class APIManager:
         """异步获取章节列表"""
         try:
             session = await self._get_async_session()
+            state = self._get_async_state()
+            semaphore = state.get('semaphore')
+            rate_limiter = state.get('rate_limiter')
             url = f"{self.base_url}{self.endpoints['book']}"
             params = {"book_id": book_id}
 
-            async with self.semaphore:
-                if self.rate_limiter:
-                    await self.rate_limiter.acquire()
+            async with semaphore:
+                if rate_limiter:
+                    await rate_limiter.acquire()
 
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
@@ -370,11 +418,14 @@ class APIManager:
         """
         max_retries = CONFIG.get("max_retries", 3)
         session = await self._get_async_session()
+        state = self._get_async_state()
+        semaphore = state.get('semaphore')
+        rate_limiter = state.get('rate_limiter')
 
         # 使用令牌桶进行速率限制，允许真正的并发
-        async with self.semaphore:
-            if self.rate_limiter:
-                await self.rate_limiter.acquire()
+        async with semaphore:
+            if rate_limiter:
+                await rate_limiter.acquire()
 
             # 优先尝试简化的 /api/chapter 接口
             chapter_endpoint = self.endpoints.get('chapter', '/api/chapter')
@@ -1063,8 +1114,6 @@ class APIManagerExt(APIManager):
         
         async def download_single(chapter):
             async with semaphore:
-                if self.rate_limiter:
-                    await self.rate_limiter.acquire()
                 content = await self.get_chapter_content_async(chapter["id"])
                 if content and content.get('content'):
                     return chapter['index'], {
@@ -1109,7 +1158,7 @@ def get_api_manager():
     """获取API管理器实例"""
     global api_manager
     if api_manager is None:
-        api_manager = APIManager()
+        api_manager = APIManagerExt()
     return api_manager
 
 
@@ -1741,19 +1790,18 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
 
                 # 使用优化的异步下载替代ThreadPoolExecutor
                 if chapters_to_download:
-                    api_ext = APIManagerExt()
-                    api_ext.base_url = api.base_url
-                    api_ext.endpoints = api.endpoints
-                    api_ext._async_session = api._async_session
-                    api_ext.semaphore = api.semaphore
-                    api_ext.rate_limiter = api.rate_limiter
-                    api_ext._session_initialized = api._session_initialized
-
                     def progress_callback(progress, message):
                         if gui_callback:
                             gui_callback(25 + int(progress * 0.6), message)
 
-                    async_results = await api_ext.download_chapters_async(chapters_to_download, progress_callback)
+                    # 直接复用同一个 API 实例的异步能力，避免复制/共享内部会话状态
+                    if hasattr(api, 'download_chapters_async'):
+                        async_results = await api.download_chapters_async(chapters_to_download, progress_callback)
+                    else:
+                        api_ext = APIManagerExt()
+                        api_ext.base_url = api.base_url
+                        api_ext.endpoints = api.endpoints
+                        async_results = await api_ext.download_chapters_async(chapters_to_download, progress_callback)
 
                     # 合并结果
                     for idx, data in async_results.items():
@@ -2208,8 +2256,16 @@ class BatchDownloader:
         self.current_index = 0
         self.total_count = 0
     
-    def run_batch(self, book_ids: list, save_path: str, file_format: str = 'txt', 
-                  progress_callback=None, delay_between_books: float = 2.0):
+    def run_batch(
+        self,
+        book_ids: list,
+        save_path: str,
+        file_format: str = 'txt',
+        progress_callback=None,
+        delay_between_books: float = 2.0,
+        max_concurrent: int = 1,
+        log_func=None,
+    ):
         """
         批量下载多本书籍
         
@@ -2219,10 +2275,14 @@ class BatchDownloader:
             file_format: 文件格式 ('txt' 或 'epub')
             progress_callback: 进度回调函数 (current, total, book_name, status, message)
             delay_between_books: 每本书之间的延迟（秒）
+            max_concurrent: 并发下载数量（>=1）。为保证稳定性会强制限制最大值。
+            log_func: 日志输出函数，None 表示不输出（默认：无 progress_callback 时输出到控制台）
         
         Returns:
             dict: 批量下载结果
         """
+        from datetime import datetime
+
         self.reset()
         self.total_count = len(book_ids)
         
@@ -2233,51 +2293,83 @@ class BatchDownloader:
         if api is None:
             return {'success': False, 'message': t('dl_batch_api_fail'), 'results': []}
         
-        def log(msg):
-            print(msg)
-        
-        log(t("dl_batch_start", self.total_count))
-        log("=" * 50)
-        
-        for idx, book_id in enumerate(book_ids):
-            if self.is_cancelled:
-                log(t("dl_batch_cancelled"))
-                break
-            
-            self.current_index = idx + 1
-            book_id = str(book_id).strip()
-            
-            # 获取书籍信息
+        # 默认日志策略：只有在非 GUI/回调模式下才输出到控制台，避免污染 Web 端日志
+        if log_func is None and progress_callback is None:
+            log_func = print
+
+        def log(msg: str) -> None:
+            if not log_func:
+                return
+            try:
+                with print_lock:
+                    log_func(msg)
+            except Exception:
+                try:
+                    log_func(msg)
+                except Exception:
+                    pass
+
+        def safe_progress(current, total, book_name, status, message) -> None:
+            if not progress_callback:
+                return
+            try:
+                progress_callback(current, total, book_name, status, message)
+            except Exception:
+                pass
+
+        # 并发限制（默认与 CLI 一致，避免创建过多线程/请求过快）
+        try:
+            max_concurrent = int(max_concurrent or 1)
+        except Exception:
+            max_concurrent = 1
+        max_concurrent = max(1, max_concurrent)
+        max_concurrent = min(max_concurrent, 5)
+        max_concurrent = min(max_concurrent, len(book_ids))
+
+        def get_book_name(book_id: str) -> str:
             book_name = f"书籍_{book_id}"
             try:
                 book_detail = api.get_book_detail(book_id)
-                if book_detail:
+                if isinstance(book_detail, dict) and not book_detail.get('_error'):
                     book_name = book_detail.get('book_name', book_name)
-            except:
+            except Exception:
                 pass
-            
-            log("\n" + t("dl_batch_downloading", self.current_index, self.total_count, book_name))
-            
-            if progress_callback:
-                progress_callback(self.current_index, self.total_count, book_name, 'downloading', t("dl_batch_progress", self.current_index))
-            
-            # 执行下载
+            return book_name
+
+        def download_single_book(book_id: str, index: int) -> dict:
+            """下载单本书籍（支持并发执行）"""
+            if self.is_cancelled:
+                return {
+                    'book_id': str(book_id).strip(),
+                    'book_name': f"书籍_{str(book_id).strip()}",
+                    'success': False,
+                    'message': t("dl_batch_cancelled"),
+                    'index': index,
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+
+            book_id = str(book_id).strip()
+            book_name = get_book_name(book_id)
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            log("\n" + t("dl_batch_downloading", index, self.total_count, book_name))
+            safe_progress(index, self.total_count, book_name, 'downloading', t("dl_batch_progress", index))
+
             result = {
                 'book_id': book_id,
                 'book_name': book_name,
                 'success': False,
-                'message': ''
+                'message': '',
+                'index': index,
+                'timestamp': timestamp
             }
-            
+
             try:
-                # 创建单本书的进度回调
                 def single_book_callback(progress, message):
-                    if progress_callback:
-                        overall_progress = ((self.current_index - 1) / self.total_count * 100) + (progress / self.total_count)
-                        progress_callback(self.current_index, self.total_count, book_name, 'downloading', message)
-                
+                    safe_progress(index, self.total_count, book_name, 'downloading', message)
+
                 success = Run(book_id, save_path, file_format, gui_callback=single_book_callback)
-                
+
                 if success:
                     result['success'] = True
                     result['message'] = '下载成功'
@@ -2285,20 +2377,65 @@ class BatchDownloader:
                 else:
                     result['message'] = '下载失败'
                     log(t("dl_batch_fail", book_name))
-                    
+
             except Exception as e:
                 result['message'] = str(e)
                 log(t("dl_batch_exception", book_name, str(e)))
-            
-            self.results.append(result)
-            
-            if progress_callback:
-                status = 'success' if result['success'] else 'failed'
-                progress_callback(self.current_index, self.total_count, book_name, status, result['message'])
-            
-            # 延迟，避免请求过快
-            if idx < len(book_ids) - 1 and not self.is_cancelled:
-                time.sleep(delay_between_books)
+
+            status = 'success' if result['success'] else 'failed'
+            safe_progress(index, self.total_count, book_name, status, result['message'])
+            return result
+
+        log(t("dl_batch_start", self.total_count))
+        log("=" * 50)
+
+        # 单线程：保持原有顺序与延迟逻辑（Web 默认行为）
+        if max_concurrent <= 1:
+            for idx, book_id in enumerate(book_ids):
+                if self.is_cancelled:
+                    log(t("dl_batch_cancelled"))
+                    break
+
+                self.current_index = idx + 1
+                result = download_single_book(book_id, self.current_index)
+                self.results.append(result)
+
+                # 延迟，避免请求过快
+                if idx < len(book_ids) - 1 and not self.is_cancelled:
+                    time.sleep(delay_between_books)
+        else:
+            # 并发：用于 CLI / Actions 等环境
+            results_by_index = {}
+            results_lock = threading.Lock()
+
+            with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+                future_to_index = {
+                    executor.submit(download_single_book, book_id, idx + 1): (idx + 1, book_id)
+                    for idx, book_id in enumerate(book_ids)
+                    if not self.is_cancelled
+                }
+
+                for future in as_completed(future_to_index):
+                    index, raw_book_id = future_to_index[future]
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        result = {
+                            'book_id': str(raw_book_id).strip(),
+                            'book_name': f"书籍_{str(raw_book_id).strip()}",
+                            'success': False,
+                            'message': str(e),
+                            'index': index,
+                            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        }
+
+                    with results_lock:
+                        results_by_index[index] = result
+
+            # 按输入顺序输出结果
+            for i in range(1, len(book_ids) + 1):
+                if i in results_by_index:
+                    self.results.append(results_by_index[i])
         
         # 统计结果
         success_count = sum(1 for r in self.results if r['success'])

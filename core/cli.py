@@ -216,7 +216,7 @@ def cmd_info(args):
 
 def cmd_download(args):
     """下载书籍命令"""
-    from core.novel_downloader import Run
+    from core.novel_downloader import downloader_instance
     from utils.platform_utils import detect_platform
     import os
     
@@ -267,11 +267,11 @@ def cmd_download(args):
             print(f"       {message}")
     
     # 执行下载
-    success = Run(
+    success = downloader_instance.run_download(
         book_id=book_id,
         save_path=save_path,
         file_format=file_format,
-        gui_callback=progress_callback
+        gui_callback=progress_callback,
     )
     
     if success:
@@ -284,7 +284,7 @@ def cmd_download(args):
 
 def cmd_batch_download(args):
     """批量下载书籍命令"""
-    from core.novel_downloader import get_api_manager, Run
+    from core.novel_downloader import batch_downloader
     import os
     import time
 
@@ -355,83 +355,45 @@ def cmd_batch_download(args):
     print(f"并发数量: {max_concurrent}")
     print("-" * 50)
 
-    # 批量下载状态跟踪
-    download_results = {}
-    download_lock = threading.Lock()
-
-    def download_single_book(book_id, index):
-        """下载单本书籍"""
-        try:
-            print(f"[{index+1}/{len(book_ids)}] 开始下载书籍: {book_id}")
-
-            # 进度回调
-            def progress_callback(progress, message):
-                if progress >= 0:
-                    print(f"[{index+1}/{len(book_ids)}] [{progress:3d}%] {message}")
-                else:
-                    print(f"[{index+1}/{len(book_ids)}]        {message}")
-
-            # 执行下载
-            success = Run(
-                book_id=book_id,
-                save_path=save_path,
-                file_format=file_format,
-                gui_callback=progress_callback
-            )
-
-            with download_lock:
-                download_results[book_id] = {
-                    'success': success,
-                    'index': index + 1,
-                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }
-
-            if success:
-                print(f"[{index+1}/{len(book_ids)}] ✓ 下载完成: {book_id}")
-            else:
-                print(f"[{index+1}/{len(book_ids)}] ✗ 下载失败: {book_id}")
-
-            return success
-
-        except Exception as e:
-            print(f"[{index+1}/{len(book_ids)}] ✗ 下载异常: {book_id} - {e}")
-            with download_lock:
-                download_results[book_id] = {
-                    'success': False,
-                    'error': str(e),
-                    'index': index + 1,
-                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }
-            return False
-
-    # 使用线程池执行并发下载
+    # 使用统一的批量下载核心（core.novel_downloader.BatchDownloader）
     start_time = time.time()
-    successful_downloads = 0
-    failed_downloads = 0
 
-    with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
-        # 提交所有下载任务
-        future_to_book = {
-            executor.submit(download_single_book, book_id, i): (book_id, i)
-            for i, book_id in enumerate(book_ids)
-        }
+    def batch_progress_callback(current, total, book_name, status, message):
+        """批量下载进度回调 (current=书籍序号，从1开始)"""
+        try:
+            book_id = book_ids[current - 1] if 1 <= current <= len(book_ids) else ""
+        except Exception:
+            book_id = ""
 
-        # 等待所有任务完成
-        for future in as_completed(future_to_book):
-            book_id, index = future_to_book[future]
-            try:
-                success = future.result()
-                if success:
-                    successful_downloads += 1
-                else:
-                    failed_downloads += 1
-            except Exception as e:
-                print(f"任务执行异常: {book_id} - {e}")
-                failed_downloads += 1
+        prefix = f"[{current}/{total}]"
+
+        if status == 'success':
+            print(f"{prefix} ✓ 下载完成: {book_id} - {book_name}")
+        elif status == 'failed':
+            print(f"{prefix} ✗ 下载失败: {book_id} - {book_name} - {message}")
+        else:
+            # downloading / 其他状态
+            if book_id:
+                print(f"{prefix} {book_id} - {message}")
+            else:
+                print(f"{prefix} {message}")
+
+    batch_result = batch_downloader.run_batch(
+        book_ids=book_ids,
+        save_path=save_path,
+        file_format=file_format,
+        progress_callback=batch_progress_callback,
+        delay_between_books=0.0,
+        max_concurrent=max_concurrent,
+    )
 
     # 显示批量下载结果
     end_time = time.time()
     duration = end_time - start_time
+
+    successful_downloads = int(batch_result.get('success_count', 0) or 0)
+    failed_downloads = int(batch_result.get('failed_count', 0) or 0)
+    download_results_list = batch_result.get('results', []) or []
 
     print("\n" + "=" * 60)
     print("批量下载完成!")
@@ -441,19 +403,23 @@ def cmd_batch_download(args):
     print(f"用时: {duration:.1f} 秒")
 
     # 显示详细结果
-    if download_results:
+    if download_results_list:
         print("\n详细结果:")
         headers = ['序号', '书籍ID', '状态', '时间']
         rows = []
-        for book_id, result in download_results.items():
-            status = "✓ 成功" if result['success'] else "✗ 失败"
-            if 'error' in result:
-                status += f" ({result['error'][:30]}...)" if len(result.get('error', '')) > 30 else f" ({result.get('error', '')})"
+        for r in download_results_list:
+            book_id = r.get('book_id', '')
+            ok = bool(r.get('success'))
+            status = "✓ 成功" if ok else "✗ 失败"
+            msg = str(r.get('message', '') or '')
+            if msg and not ok:
+                status += f" ({msg[:30]}...)" if len(msg) > 30 else f" ({msg})"
+
             rows.append([
-                result['index'],
+                int(r.get('index', 0) or 0),
                 book_id,
                 status,
-                result['timestamp']
+                r.get('timestamp', '')
             ])
 
         # 按序号排序
