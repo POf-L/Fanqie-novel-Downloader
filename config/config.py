@@ -33,39 +33,41 @@ from datetime import datetime
 from typing import Dict, Optional
 from fake_useragent import UserAgent
 
-_LOCAL_CONFIG_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
-
 # 本地配置文件路径 - 支持打包环境
 def _get_config_path():
-    """获取配置文件路径，支持打包和开发环境"""
+    """获取配置文件路径"""
     import sys
+    import os
 
+    # 获取程序运行目录
     if getattr(sys, 'frozen', False):
         # 打包环境
         if hasattr(sys, '_MEIPASS'):
-            # PyInstaller
-            base_path = sys._MEIPASS
+            base_dir = os.path.dirname(sys.executable)
         else:
-            # 其他打包工具
-            base_path = os.path.dirname(sys.executable)
-
-        # 尝试多个可能的位置
-        possible_paths = [
-            os.path.join(base_path, 'config', 'fanqie.json'),
-            os.path.join(base_path, 'fanqie.json'),
-        ]
-
-        for path in possible_paths:
-            if os.path.exists(path):
-                return path
-
-        # 如果都找不到，返回第一个作为默认
-        return possible_paths[0]
+            base_dir = os.path.dirname(os.path.abspath(__file__))
     else:
-        # 开发环境
-        return os.path.join(os.path.dirname(__file__), 'fanqie.json')
+        # 开发环境 - 使用当前文件所在目录向上两级
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        # config 目录在项目根目录下
+        base_dir = os.path.dirname(base_dir)
+
+    # 创建 config 目录
+    config_dir = os.path.join(base_dir, 'config')
+    os.makedirs(config_dir, exist_ok=True)
+
+    # 优先使用 fanqie.json（原始配置文件）
+    fanqie_json = os.path.join(config_dir, 'fanqie.json')
+    if os.path.exists(fanqie_json):
+        return fanqie_json
+
+    # 回退到新格式
+    return os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
 
 LOCAL_CONFIG_JSON = _get_config_path()
+_LOCAL_CONFIG_FILE = os.path.join(os.path.dirname(LOCAL_CONFIG_JSON), 'fanqie_novel_downloader_config.json')
+
+print(f"[DEBUG] 配置路径: {LOCAL_CONFIG_JSON}")
 
 
 class ConfigLoadError(Exception):
@@ -143,6 +145,7 @@ def load_config() -> Dict:
         "api_base_url": "",
         "api_sources": api_sources.copy() if isinstance(api_sources, list) else [],
         "request_timeout": config_params.get("request_timeout", 30),
+        "use_system_proxy": bool(config_params.get("use_system_proxy", False)),
         "max_retries": config_params.get("max_retries", 3),
         "connection_pool_size": config_params.get("connection_pool_size", 100),
         "max_workers": config_params.get("max_workers", 10),
@@ -161,9 +164,16 @@ def load_config() -> Dict:
     # 读取本地偏好（手动/自动选择均可复用）
     local_pref = _load_local_pref()
     mode = str(local_pref.get("api_base_url_mode", "auto") or "auto").lower()
+    config["api_base_url_mode"] = mode
     pref_url = _normalize_base_url(str(local_pref.get("api_base_url", "") or ""))
     if mode in ("manual", "auto") and pref_url:
         config["api_base_url"] = pref_url
+
+    if "use_system_proxy" in local_pref:
+        try:
+            config["use_system_proxy"] = bool(local_pref.get("use_system_proxy"))
+        except Exception:
+            pass
 
     print(f"配置加载成功，API节点数: {len(config['api_sources'])}")
     return config

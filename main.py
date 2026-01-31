@@ -90,7 +90,7 @@ import requests
 import secrets
 import socket
 from pathlib import Path
-from utils.locales import t
+
 from utils.platform_utils import (
     detect_platform,
     get_window_config,
@@ -111,16 +111,21 @@ def find_free_port():
 def run_flask_app(port, access_token):
     """在后台启动 Flask 应用"""
     try:
+        print(f"[DEBUG] Flask 线程启动，端口: {port}")
         # 获取脚本所在目录
         script_dir = Path(__file__).parent
         os.chdir(script_dir)
-        
+        print(f"[DEBUG] 工作目录: {script_dir}")
+
         # 启动 Flask 应用
         from web.web_app import app, set_access_token
-        
+        print("[DEBUG] Flask app 导入成功")
+
         # 设置访问令牌
         set_access_token(access_token)
-        
+        print(f"[DEBUG] Access token 已设置")
+
+        print(f"[DEBUG] 开始启动 Flask 服务器 http://127.0.0.1:{port}")
         # 使用线程运行 Flask，不使用调试模式
         app.run(
             host='127.0.0.1',
@@ -130,7 +135,9 @@ def run_flask_app(port, access_token):
             threaded=True
         )
     except Exception as e:
-        print(t("main_flask_fail", e))
+        print(f"[ERROR] Flask 应用启动失败: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 def open_web_interface(port, access_token):
@@ -215,7 +222,7 @@ def open_web_interface(port, access_token):
                         )
                     except Exception:
                         pass
-                print(t("main_app_closed"))
+                print("应用已关闭")
             
             # 获取平台适配的窗口配置
             window_config = get_window_config()
@@ -245,28 +252,39 @@ def open_web_interface(port, access_token):
                 api._is_maximized = True
             
             try:
-                webview.start()
+                # Windows 下若 WebView2 不可用，PyWebView 可能回退到 MSHTML 内核，
+                # 该内核不支持 ES Modules，前端将无法执行并卡在“正在启动服务器...”界面。
+                # 因此这里强制优先使用 Edge Chromium；失败则回退到系统浏览器。
+                if sys.platform == 'win32':
+                    webview.start(gui='edgechromium')
+                else:
+                    webview.start()
             except AttributeError as e:
                 # 处理 'NoneType' object has no attribute 'BrowserProcessId' 等浏览器引擎初始化错误
                 error_msg = str(e)
                 if 'BrowserProcessId' in error_msg or 'NoneType' in error_msg:
-                    print(t("main_webview_init_fail", error_msg))
-                    print(t("main_switch_browser"))
+                    print(f"PyWebView 浏览器引擎初始化失败: {error_msg}")
+                    print("自动切换到系统浏览器...")
                     raise ImportError("WebView engine failed")
                 else:
                     raise
             except Exception as e:
                 # 处理其他 webview 相关错误
                 error_msg = str(e)
+                if sys.platform == 'win32':
+                    # Windows 强制使用 Edge Chromium：失败则直接回退到系统浏览器
+                    print(f"PyWebView 启动失败: {error_msg}")
+                    print("自动切换到系统浏览器...")
+                    raise ImportError("WebView failed to start")
                 if any(keyword in error_msg.lower() for keyword in ['browser', 'webview', 'edge', 'chromium']):
-                    print(t("main_webview_fail", error_msg))
-                    print(t("main_switch_browser"))
+                    print(f"PyWebView 启动失败: {error_msg}")
+                    print("自动切换到系统浏览器...")
                     raise ImportError("WebView failed to start")
                 else:
                     raise
             
         except ImportError:
-            print(t("main_webview_unavailable"))
+            print("PyWebView 未安装或不可用，使用系统浏览器打开...")
             import webbrowser
             time.sleep(2)  # 等待 Flask 启动
             webbrowser.open(url)
@@ -276,17 +294,17 @@ def open_web_interface(port, access_token):
                 while True:
                     time.sleep(1)
             except KeyboardInterrupt:
-                print("\n" + t("main_app_closed"))
+                print("\n应用已关闭")
                 sys.exit(0)
     
     except Exception as e:
-        print(t("main_interface_fail", e))
+        print(f"打开界面失败: {e}")
         sys.exit(1)
 
 def main():
     """主函数"""
     print("=" * 50)
-    print(t("main_title"))
+    print("番茄小说下载器 - Web 版")
     print("=" * 50)
     
     # 检测平台信息
@@ -300,12 +318,12 @@ def main():
     
     # 显示版本信息
     from config.config import __version__, __github_repo__
-    print(t("main_version", __version__))
+    print(f"当前版本: {__version__}")
     
     # 显示配置文件路径
-    import tempfile
-    config_file = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
-    print(t("main_config_path", config_file))
+    from web.web_app import get_config_dir
+    config_file = os.path.join(get_config_dir(), 'fanqie_novel_downloader_config.json')
+    print(f"配置文件: {config_file}")
     
     # 生成随机访问令牌
     access_token = secrets.token_urlsafe(32)
@@ -315,29 +333,14 @@ def main():
         base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
         webview2_path = os.path.join(base_path, 'WebView2')
         if os.path.exists(webview2_path):
-            print(t("main_webview2_config", webview2_path))
+            print(f"正在配置内置 WebView2: {webview2_path}")
             os.environ["WEBVIEW2_BROWSER_EXECUTABLE_FOLDER"] = webview2_path
     
     # 查找可用端口
     port = find_free_port()
     
-    # 检查更新(异步，不阻塞启动) - 优化版：移除延迟，增加超时控制
-    def check_update_async():
-        try:
-            from utils.updater import check_and_notify
-            # 移除 time.sleep(2) 延迟，立即开始检查
-            # 使用更短的超时时间，避免长时间阻塞
-            check_and_notify(__version__, __github_repo__, silent=False)
-        except Exception:
-            # 静默处理异常，不影响主程序启动
-            pass
-
-    # 使用守护线程，程序退出时自动结束
-    update_thread = threading.Thread(target=check_update_async, daemon=True)
-    update_thread.start()
-    
     # 检查依赖 - 优化版：并行检查，减少阻塞时间
-    print("\n" + t("main_check_deps"))
+    print("\n检查依赖...")
     required_packages = {
         'flask': 'Flask',
         'flask_cors': 'Flask-CORS',
@@ -377,32 +380,22 @@ def main():
                 missing_packages.append(name)
     
     if missing_packages:
-        print(f"\n{t('main_missing_deps', ', '.join(missing_packages))}")
-        print(t("main_install_deps"))
+        print(f"\n缺少依赖: {', '.join(missing_packages)}")
+        print("请运行: pip install flask flask-cors")
         sys.exit(1)
     
-    print("\n" + t("main_starting"))
-    
+    print("\n启动应用...")
+    print(f"[DEBUG] 使用端口: {port}")
+    print(f"[DEBUG] Access token 长度: {len(access_token)}")
+
     # 在后台线程中启动 Flask
     flask_thread = threading.Thread(target=run_flask_app, args=(port, access_token), daemon=True)
     flask_thread.start()
-    
-    # 等待 Flask 启动
-    print(t("main_wait_server"))
-    max_retries = 30
-    url = f'http://127.0.0.1:{port}?token={access_token}'
-    for i in range(max_retries):
-        try:
-            response = requests.get(url, timeout=1)
-            if response.status_code == 200:
-                print(t("main_server_started"))
-                break
-        except:
-            if i < max_retries - 1:
-                time.sleep(0.5)
-            else:
-                print(t("main_server_timeout"))
-                sys.exit(1)
+    print("[DEBUG] Flask 后台线程已启动")
+
+    # 不等待 Flask 启动，立即打开界面（前端会轮询检测服务器状态）
+    print("[DEBUG] 准备打开应用界面...")
+    print(f"[DEBUG] URL: http://127.0.0.1:{port}?token={access_token[:10]}...")
     
     # 检查 GUI 可用性并选择合适的界面模式
     if platform_info.is_termux:
@@ -421,7 +414,7 @@ def main():
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("\n" + t("main_app_closed"))
+            print("\n应用已关闭")
             sys.exit(0)
     elif not platform_info.is_gui_available:
         # GUI 不可用：使用浏览器模式
@@ -437,11 +430,11 @@ def main():
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("\n" + t("main_app_closed"))
+            print("\n应用已关闭")
             sys.exit(0)
     else:
         # 正常 GUI 模式
-        print("\n" + t("main_opening_interface"))
+        print("\n正在打开应用界面...")
         open_web_interface(port, access_token)
 
 if __name__ == '__main__':

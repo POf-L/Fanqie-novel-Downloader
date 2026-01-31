@@ -2,13 +2,13 @@
   "version": "1.1.1",
   "updated_at": "2026-01-10T10:00:00Z",
   "api_sources": [
-    {"base_url": "http://49.232.137.12"},
-    {"base_url": "https://bk.yydjtc.cn"},
-    {"base_url": "https://qkfqapi.vv9v.cn"},
-    {"base_url": "http://103.236.91.147:9999"},
-    {"base_url": "http://43.248.77.205:22222"},
-    {"base_url": "http://47.108.80.161:5005"},
-    {"base_url": "https://fq.shusan.cn"}
+    {"base_url": "http://49.232.137.12", "supports_full_download": true},
+    {"base_url": "https://bk.yydjtc.cn", "supports_full_download": true},
+    {"base_url": "https://qkfqapi.vv9v.cn", "supports_full_download": true},
+    {"base_url": "http://103.236.91.147:9999", "supports_full_download": false},
+    {"base_url": "http://43.248.77.205:22222", "supports_full_download": true},
+    {"base_url": "http://47.108.80.161:5005", "supports_full_download": true},
+    {"base_url": "https://fq.shusan.cn", "supports_full_download": true}
   ],
   "endpoints": {
     "search": "/api/search",

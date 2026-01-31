@@ -4,8 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>番茄小说下载器</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=20251214">
-    <link rel="stylesheet" href="/static/css/modal.css?v=20251214">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260129">
+    <link rel="stylesheet" href="/static/css/style_forms.css?v=20260129">
+    <link rel="stylesheet" href="/static/css/style_queue.css?v=20260129">
+    <link rel="stylesheet" href="/static/css/style_misc.css?v=20260129">
+    <link rel="stylesheet" href="/static/css/modal.css?v=20260129">
+    <link rel="stylesheet" href="/static/css/modal_extra.css?v=20260129">
     <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js" defer></script>
 </head>
 <body>
@@ -14,20 +18,9 @@
         <header class="dashboard-header">
             <div class="brand">
                 <img src="https://th.bing.com/th/id/ODF.ImujSAzXjUkVqHU809ZzQQ?w=32&h=32&qlt=90&pcl=fffffc&o=6&cb=ucfimg1&pid=1.2&ucfimg=1" class="app-logo-icon" alt="">
-                <h1 class="app-title" data-i18n="app_title">番茄小说下载器</h1>
+                <h1 class="app-title">番茄小说下载器</h1>
             </div>
             <div class="header-actions">
-                <div class="header-api-source">
-                    <div class="api-select-wrapper">
-                        <select id="apiSourceSelect" class="form-input form-input-sm" title="下载接口">
-                            <option value="">测速中...</option>
-                        </select>
-                        <iconify-icon class="api-select-loading" icon="line-md:loading-twotone-loop"></iconify-icon>
-                    </div>
-                </div>
-                <button class="btn btn-sm btn-secondary icon-btn" id="langToggle" title="切换语言">
-                    <iconify-icon id="langIcon" icon="circle-flags:uk"></iconify-icon>
-                </button>
                 <a href="https://github.com/POf-L/Fanqie-novel-Downloader" target="_blank" class="btn btn-sm btn-secondary icon-btn" title="GitHub">
                     <iconify-icon icon="line-md:github-loop"></iconify-icon>
                 </a>
@@ -40,7 +33,7 @@
             </div>
         </header>
 
-        <div class="dashboard-grid">
+        <div class="dashboard-grid dashboard-grid-full">
             <!-- 左侧主内容区 -->
             <main class="dashboard-main">
                 <div class="card content-card">
@@ -48,19 +41,23 @@
                     <div class="tab-nav">
                         <button class="tab-btn active" data-tab="search" title="搜索">
                             <iconify-icon icon="line-md:search"></iconify-icon>
-                            <span class="tab-label" data-i18n="tab_search">搜索</span>
+                            <span class="tab-label">搜索</span>
                         </button>
                         <button class="tab-btn" data-tab="download" title="下载">
                             <iconify-icon icon="line-md:download-loop"></iconify-icon>
-                            <span class="tab-label" data-i18n="tab_download">下载</span>
+                            <span class="tab-label">下载</span>
                         </button>
                         <button class="tab-btn" data-tab="queue" title="队列">
                             <iconify-icon icon="line-md:list-3"></iconify-icon>
-                            <span class="tab-label" data-i18n="tab_queue">队列</span>
+                            <span class="tab-label">队列</span>
+                        </button>
+                        <button class="tab-btn" data-tab="tasks" title="任务中心">
+                            <iconify-icon icon="line-md:downloading-loop"></iconify-icon>
+                            <span class="tab-label">任务中心</span>
                         </button>
                         <button class="tab-btn" data-tab="settings" title="设置">
                             <iconify-icon icon="line-md:cog-loop"></iconify-icon>
-                            <span class="tab-label" data-i18n="tab_settings">设置</span>
+                            <span class="tab-label">设置</span>
                         </button>
                     </div>
 
@@ -70,7 +67,7 @@
                         <div class="tab-pane active" id="tab-search">
                             <div class="search-bar-container">
                                 <div class="input-group">
-                                    <input type="text" id="searchKeyword" class="form-input" placeholder="搜索书名或作者..." data-i18n="search_placeholder">
+                                    <input type="text" id="searchKeyword" class="form-input" placeholder="搜索书名或作者...">
                                     <button class="btn btn-primary icon-btn" id="searchBtn" title="搜索">
                                         <iconify-icon icon="line-md:search"></iconify-icon>
                                     </button>
@@ -99,8 +96,8 @@
                             <div class="download-form-container">
                                 <div class="form-group">
                                     <div class="input-group">
-                                        <input type="text" id="bookId" class="form-input" placeholder="书籍ID或链接" data-i18n="placeholder_book_id">
-                                        <button class="btn btn-primary" id="downloadBtn" data-i18n="btn_add_to_queue">
+                                        <input type="text" id="bookId" class="form-input" placeholder="书籍ID或链接">
+                                        <button class="btn btn-primary" id="downloadBtn">
                                             <iconify-icon icon="line-md:plus"></iconify-icon>
                                         </button>
                                         <button class="btn btn-danger" id="cancelBtn" style="display: none;">
@@ -110,7 +107,7 @@
                                 </div>
                                 <button class="btn btn-text btn-sm" id="clearBtn">
                                     <iconify-icon icon="line-md:backup-restore"></iconify-icon>
-                                    <span data-i18n="btn_reset">重置</span>
+                                    <span>重置</span>
                                 </button>
                             </div>
                             
@@ -128,24 +125,24 @@
                                     </div>
 
                                     <div class="chapter-selection">
-                                        <h3 data-i18n="title_chapter_selection">章节选择</h3>
+                                        <h3>章节选择</h3>
 
                                         <div class="chapter-range">
                                             <label>
                                                 <input type="radio" name="inlineChapterMode" value="all" checked>
-                                                <span data-i18n="radio_all_chapters">全部章节</span>
+                                                <span>全部章节</span>
                                             </label>
                                             <label>
                                                 <input type="radio" name="inlineChapterMode" value="range">
-                                                <span data-i18n="radio_range_chapters">范围选择</span>
+                                                <span>范围选择</span>
                                             </label>
                                             <label>
                                                 <input type="radio" name="inlineChapterMode" value="quick">
-                                                <span data-i18n="radio_quick_range">快速范围</span>
+                                                <span>快速范围</span>
                                             </label>
                                             <label>
                                                 <input type="radio" name="inlineChapterMode" value="manual">
-                                                <span data-i18n="radio_manual_chapters">手动选择</span>
+                                                <span>手动选择</span>
                                             </label>
                                         </div>
 
@@ -156,35 +153,35 @@
 
                                         <div class="chapter-inputs" id="inlineChapterInputs" style="display:none;">
                                             <div class="input-row">
-                                                <label data-i18n="label_start_chapter">起始章节</label>
+                                                <label>起始章节</label>
                                                 <select id="inlineStartChapter" class="chapter-select" disabled></select>
                                             </div>
                                             <div class="input-row">
-                                                <label data-i18n="label_end_chapter">结束章节</label>
+                                                <label>结束章节</label>
                                                 <select id="inlineEndChapter" class="chapter-select" disabled></select>
                                             </div>
                                         </div>
 
                                         <div class="chapter-quick-range" id="inlineChapterQuickRange" style="display:none;">
                                             <div class="input-row" style="margin-bottom: 8px;">
-                                                <label data-i18n="label_quick_range">章节范围</label>
+                                                <label>章节范围</label>
                                                 <input type="text" id="inlineQuickRangeInput" class="form-input"
                                                        placeholder="例如: 1-100, 150, 200-300"
-                                                       data-i18n-placeholder="placeholder_quick_range"
+                                                      
                                                        style="width: 100%; font-family: monospace;">
                                             </div>
-                                            <div class="quick-range-hint" style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;" data-i18n="hint_quick_range">
+                                            <div class="quick-range-hint" style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">
                                                 支持格式: 单个数字(5)、范围(1-100)、多个范围(1-10, 50-100)
                                             </div>
                                             <div id="inlineQuickRangeResult" style="font-size: 12px; min-height: 20px;"></div>
-                                            <button class="btn btn-sm btn-secondary" type="button" id="inlineApplyQuickRangeBtn" style="margin-top: 8px;" data-i18n="btn_apply_range">应用范围</button>
+                                            <button class="btn btn-sm btn-secondary" type="button" id="inlineApplyQuickRangeBtn" style="margin-top: 8px;">应用范围</button>
                                         </div>
 
                                         <div class="chapter-manual-container" id="inlineChapterManualContainer" style="display:none;">
                                             <div class="chapter-actions">
-                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectAllBtn" data-i18n="btn_select_all">全选</button>
-                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectNoneBtn" data-i18n="btn_select_none">全不选</button>
-                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectInvertBtn" data-i18n="btn_invert_selection">反选</button>
+                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectAllBtn">全选</button>
+                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectNoneBtn">全不选</button>
+                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectInvertBtn">反选</button>
                                                 <span id="inlineSelectedCount" style="margin-left: auto; font-size: 13px; color: var(--text-secondary);">0</span>
                                             </div>
                                             <div class="chapter-list" id="inlineChapterList"></div>
@@ -192,8 +189,8 @@
                                     </div>
 
                                     <div class="inline-confirm-footer">
-                                        <button class="btn btn-secondary" type="button" id="inlineCancelBtn" data-i18n="btn_cancel">取消</button>
-                                        <button class="btn btn-primary" type="button" id="inlineConfirmAddQueueBtn" data-i18n="btn_confirm_add_to_queue">确认添加</button>
+                                        <button class="btn btn-secondary" type="button" id="inlineCancelBtn">取消</button>
+                                        <button class="btn btn-primary" type="button" id="inlineConfirmAddQueueBtn">确认添加</button>
                                     </div>
                                 </div>
                             </div>
@@ -241,22 +238,150 @@
                                 <div class="queue-controls" id="queueControls" style="display: none;">
                                     <button class="btn btn-sm btn-warning" id="skipCurrentBtn" title="跳过当前任务">
                                         <iconify-icon icon="line-md:arrow-right"></iconify-icon>
-                                        <span data-i18n="btn_skip_current">跳过当前</span>
+                                        <span>跳过当前</span>
                                     </button>
                                     <button class="btn btn-sm btn-secondary" id="forceSaveBtn" title="强制保存已下载内容">
                                         <iconify-icon icon="line-md:download-outline"></iconify-icon>
-                                        <span data-i18n="btn_force_save">强制保存</span>
+                                        <span>强制保存</span>
                                     </button>
                                     <button class="btn btn-sm btn-secondary" id="retryAllBtn" title="重试所有失败任务" style="display: none;">
                                         <iconify-icon icon="line-md:backup-restore"></iconify-icon>
-                                        <span data-i18n="btn_retry_all">重试全部</span>
+                                        <span>重试全部</span>
                                     </button>
                                 </div>
 
                                 <div class="queue-list" id="queueList">
                                     <div class="empty-state">
                                         <iconify-icon icon="line-md:coffee-half-empty-twotone-loop" class="empty-icon"></iconify-icon>
-                                        <div class="empty-state-text" data-i18n="queue_empty">空</div>
+                                        <div class="empty-state-text">空</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 任务中心面板 -->
+                        <div class="tab-pane" id="tab-tasks">
+                            <div class="tasks-container">
+                                <div class="tasks-grid">
+                                    <!-- 当前任务状态 -->
+                                    <div class="task-status-card">
+                                        <div class="task-status-header">
+                                            <h3>
+                                                <iconify-icon icon="line-md:downloading-loop"></iconify-icon>
+                                                <span>当前任务</span>
+                                            </h3>
+                                            <span class="status-badge" id="statusTextMain">
+                                                <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
+                                            </span>
+                                        </div>
+                                        <div class="task-status-body">
+                                            <div class="task-stats-row">
+                                                <div class="task-stat-item">
+                                                    <iconify-icon icon="line-md:book-2"></iconify-icon>
+                                                    <div class="task-stat-info">
+                                                        <span class="task-stat-label">书名</span>
+                                                        <span class="task-stat-value" id="bookNameMain">-</span>
+                                                    </div>
+                                                </div>
+                                                <div class="task-stat-item">
+                                                    <iconify-icon icon="line-md:speedometer"></iconify-icon>
+                                                    <div class="task-stat-info">
+                                                        <span class="task-stat-label">速度</span>
+                                                        <span class="task-stat-value" id="downloadSpeed">0 KB/s</span>
+                                                    </div>
+                                                </div>
+                                                <div class="task-stat-item">
+                                                    <iconify-icon icon="line-md:clock"></iconify-icon>
+                                                    <div class="task-stat-info">
+                                                        <span class="task-stat-label">耗时</span>
+                                                        <span class="task-stat-value" id="elapsedTime">0s</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="progress-section">
+                                                <div class="progress-info">
+                                                    <span class="progress-label">下载进度</span>
+                                                    <span class="progress-percent" id="progressPercentMain">0%</span>
+                                                </div>
+                                                <div class="progress-track">
+                                                    <div class="progress-bar" id="progressFillMain" style="width: 0%;"></div>
+                                                </div>
+                                            </div>
+                                            <div class="progress-details">
+                                                <span id="progressDetailInfo">0 / 0 章节</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 统计概览 -->
+                                    <div class="task-summary-card">
+                                        <div class="task-summary-header">
+                                            <h3>
+                                                <iconify-icon icon="line-md:chart-bar"></iconify-icon>
+                                                <span>统计</span>
+                                            </h3>
+                                        </div>
+                                        <div class="task-summary-grid">
+                                            <div class="summary-stat">
+                                                <div class="summary-stat-icon pending">
+                                                    <iconify-icon icon="line-md:list-3"></iconify-icon>
+                                                </div>
+                                                <div class="summary-stat-info">
+                                                    <span class="summary-stat-value" id="statPending">0</span>
+                                                    <span class="summary-stat-label">待下载</span>
+                                                </div>
+                                            </div>
+                                            <div class="summary-stat">
+                                                <div class="summary-stat-icon downloading">
+                                                    <iconify-icon icon="line-md:loading-twotone-loop" class="spin"></iconify-icon>
+                                                </div>
+                                                <div class="summary-stat-info">
+                                                    <span class="summary-stat-value" id="statDownloading">0</span>
+                                                    <span class="summary-stat-label">下载中</span>
+                                                </div>
+                                            </div>
+                                            <div class="summary-stat">
+                                                <div class="summary-stat-icon completed">
+                                                    <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
+                                                </div>
+                                                <div class="summary-stat-info">
+                                                    <span class="summary-stat-value" id="statCompleted">0</span>
+                                                    <span class="summary-stat-label">已完成</span>
+                                                </div>
+                                            </div>
+                                            <div class="summary-stat">
+                                                <div class="summary-stat-icon failed">
+                                                    <iconify-icon icon="icon-park-outline:error"></iconify-icon>
+                                                </div>
+                                                <div class="summary-stat-info">
+                                                    <span class="summary-stat-value" id="statFailed">0</span>
+                                                    <span class="summary-stat-label">失败</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 日志区域 -->
+                                    <div class="task-log-card">
+                                        <div class="task-log-header">
+                                            <h3>
+                                                <iconify-icon icon="line-md:text-box"></iconify-icon>
+                                                <span>日志</span>
+                                            </h3>
+                                            <div class="log-actions">
+                                                <button class="btn btn-sm btn-text icon-btn" id="copyLogBtn" title="复制日志">
+                                                    <iconify-icon icon="line-md:copy"></iconify-icon>
+                                                </button>
+                                                <button class="btn btn-sm btn-text icon-btn" id="clearLogBtn" title="清空日志">
+                                                    <iconify-icon icon="line-md:remove"></iconify-icon>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="log-container" id="logContainerMain">
+                                            <div id="logContentMain">
+                                                <div class="log-entry">等待任务开始...</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -265,88 +390,135 @@
                         <!-- 设置面板 -->
                         <div class="tab-pane scrollable" id="tab-settings">
                             <div class="settings-container">
-                                <!-- 下载设置 -->
+                                <!-- API节点设置 -->
+                                <div class="settings-section">
+                                    <h3 class="settings-section-title">
+                                        <iconify-icon icon="line-md:cloud-alt-download-twotone-loop"></iconify-icon>
+                                        <span>下载节点</span>
+                                    </h3>
+                                    <div class="setting-item setting-item-select">
+                                        <div class="setting-header">
+                                            <label class="setting-label">API节点</label>
+                                            <span class="setting-status" id="apiNodeStatus">
+                                                <iconify-icon icon="line-md:loading-twotone-loop" class="spin"></iconify-icon>
+                                            </span>
+                                        </div>
+                                        <div class="setting-control">
+                                            <select id="apiSourceSelect" class="form-input">
+                                                <option value="">加载中...</option>
+                                            </select>
+                                            <button class="btn btn-secondary icon-btn" id="refreshApiNodesBtn" title="刷新节点">
+                                                <iconify-icon icon="line-md:backup-restore"></iconify-icon>
+                                            </button>
+                                        </div>
+                                        <span class="setting-hint">选择距离你最近的节点以获得最佳下载速度</span>
+                                    </div>
+                                </div>
+
+                                <!-- 并发设置 -->
                                 <div class="settings-section">
                                     <h3 class="settings-section-title">
                                         <iconify-icon icon="line-md:download-loop"></iconify-icon>
-                                        <span data-i18n="settings_download_title">下载设置</span>
+                                        <span>并发设置</span>
                                     </h3>
                                     <div class="settings-grid">
-                                        <div class="setting-item">
-                                            <label class="setting-label" data-i18n="settings_max_workers">最大并发数</label>
-                                            <div class="setting-control">
-                                                <input type="number" id="setting_max_workers" class="form-input" min="1" max="100" value="30">
-                                                <span class="setting-hint" data-i18n="settings_max_workers_hint">同时下载的任务数量</span>
+                                        <div class="setting-item setting-item-slider">
+                                            <div class="setting-header">
+                                                <label class="setting-label">最大并发数</label>
+                                                <span class="setting-value" id="setting_max_workers_value">30</span>
                                             </div>
+                                            <div class="setting-control">
+                                                <input type="range" id="setting_max_workers_range" class="setting-slider" min="1" max="100" value="30">
+                                                <input type="number" id="setting_max_workers" class="form-input setting-number" min="1" max="100" value="30">
+                                            </div>
+                                            <span class="setting-hint">同时下载的最大线程数</span>
                                         </div>
-                                        <div class="setting-item">
-                                            <label class="setting-label" data-i18n="settings_request_rate_limit">请求间隔(秒)</label>
-                                            <div class="setting-control">
-                                                <input type="number" id="setting_request_rate_limit" class="form-input" min="0" max="10" step="0.01" value="0.02">
-                                                <span class="setting-hint" data-i18n="settings_request_rate_limit_hint">每次请求之间的延迟</span>
+                                        <div class="setting-item setting-item-slider">
+                                            <div class="setting-header">
+                                                <label class="setting-label">请求间隔(秒)</label>
+                                                <span class="setting-value" id="setting_request_rate_limit_value">0.02</span>
                                             </div>
+                                            <div class="setting-control">
+                                                <input type="range" id="setting_request_rate_limit_range" class="setting-slider" min="0" max="1000" value="20">
+                                                <input type="number" id="setting_request_rate_limit" class="form-input setting-number" min="0" max="10" step="0.01" value="0.02">
+                                            </div>
+                                            <span class="setting-hint">每个请求之间的延迟</span>
                                         </div>
-                                        <div class="setting-item">
-                                            <label class="setting-label" data-i18n="settings_connection_pool_size">连接池大小</label>
-                                            <div class="setting-control">
-                                                <input type="number" id="setting_connection_pool_size" class="form-input" min="10" max="500" value="200">
-                                                <span class="setting-hint" data-i18n="settings_connection_pool_size_hint">HTTP连接池的大小</span>
+                                        <div class="setting-item setting-item-slider">
+                                            <div class="setting-header">
+                                                <label class="setting-label">连接池大小</label>
+                                                <span class="setting-value" id="setting_connection_pool_size_value">200</span>
                                             </div>
+                                            <div class="setting-control">
+                                                <input type="range" id="setting_connection_pool_size_range" class="setting-slider" min="10" max="500" value="200">
+                                                <input type="number" id="setting_connection_pool_size" class="form-input setting-number" min="10" max="500" value="200">
+                                            </div>
+                                            <span class="setting-hint">HTTP连接池的大小</span>
                                         </div>
-                                        <div class="setting-item">
-                                            <label class="setting-label" data-i18n="settings_async_batch_size">异步批次大小</label>
-                                            <div class="setting-control">
-                                                <input type="number" id="setting_async_batch_size" class="form-input" min="1" max="200" value="50">
-                                                <span class="setting-hint" data-i18n="settings_async_batch_size_hint">每批次处理的任务数</span>
+                                        <div class="setting-item setting-item-slider">
+                                            <div class="setting-header">
+                                                <label class="setting-label">异步批次大小</label>
+                                                <span class="setting-value" id="setting_async_batch_size_value">50</span>
                                             </div>
+                                            <div class="setting-control">
+                                                <input type="range" id="setting_async_batch_size_range" class="setting-slider" min="1" max="200" value="50">
+                                                <input type="number" id="setting_async_batch_size" class="form-input setting-number" min="1" max="200" value="50">
+                                            </div>
+                                            <span class="setting-hint">每批次处理的请求数量</span>
                                         </div>
                                     </div>
                                 </div>
 
-                                <!-- 重试设置 -->
+                                <!-- 网络设置 -->
                                 <div class="settings-section">
                                     <h3 class="settings-section-title">
                                         <iconify-icon icon="line-md:backup-restore"></iconify-icon>
-                                        <span data-i18n="settings_retry_title">重试设置</span>
+                                        <span>网络设置</span>
                                     </h3>
                                     <div class="settings-grid">
-                                        <div class="setting-item">
-                                            <label class="setting-label" data-i18n="settings_max_retries">最大重试次数</label>
-                                            <div class="setting-control">
-                                                <input type="number" id="setting_max_retries" class="form-input" min="0" max="10" value="3">
-                                                <span class="setting-hint" data-i18n="settings_max_retries_hint">失败后最多重试次数</span>
+                                        <div class="setting-item setting-item-slider">
+                                            <div class="setting-header">
+                                                <label class="setting-label">最大重试次数</label>
+                                                <span class="setting-value" id="setting_max_retries_value">3</span>
                                             </div>
+                                            <div class="setting-control">
+                                                <input type="range" id="setting_max_retries_range" class="setting-slider" min="0" max="10" value="3">
+                                                <input type="number" id="setting_max_retries" class="form-input setting-number" min="0" max="10" value="3">
+                                            </div>
+                                            <span class="setting-hint">失败后的最大重试次数</span>
                                         </div>
-                                        <div class="setting-item">
-                                            <label class="setting-label" data-i18n="settings_request_timeout">请求超时(秒)</label>
-                                            <div class="setting-control">
-                                                <input type="number" id="setting_request_timeout" class="form-input" min="5" max="300" value="30">
-                                                <span class="setting-hint" data-i18n="settings_request_timeout_hint">单个请求的超时时间</span>
+                                        <div class="setting-item setting-item-slider">
+                                            <div class="setting-header">
+                                                <label class="setting-label">超时时间(秒)</label>
+                                                <span class="setting-value" id="setting_request_timeout_value">30</span>
                                             </div>
+                                            <div class="setting-control">
+                                                <input type="range" id="setting_request_timeout_range" class="setting-slider" min="5" max="300" value="30">
+                                                <input type="number" id="setting_request_timeout" class="form-input setting-number" min="5" max="300" value="30">
+                                            </div>
+                                            <span class="setting-hint">单个请求的超时时间</span>
                                         </div>
-                                    </div>
-                                </div>
-
-                                <!-- API设置 -->
-                                <div class="settings-section">
-                                    <h3 class="settings-section-title">
-                                        <iconify-icon icon="line-md:cloud-up-twotone-loop"></iconify-icon>
-                                        <span data-i18n="settings_api_title">API设置</span>
-                                    </h3>
-                                    <div class="settings-grid">
-                                        <div class="setting-item">
-                                            <label class="setting-label" data-i18n="settings_api_rate_limit">API速率限制</label>
-                                            <div class="setting-control">
-                                                <input type="number" id="setting_api_rate_limit" class="form-input" min="1" max="200" value="50">
-                                                <span class="setting-hint" data-i18n="settings_api_rate_limit_hint">每秒最大请求数</span>
+                                        <div class="setting-item setting-item-slider">
+                                            <div class="setting-header">
+                                                <label class="setting-label">API请求限制</label>
+                                                <span class="setting-value" id="setting_api_rate_limit_value">50</span>
                                             </div>
+                                            <div class="setting-control">
+                                                <input type="range" id="setting_api_rate_limit_range" class="setting-slider" min="1" max="200" value="50">
+                                                <input type="number" id="setting_api_rate_limit" class="form-input setting-number" min="1" max="200" value="50">
+                                            </div>
+                                            <span class="setting-hint">每个时间窗口的最大请求数</span>
                                         </div>
-                                        <div class="setting-item">
-                                            <label class="setting-label" data-i18n="settings_rate_limit_window">速率窗口(秒)</label>
-                                            <div class="setting-control">
-                                                <input type="number" id="setting_rate_limit_window" class="form-input" min="0.1" max="10" step="0.1" value="1.0">
-                                                <span class="setting-hint" data-i18n="settings_rate_limit_window_hint">速率计算的时间窗口</span>
+                                        <div class="setting-item setting-item-slider">
+                                            <div class="setting-header">
+                                                <label class="setting-label">限流窗口(秒)</label>
+                                                <span class="setting-value" id="setting_rate_limit_window_value">1.0</span>
                                             </div>
+                                            <div class="setting-control">
+                                                <input type="range" id="setting_rate_limit_window_range" class="setting-slider" min="1" max="100" value="10">
+                                                <input type="number" id="setting_rate_limit_window" class="form-input setting-number" min="0.1" max="10" step="0.1" value="1.0">
+                                            </div>
+                                            <span class="setting-hint">限流计算的时间窗口</span>
                                         </div>
                                     </div>
                                 </div>
@@ -355,15 +527,15 @@
                                 <div class="settings-actions">
                                     <button class="btn btn-primary" id="saveSettingsBtn">
                                         <iconify-icon icon="line-md:confirm"></iconify-icon>
-                                        <span data-i18n="btn_save_settings">保存设置</span>
+                                        <span>保存设置</span>
                                     </button>
                                     <button class="btn btn-secondary" id="resetSettingsBtn">
                                         <iconify-icon icon="line-md:close"></iconify-icon>
-                                        <span data-i18n="btn_reset_settings">恢复默认</span>
+                                        <span>恢复默认</span>
                                     </button>
                                 </div>
 
-                                <!-- 保存提示 -->
+                                <!-- 设置提示 -->
                                 <div class="settings-message" id="settingsMessage" style="display: none;"></div>
                             </div>
                         </div>
@@ -371,50 +543,17 @@
                 </div>
             </main>
 
-            <!-- 右侧侧边栏 -->
-            <aside class="dashboard-sidebar">
-                <!-- 状态卡片 -->
-                <div class="card status-card">
-                    <div class="card-header">
-                        <h3>
-                            <iconify-icon icon="line-md:downloading-loop"></iconify-icon>
-                            <span data-i18n="card_current_task">任务</span>
-                        </h3>
-                        <span class="status-badge" id="statusText">
-                            <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
-                        </span>
-                    </div>
-                    <div class="card-body">
-                        <div class="book-preview">
-                            <div class="book-name" id="bookName" data-i18n="book_no_task">-</div>
-                        </div>
-                        <div class="progress-section">
-                            <div class="progress-info">
-                                <iconify-icon icon="line-md:loading-twotone-loop"></iconify-icon>
-                                <span class="progress-percent" id="progressPercent">0%</span>
-                            </div>
-                            <div class="progress-track">
-                                <div class="progress-bar" id="progressFill" style="width: 0%;"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            </div>
+    </div>
 
-                <!-- 日志卡片 -->
-                <div class="card log-card">
-                    <div class="card-header">
-                        <h3>
-                            <iconify-icon icon="line-md:text-box"></iconify-icon>
-                            <span data-i18n="card_log">日志</span>
-                        </h3>
-                    </div>
-                    <div class="log-container" id="logContainer">
-                        <div id="logContent">
-                            <div class="log-entry" data-i18n="log_system_started">...</div>
-                        </div>
-                    </div>
-                </div>
-            </aside>
+    <!-- 加载状态遮罩层 -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner">
+                <iconify-icon icon="line-md:loading-twotone-loop" class="spin"></iconify-icon>
+            </div>
+            <div class="loading-text" id="loadingText">正在启动服务器...</div>
+            <div class="loading-hint" id="loadingHint">请稍候，首次启动可能需要几秒钟</div>
         </div>
     </div>
 
@@ -428,7 +567,7 @@
             <div class="modal-header">
                 <h3>
                     <iconify-icon icon="line-md:list-3"></iconify-icon>
-                    <span data-i18n="modal_chapter_title">章节</span>
+                    <span>章节</span>
                 </h3>
                 <button class="modal-close" id="chapterModalClose">
                     <iconify-icon icon="line-md:close"></iconify-icon>
@@ -470,7 +609,7 @@
             <div class="modal-header">
                 <h3>
                     <iconify-icon icon="line-md:upload-loop"></iconify-icon>
-                    <span data-i18n="modal_update_title">更新</span>
+                    <span>更新</span>
                 </h3>
                 <button class="modal-close" id="updateModalClose">
                     <iconify-icon icon="line-md:close"></iconify-icon>
@@ -500,7 +639,7 @@
             <div class="modal-header">
                 <h3>
                     <iconify-icon icon="line-md:backup-restore"></iconify-icon>
-                    <span data-i18n="modal_resume_title">发现未完成的下载</span>
+                    <span>发现未完成的下载</span>
                 </h3>
                 <button class="modal-close" id="resumeModalClose">
                     <iconify-icon icon="line-md:close"></iconify-icon>
@@ -508,16 +647,16 @@
             </div>
             <div class="modal-body">
                 <p id="resumeMessage">检测到该书籍有未完成的下载，已下载 <span id="resumeChapterCount">0</span> 个章节。</p>
-                <p data-i18n="resume_question">是否继续上次的下载？</p>
+                <p>是否继续上次的下载？</p>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="resumeRestartBtn">
                     <iconify-icon icon="line-md:backup-restore"></iconify-icon>
-                    <span data-i18n="btn_restart_download">重新下载</span>
+                    <span>重新下载</span>
                 </button>
                 <button class="btn btn-primary" id="resumeContinueBtn">
                     <iconify-icon icon="line-md:play"></iconify-icon>
-                    <span data-i18n="btn_continue_download">继续下载</span>
+                    <span>继续下载</span>
                 </button>
             </div>
         </div>
@@ -529,7 +668,7 @@
             <div class="modal-header">
                 <h3>
                     <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
-                    <span data-i18n="modal_queue_complete_title">队列下载完成</span>
+                    <span>队列下载完成</span>
                 </h3>
                 <button class="modal-close" id="queueSummaryModalClose">
                     <iconify-icon icon="line-md:close"></iconify-icon>
@@ -540,34 +679,60 @@
                     <div class="stat-item stat-success">
                         <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
                         <span id="summaryCompleted">0</span>
-                        <span data-i18n="summary_completed">成功</span>
+                        <span>成功</span>
                     </div>
                     <div class="stat-item stat-failed">
                         <iconify-icon icon="line-md:close-circle"></iconify-icon>
                         <span id="summaryFailed">0</span>
-                        <span data-i18n="summary_failed">失败</span>
+                        <span>失败</span>
                     </div>
                     <div class="stat-item stat-skipped">
                         <iconify-icon icon="line-md:arrow-right-circle"></iconify-icon>
                         <span id="summarySkipped">0</span>
-                        <span data-i18n="summary_skipped">跳过</span>
+                        <span>跳过</span>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="summaryCloseBtn">
                     <iconify-icon icon="line-md:close"></iconify-icon>
-                    <span data-i18n="btn_close">关闭</span>
+                    <span>关闭</span>
                 </button>
                 <button class="btn btn-primary" id="summaryRetryBtn" style="display: none;">
                     <iconify-icon icon="line-md:backup-restore"></iconify-icon>
-                    <span data-i18n="btn_retry_failed">重试失败</span>
+                    <span>重试失败</span>
                 </button>
             </div>
         </div>
     </div>
 
-    <script src="/static/js/i18n.js?v=20251214"></script>
-    <script src="/static/js/app.js?v=20251214"></script>
+    
+    <!-- 隐藏的兼容元素 (供JS引用) -->
+    <div style="display: none;">
+        <div id="bookName"></div>
+        <span id="progressPercent">0%</span>
+        <div id="progressFill"></div>
+        <span id="statusText"></span>
+        <div id="logContainer"><div id="logContent"></div></div>
+    </div>
+
+    <script src="/static/js/modal.js?v=20251214"></script>
+    <script nomodule>
+        (function () {
+            function showLegacyMessage() {
+                var loadingText = document.getElementById('loadingText');
+                var loadingHint = document.getElementById('loadingHint');
+                if (loadingText) loadingText.textContent = '当前内置浏览器内核过旧，无法启动界面';
+                if (loadingHint) loadingHint.textContent = '请安装 Microsoft WebView2 Runtime，或切换到系统浏览器模式';
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', showLegacyMessage, { once: true });
+            } else {
+                showLegacyMessage();
+            }
+        })();
+    </script>
+    <script type="module" src="/static/js/app.js?v=20260129"></script>
 </body>
 </html>

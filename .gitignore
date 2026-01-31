@@ -189,3 +189,17 @@ Desktop.ini
 *.local.*
 
 # Note: fanqie.json is now tracked as local config file
+
+# Local runtime files (saved in program directory)
+fanqie_window_config.json
+fanqie_novel_downloader_config.json
+novels/
+.download_status.json
+
+# WindsurfChatOpen
+.windsurfchatopen/
+.windsurfrules
+
+# Runtime caches
+cache/
+.omc/
