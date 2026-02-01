@@ -75,12 +75,51 @@ function showUpdateModal(updateInfo) {
         const downloadResult = await api.downloadUpdate(updateInfo.download_url, updateInfo.filename);
         
         if (downloadResult.success) {
-            btn.textContent = '下载完成，正在应用...';
-            const applyResult = await api.applyUpdate();
-            if (applyResult.success) {
-                Toast.success('更新已启动，请稍候...');
+            const waitForDownload = async () => {
+                const maxWait = 300000;
+                const interval = 500;
+                let elapsed = 0;
+                
+                while (elapsed < maxWait) {
+                    try {
+                        const statusRes = await fetch('/api/update-status');
+                        const status = await statusRes.json();
+                        
+                        if (status.error) {
+                            throw new Error(status.error);
+                        }
+                        
+                        if (status.completed) {
+                            return true;
+                        }
+                        
+                        if (status.progress !== undefined) {
+                            btn.textContent = `下载中... ${status.progress}%`;
+                        }
+                    } catch (e) {
+                        console.error('获取下载状态失败:', e);
+                    }
+                    
+                    await new Promise(r => setTimeout(r, interval));
+                    elapsed += interval;
+                }
+                return false;
+            };
+            
+            const downloadCompleted = await waitForDownload();
+            
+            if (downloadCompleted) {
+                btn.textContent = '下载完成，正在应用...';
+                const applyResult = await api.applyUpdate();
+                if (applyResult.success) {
+                    Toast.success('更新已启动，请稍候...');
+                } else {
+                    Toast.error(applyResult.message || '应用更新失败');
+                    btn.disabled = false;
+                    btn.textContent = '开始更新';
+                }
             } else {
-                Toast.error(applyResult.message || '应用更新失败');
+                Toast.error('下载超时或失败');
                 btn.disabled = false;
                 btn.textContent = '开始更新';
             }

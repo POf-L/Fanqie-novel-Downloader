@@ -403,7 +403,7 @@ def update_download_worker(url, save_path, filename):
                     message="下载完成！",
                     completed=True,
                     merging=False,
-                    save_path=full_path
+                    temp_file_path=full_path
                 )
             else:
                 raise Exception('下载的文件不存在')
