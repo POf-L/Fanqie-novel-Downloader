@@ -39,33 +39,48 @@ def _get_config_path():
     import sys
     import os
 
-    # 获取程序运行目录
+    # 获取程序运行目录（外部可写目录）
     if getattr(sys, 'frozen', False):
-        # 打包环境
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
+        # 打包环境 - 使用可执行文件所在目录
+        base_dir = os.path.dirname(sys.executable)
     else:
-        # 开发环境 - 使用当前文件所在目录向上两级
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        # config 目录在项目根目录下
-        base_dir = os.path.dirname(base_dir)
+        # 开发环境 - 使用项目根目录
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # 创建 config 目录
+    # 外部 config 目录
     config_dir = os.path.join(base_dir, 'config')
     os.makedirs(config_dir, exist_ok=True)
 
-    # 优先使用 fanqie.json（原始配置文件）
-    fanqie_json = os.path.join(config_dir, 'fanqie.json')
-    if os.path.exists(fanqie_json):
-        return fanqie_json
+    # 1. 优先使用外部自定义的 fanqie.json
+    external_fanqie = os.path.join(config_dir, 'fanqie.json')
+    if os.path.exists(external_fanqie):
+        return external_fanqie
 
-    # 回退到新格式
-    return os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
+    # 2. 如果是打包环境，尝试使用内置的 fanqie.json
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        bundled_fanqie = os.path.join(sys._MEIPASS, 'fanqie.json')
+        if os.path.exists(bundled_fanqie):
+            return bundled_fanqie
+
+    # 3. 回退到默认外部路径
+    return external_fanqie
 
 LOCAL_CONFIG_JSON = _get_config_path()
-_LOCAL_CONFIG_FILE = os.path.join(os.path.dirname(LOCAL_CONFIG_JSON), 'fanqie_novel_downloader_config.json')
+
+def _get_user_pref_path():
+    """获取用户偏好配置文件路径（始终在外部可写目录）"""
+    import sys
+    import os
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    config_dir = os.path.join(base_dir, 'config')
+    os.makedirs(config_dir, exist_ok=True)
+    return os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
+
+_LOCAL_CONFIG_FILE = _get_user_pref_path()
 
 print(f"[DEBUG] 配置路径: {LOCAL_CONFIG_JSON}")
 
@@ -228,6 +243,8 @@ def get_headers() -> Dict[str, str]:
 
 __all__ = [
     "CONFIG",
+    "LOCAL_CONFIG_JSON",
+    "_LOCAL_CONFIG_FILE",
     "ConfigLoadError",
     "print_lock",
     "get_headers",

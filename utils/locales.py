@@ -9,19 +9,13 @@ import json
 
 DEFAULT_LANG = "zh"
 
+from config.config import _LOCAL_CONFIG_FILE
+
+DEFAULT_LANG = "zh"
+
 def _get_config_file():
     """获取配置文件路径"""
-    if getattr(sys, 'frozen', False):
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-    else:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
-    config_dir = os.path.join(base_dir, 'config')
-    os.makedirs(config_dir, exist_ok=True)
-    return os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
+    return _LOCAL_CONFIG_FILE
 
 def get_current_lang():
     """从配置文件读取当前语言设置"""

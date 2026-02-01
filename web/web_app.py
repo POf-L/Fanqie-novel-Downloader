@@ -26,7 +26,7 @@ from flask_cors import CORS
 import logging
 
 from config.config import __version__ as APP_VERSION
-from config.config import CONFIG, ConfigLoadError
+from config.config import CONFIG, ConfigLoadError, _LOCAL_CONFIG_FILE
 
 # 禁用Flask默认日志
 log = logging.getLogger('werkzeug')
@@ -108,7 +108,7 @@ def get_config_dir():
     os.makedirs(config_dir, exist_ok=True)
     return config_dir
 
-CONFIG_FILE = os.path.join(get_config_dir(), 'fanqie_novel_downloader_config.json')
+CONFIG_FILE = _LOCAL_CONFIG_FILE
 
 def _read_local_config() -> dict:
     try:

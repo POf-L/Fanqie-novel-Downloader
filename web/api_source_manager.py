@@ -24,7 +24,7 @@ else:
     if _parent_dir not in sys.path:
         sys.path.insert(0, _parent_dir)
 
-from config.config import CONFIG
+from config.config import CONFIG, _LOCAL_CONFIG_FILE
 
 
 def _get_ip_location(ip: str, timeout: float = 2.0) -> dict:
@@ -272,11 +272,9 @@ def _apply_api_base_url(base_url: str) -> None:
 def _read_local_config() -> dict:
     """读取本地配置"""
     try:
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
-        config_file = os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
-        if os.path.exists(config_file):
+        if os.path.exists(_LOCAL_CONFIG_FILE):
             import json
-            with open(config_file, 'r', encoding='utf-8') as f:
+            with open(_LOCAL_CONFIG_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
     except Exception:
         pass
@@ -286,9 +284,7 @@ def _read_local_config() -> dict:
 def _write_local_config(updates: dict) -> bool:
     """写入本地配置"""
     try:
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config')
-        os.makedirs(config_dir, exist_ok=True)
-        config_file = os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
+        config_file = _LOCAL_CONFIG_FILE
         
         cfg = _read_local_config()
         cfg.update(updates or {})
