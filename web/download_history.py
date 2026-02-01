@@ -22,23 +22,34 @@ class DownloadHistoryManager:
             pass
     
     def _get_history_file_path(self) -> str:
-        """获取历史文件路径"""
-        # 获取程序运行目录
-        if getattr(sys, 'frozen', False):
-            # 打包环境
-            if hasattr(sys, '_MEIPASS'):
-                base_dir = os.path.dirname(sys.executable)
+        """获取历史文件路径（使用统一数据目录）"""
+        try:
+            from utils.app_data_manager import get_data_dir
+            data_dir = get_data_dir()
+            
+            # 创建 cache 子目录
+            cache_dir = os.path.join(data_dir, 'cache')
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            return os.path.join(cache_dir, 'download_history.json')
+        except ImportError:
+            # 如果导入失败，使用原有逻辑
+            # 获取程序运行目录
+            if getattr(sys, 'frozen', False):
+                # 打包环境
+                if hasattr(sys, '_MEIPASS'):
+                    base_dir = os.path.dirname(sys.executable)
+                else:
+                    base_dir = os.path.dirname(os.path.abspath(__file__))
             else:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-        else:
-            # 开发环境
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
-        # 创建 cache 目录
-        cache_dir = os.path.join(base_dir, 'cache')
-        os.makedirs(cache_dir, exist_ok=True)
-        
-        return os.path.join(cache_dir, 'download_history.json')
+                # 开发环境
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
+            # 创建 cache 目录
+            cache_dir = os.path.join(base_dir, 'cache')
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            return os.path.join(cache_dir, 'download_history.json')
     
     def _load_history(self) -> list:
         """加载历史记录"""

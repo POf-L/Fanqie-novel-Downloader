@@ -13,21 +13,31 @@ from config.config import print_lock
 
 
 def _get_cache_dir() -> str:
-    """获取缓存目录（保存在程序运行目录的 cache 文件夹）"""
-    # 获取程序运行目录
-    if getattr(sys, 'frozen', False):
-        # 打包环境
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
+    """获取缓存目录（使用统一数据目录）"""
+    try:
+        from utils.app_data_manager import get_data_dir
+        data_dir = get_data_dir()
+        
+        # 创建 cache 子目录
+        cache_dir = os.path.join(data_dir, 'cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        return cache_dir
+    except ImportError:
+        # 如果导入失败，使用原有逻辑
+        # 获取程序运行目录
+        if getattr(sys, 'frozen', False):
+            # 打包环境
+            if hasattr(sys, '_MEIPASS'):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
         else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-    else:
-        # 开发环境
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            # 开发环境
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    cache_dir = os.path.join(base_dir, 'cache')
-    os.makedirs(cache_dir, exist_ok=True)
-    return cache_dir
+        cache_dir = os.path.join(base_dir, 'cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        return cache_dir
 
 
 def _get_status_file_path(book_id: str) -> str:

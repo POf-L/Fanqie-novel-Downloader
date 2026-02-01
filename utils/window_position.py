@@ -8,6 +8,7 @@ import json
 import os
 import sys
 from typing import Optional
+from utils.app_data_manager import get_window_config_path
 
 
 class WindowPositionManager:
@@ -27,21 +28,13 @@ class WindowPositionManager:
         初始化窗口位置管理器
 
         Args:
-            config_dir: 配置文件存储目录，默认为程序所在目录
+            config_dir: 配置文件存储目录，默认为使用全局数据管理器
         """
         if config_dir:
             self.config_dir = config_dir
         else:
-            # 获取程序所在目录
-            if getattr(sys, 'frozen', False):
-                # 打包环境
-                if hasattr(sys, '_MEIPASS'):
-                    self.config_dir = os.path.dirname(sys.executable)
-                else:
-                    self.config_dir = os.path.dirname(os.path.abspath(__file__))
-            else:
-                # 开发环境 - 使用项目根目录
-                self.config_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            # 使用全局数据管理器获取数据目录
+            self.config_dir = get_window_config_path().replace('fanqie_window_config.json', '')
 
         self.config_file = os.path.join(self.config_dir, self.CONFIG_FILE)
 

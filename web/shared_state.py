@@ -21,21 +21,34 @@ else:
 
 
 def get_config_dir():
-    """获取配置文件目录"""
-    if getattr(sys, 'frozen', False):
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
+    """获取配置文件目录（使用统一数据目录）"""
+    try:
+        from utils.app_data_manager import get_config_dir as _get_config_dir
+        return _get_config_dir()
+    except ImportError:
+        # 如果导入失败，使用原有逻辑
+        if getattr(sys, 'frozen', False):
+            if hasattr(sys, '_MEIPASS'):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
         else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-    else:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    config_dir = os.path.join(base_dir, 'config')
-    os.makedirs(config_dir, exist_ok=True)
-    return config_dir
+        config_dir = os.path.join(base_dir, 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        return config_dir
 
 
-CONFIG_FILE = os.path.join(get_config_dir(), 'fanqie_novel_downloader_config.json')
+def _get_config_file_path():
+    """获取配置文件路径"""
+    try:
+        from utils.app_data_manager import get_app_config_path
+        return get_app_config_path()
+    except ImportError:
+        return os.path.join(get_config_dir(), 'fanqie_novel_downloader_config.json')
+
+CONFIG_FILE = _get_config_file_path()
 
 
 def _read_local_config() -> dict:
@@ -61,29 +74,29 @@ def _write_local_config(updates: dict) -> bool:
 
 
 def get_default_download_path():
-    """获取默认下载路径（程序所在目录的novels文件夹）"""
-    # 获取程序所在目录
-    if getattr(sys, 'frozen', False):
-        # 打包环境
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
+    """获取默认下载路径（使用统一数据目录）"""
+    try:
+        from utils.app_data_manager import get_downloads_dir
+        return get_downloads_dir()
+    except ImportError:
+        # 如果导入失败，使用原有逻辑
+        if getattr(sys, 'frozen', False):
+            if hasattr(sys, '_MEIPASS'):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
         else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-    else:
-        # 开发环境 - 使用项目根目录
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
-    # 默认下载到程序目录下的novels文件夹
-    downloads = os.path.join(base_dir, 'novels')
-    
-    if not os.path.exists(downloads):
-        try:
-            os.makedirs(downloads, exist_ok=True)
-        except:
-            # 如果创建失败，使用程序根目录
-            downloads = base_dir
-    
-    return downloads
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        downloads = os.path.join(base_dir, 'novels')
+        
+        if not os.path.exists(downloads):
+            try:
+                os.makedirs(downloads, exist_ok=True)
+            except:
+                downloads = base_dir
+        
+        return downloads
 
 
 # 导入队列（延迟导入避免循环依赖）

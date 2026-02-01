@@ -27,6 +27,7 @@ import logging
 
 from config.config import __version__ as APP_VERSION
 from config.config import CONFIG, ConfigLoadError, _LOCAL_CONFIG_FILE
+from utils.app_data_manager import get_config_dir, get_downloads_dir, get_app_config_path
 
 # 禁用Flask默认日志
 log = logging.getLogger('werkzeug')
@@ -96,19 +97,10 @@ def _normalize_base_url(url: str) -> str:
 
 def get_config_dir():
     """获取配置文件目录"""
-    if getattr(sys, 'frozen', False):
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-    else:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    from utils.app_data_manager import get_config_dir as _get_config_dir
+    return _get_config_dir()
 
-    config_dir = os.path.join(base_dir, 'config')
-    os.makedirs(config_dir, exist_ok=True)
-    return config_dir
-
-CONFIG_FILE = _LOCAL_CONFIG_FILE
+CONFIG_FILE = get_app_config_path()
 
 def _read_local_config() -> dict:
     try:
@@ -131,29 +123,8 @@ def _write_local_config(updates: dict) -> bool:
         return False
 
 def get_default_download_path():
-    """获取默认下载路径（程序所在目录的novels文件夹）"""
-    # 获取程序所在目录
-    if getattr(sys, 'frozen', False):
-        # 打包环境
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-    else:
-        # 开发环境 - 使用项目根目录
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
-    # 默认下载到程序目录下的novels文件夹
-    downloads = os.path.join(base_dir, 'novels')
-    
-    if not os.path.exists(downloads):
-        try:
-            os.makedirs(downloads, exist_ok=True)
-        except:
-            # 如果创建失败，使用程序根目录
-            downloads = base_dir
-    
-    return downloads
+    """获取默认下载路径（使用统一的数据目录）"""
+    return get_downloads_dir()
 
 # ===================== 导入模块化组件 =====================
 

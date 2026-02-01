@@ -4,12 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>番茄小说下载器</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=20260129">
-    <link rel="stylesheet" href="/static/css/style_forms.css?v=20260129">
-    <link rel="stylesheet" href="/static/css/style_queue.css?v=20260129">
-    <link rel="stylesheet" href="/static/css/style_misc.css?v=20260129">
-    <link rel="stylesheet" href="/static/css/modal.css?v=20260129">
-    <link rel="stylesheet" href="/static/css/modal_extra.css?v=20260129">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260130">
+    <link rel="stylesheet" href="/static/css/style_forms.css?v=20260130">
+    <link rel="stylesheet" href="/static/css/style_queue.css?v=20260130">
+    <link rel="stylesheet" href="/static/css/style_misc.css?v=20260130">
+    <link rel="stylesheet" href="/static/css/modal.css?v=20260130">
+    <link rel="stylesheet" href="/static/css/modal_extra.css?v=20260130">
+    <link rel="stylesheet" href="/static/css/responsive.css?v=20260130">
     <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js" defer></script>
 </head>
 <body>
@@ -43,17 +44,9 @@
                             <iconify-icon icon="line-md:search"></iconify-icon>
                             <span class="tab-label">搜索</span>
                         </button>
-                        <button class="tab-btn" data-tab="download" title="下载">
-                            <iconify-icon icon="line-md:download-loop"></iconify-icon>
-                            <span class="tab-label">下载</span>
-                        </button>
                         <button class="tab-btn" data-tab="queue" title="队列">
                             <iconify-icon icon="line-md:list-3"></iconify-icon>
                             <span class="tab-label">队列</span>
-                        </button>
-                        <button class="tab-btn" data-tab="tasks" title="任务中心">
-                            <iconify-icon icon="line-md:downloading-loop"></iconify-icon>
-                            <span class="tab-label">任务中心</span>
                         </button>
                         <button class="tab-btn" data-tab="settings" title="设置">
                             <iconify-icon icon="line-md:cog-loop"></iconify-icon>
@@ -67,7 +60,12 @@
                         <div class="tab-pane active" id="tab-search">
                             <div class="search-bar-container">
                                 <div class="input-group">
-                                    <input type="text" id="searchKeyword" class="form-input" placeholder="搜索书名或作者...">
+                                    <input type="text" id="searchKeyword" class="form-input" placeholder="搜索书名、作者，或输入书籍ID/链接">
+                                    <select id="statusFilter" class="form-select" style="width: auto;">
+                                        <option value="">全部</option>
+                                        <option value="连载中">连载中</option>
+                                        <option value="已完结">已完结</option>
+                                    </select>
                                     <button class="btn btn-primary icon-btn" id="searchBtn" title="搜索">
                                         <iconify-icon icon="line-md:search"></iconify-icon>
                                     </button>
@@ -91,112 +89,7 @@
                             </div>
                         </div>
 
-                        <!-- 下载面板 -->
-                        <div class="tab-pane scrollable" id="tab-download">
-                            <div class="download-form-container">
-                                <div class="form-group">
-                                    <div class="input-group">
-                                        <input type="text" id="bookId" class="form-input" placeholder="书籍ID或链接">
-                                        <button class="btn btn-primary" id="downloadBtn">
-                                            <iconify-icon icon="line-md:plus"></iconify-icon>
-                                        </button>
-                                        <button class="btn btn-danger" id="cancelBtn" style="display: none;">
-                                            <iconify-icon icon="line-md:close"></iconify-icon>
-                                        </button>
-                                    </div>
-                                </div>
-                                <button class="btn btn-text btn-sm" id="clearBtn">
-                                    <iconify-icon icon="line-md:backup-restore"></iconify-icon>
-                                    <span>重置</span>
-                                </button>
-                            </div>
-                            
-                            <!-- 内嵌书籍确认区域 -->
-                            <div class="inline-confirm-container" id="inlineConfirmContainer" style="display: none;">
-                                <div class="inline-confirm-content">
-                                    <div class="book-info">
-                                        <img id="inlineCover" class="book-cover" alt="封面" style="display:none;" />
-                                        <div class="book-details">
-                                            <h3 class="book-title" id="inlineBookTitle"></h3>
-                                            <p class="book-author" id="inlineBookAuthor"></p>
-                                            <p class="book-abstract collapsed" id="inlineBookAbstract"></p>
-                                            <p class="book-chapters" id="inlineBookChapters"></p>
-                                        </div>
-                                    </div>
-
-                                    <div class="chapter-selection">
-                                        <h3>章节选择</h3>
-
-                                        <div class="chapter-range">
-                                            <label>
-                                                <input type="radio" name="inlineChapterMode" value="all" checked>
-                                                <span>全部章节</span>
-                                            </label>
-                                            <label>
-                                                <input type="radio" name="inlineChapterMode" value="range">
-                                                <span>范围选择</span>
-                                            </label>
-                                            <label>
-                                                <input type="radio" name="inlineChapterMode" value="quick">
-                                                <span>快速范围</span>
-                                            </label>
-                                            <label>
-                                                <input type="radio" name="inlineChapterMode" value="manual">
-                                                <span>手动选择</span>
-                                            </label>
-                                        </div>
-
-                                        <div class="chapter-loading-hint" id="inlineChapterLoadingHint" style="display:none;">
-                                            <iconify-icon icon="line-md:loading-twotone-loop" class="spin"></iconify-icon>
-                                            <span id="inlineChapterLoadingText"></span>
-                                        </div>
-
-                                        <div class="chapter-inputs" id="inlineChapterInputs" style="display:none;">
-                                            <div class="input-row">
-                                                <label>起始章节</label>
-                                                <select id="inlineStartChapter" class="chapter-select" disabled></select>
-                                            </div>
-                                            <div class="input-row">
-                                                <label>结束章节</label>
-                                                <select id="inlineEndChapter" class="chapter-select" disabled></select>
-                                            </div>
-                                        </div>
-
-                                        <div class="chapter-quick-range" id="inlineChapterQuickRange" style="display:none;">
-                                            <div class="input-row" style="margin-bottom: 8px;">
-                                                <label>章节范围</label>
-                                                <input type="text" id="inlineQuickRangeInput" class="form-input"
-                                                       placeholder="例如: 1-100, 150, 200-300"
-                                                      
-                                                       style="width: 100%; font-family: monospace;">
-                                            </div>
-                                            <div class="quick-range-hint" style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">
-                                                支持格式: 单个数字(5)、范围(1-100)、多个范围(1-10, 50-100)
-                                            </div>
-                                            <div id="inlineQuickRangeResult" style="font-size: 12px; min-height: 20px;"></div>
-                                            <button class="btn btn-sm btn-secondary" type="button" id="inlineApplyQuickRangeBtn" style="margin-top: 8px;">应用范围</button>
-                                        </div>
-
-                                        <div class="chapter-manual-container" id="inlineChapterManualContainer" style="display:none;">
-                                            <div class="chapter-actions">
-                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectAllBtn">全选</button>
-                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectNoneBtn">全不选</button>
-                                                <button class="btn btn-sm btn-secondary" type="button" id="inlineSelectInvertBtn">反选</button>
-                                                <span id="inlineSelectedCount" style="margin-left: auto; font-size: 13px; color: var(--text-secondary);">0</span>
-                                            </div>
-                                            <div class="chapter-list" id="inlineChapterList"></div>
-                                        </div>
-                                    </div>
-
-                                    <div class="inline-confirm-footer">
-                                        <button class="btn btn-secondary" type="button" id="inlineCancelBtn">取消</button>
-                                        <button class="btn btn-primary" type="button" id="inlineConfirmAddQueueBtn">确认添加</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 待下载队列 -->
+                        <!-- 队列面板（合并任务中心） -->
                         <div class="tab-pane" id="tab-queue">
                             <div class="queue-container">
                                 <!-- 下载设置 -->
@@ -256,130 +149,134 @@
                                         <div class="empty-state-text">空</div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
 
-                        <!-- 任务中心面板 -->
-                        <div class="tab-pane" id="tab-tasks">
-                            <div class="tasks-container">
-                                <div class="tasks-grid">
-                                    <!-- 当前任务状态 -->
-                                    <div class="task-status-card">
-                                        <div class="task-status-header">
-                                            <h3>
-                                                <iconify-icon icon="line-md:downloading-loop"></iconify-icon>
-                                                <span>当前任务</span>
-                                            </h3>
-                                            <span class="status-badge" id="statusTextMain">
-                                                <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
-                                            </span>
-                                        </div>
-                                        <div class="task-status-body">
-                                            <div class="task-stats-row">
-                                                <div class="task-stat-item">
-                                                    <iconify-icon icon="line-md:book-2"></iconify-icon>
-                                                    <div class="task-stat-info">
-                                                        <span class="task-stat-label">书名</span>
-                                                        <span class="task-stat-value" id="bookNameMain">-</span>
-                                                    </div>
-                                                </div>
-                                                <div class="task-stat-item">
-                                                    <iconify-icon icon="line-md:speedometer"></iconify-icon>
-                                                    <div class="task-stat-info">
-                                                        <span class="task-stat-label">速度</span>
-                                                        <span class="task-stat-value" id="downloadSpeed">0 KB/s</span>
-                                                    </div>
-                                                </div>
-                                                <div class="task-stat-item">
-                                                    <iconify-icon icon="line-md:clock"></iconify-icon>
-                                                    <div class="task-stat-info">
-                                                        <span class="task-stat-label">耗时</span>
-                                                        <span class="task-stat-value" id="elapsedTime">0s</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="progress-section">
-                                                <div class="progress-info">
-                                                    <span class="progress-label">下载进度</span>
-                                                    <span class="progress-percent" id="progressPercentMain">0%</span>
-                                                </div>
-                                                <div class="progress-track">
-                                                    <div class="progress-bar" id="progressFillMain" style="width: 0%;"></div>
-                                                </div>
-                                            </div>
-                                            <div class="progress-details">
-                                                <span id="progressDetailInfo">0 / 0 章节</span>
-                                            </div>
-                                        </div>
+                                <!-- 任务中心（嵌入在队列下方） -->
+                                <div class="tasks-section" id="tasksSection">
+                                    <div class="tasks-header">
+                                        <h3>
+                                            <iconify-icon icon="line-md:downloading-loop"></iconify-icon>
+                                            <span>任务中心</span>
+                                        </h3>
                                     </div>
-
-                                    <!-- 统计概览 -->
-                                    <div class="task-summary-card">
-                                        <div class="task-summary-header">
-                                            <h3>
-                                                <iconify-icon icon="line-md:chart-bar"></iconify-icon>
-                                                <span>统计</span>
-                                            </h3>
-                                        </div>
-                                        <div class="task-summary-grid">
-                                            <div class="summary-stat">
-                                                <div class="summary-stat-icon pending">
-                                                    <iconify-icon icon="line-md:list-3"></iconify-icon>
-                                                </div>
-                                                <div class="summary-stat-info">
-                                                    <span class="summary-stat-value" id="statPending">0</span>
-                                                    <span class="summary-stat-label">待下载</span>
-                                                </div>
-                                            </div>
-                                            <div class="summary-stat">
-                                                <div class="summary-stat-icon downloading">
-                                                    <iconify-icon icon="line-md:loading-twotone-loop" class="spin"></iconify-icon>
-                                                </div>
-                                                <div class="summary-stat-info">
-                                                    <span class="summary-stat-value" id="statDownloading">0</span>
-                                                    <span class="summary-stat-label">下载中</span>
-                                                </div>
-                                            </div>
-                                            <div class="summary-stat">
-                                                <div class="summary-stat-icon completed">
+                                    <div class="tasks-grid">
+                                        <!-- 当前任务状态 -->
+                                        <div class="task-status-card">
+                                            <div class="task-status-header">
+                                                <h3>
+                                                    <iconify-icon icon="line-md:downloading-loop"></iconify-icon>
+                                                    <span>当前任务</span>
+                                                </h3>
+                                                <span class="status-badge" id="statusTextMain">
                                                     <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
-                                                </div>
-                                                <div class="summary-stat-info">
-                                                    <span class="summary-stat-value" id="statCompleted">0</span>
-                                                    <span class="summary-stat-label">已完成</span>
-                                                </div>
+                                                </span>
                                             </div>
-                                            <div class="summary-stat">
-                                                <div class="summary-stat-icon failed">
-                                                    <iconify-icon icon="icon-park-outline:error"></iconify-icon>
+                                            <div class="task-status-body">
+                                                <div class="task-stats-row">
+                                                    <div class="task-stat-item">
+                                                        <iconify-icon icon="line-md:book-2"></iconify-icon>
+                                                        <div class="task-stat-info">
+                                                            <span class="task-stat-label">书名</span>
+                                                            <span class="task-stat-value" id="bookNameMain">-</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="task-stat-item">
+                                                        <iconify-icon icon="line-md:speedometer"></iconify-icon>
+                                                        <div class="task-stat-info">
+                                                            <span class="task-stat-label">速度</span>
+                                                            <span class="task-stat-value" id="downloadSpeed">0 KB/s</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="task-stat-item">
+                                                        <iconify-icon icon="line-md:clock"></iconify-icon>
+                                                        <div class="task-stat-info">
+                                                            <span class="task-stat-label">耗时</span>
+                                                            <span class="task-stat-value" id="elapsedTime">0s</span>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div class="summary-stat-info">
-                                                    <span class="summary-stat-value" id="statFailed">0</span>
-                                                    <span class="summary-stat-label">失败</span>
+                                                <div class="progress-section">
+                                                    <div class="progress-info">
+                                                        <span class="progress-label">下载进度</span>
+                                                        <span class="progress-percent" id="progressPercentMain">0%</span>
+                                                    </div>
+                                                    <div class="progress-track">
+                                                        <div class="progress-bar" id="progressFillMain" style="width: 0%;"></div>
+                                                    </div>
+                                                </div>
+                                                <div class="progress-details">
+                                                    <span id="progressDetailInfo">0 / 0 章节</span>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    <!-- 日志区域 -->
-                                    <div class="task-log-card">
-                                        <div class="task-log-header">
-                                            <h3>
-                                                <iconify-icon icon="line-md:text-box"></iconify-icon>
-                                                <span>日志</span>
-                                            </h3>
-                                            <div class="log-actions">
-                                                <button class="btn btn-sm btn-text icon-btn" id="copyLogBtn" title="复制日志">
-                                                    <iconify-icon icon="line-md:copy"></iconify-icon>
-                                                </button>
-                                                <button class="btn btn-sm btn-text icon-btn" id="clearLogBtn" title="清空日志">
-                                                    <iconify-icon icon="line-md:remove"></iconify-icon>
-                                                </button>
+                                        <!-- 统计概览 -->
+                                        <div class="task-summary-card">
+                                            <div class="task-summary-header">
+                                                <h3>
+                                                    <iconify-icon icon="line-md:chart-bar"></iconify-icon>
+                                                    <span>统计</span>
+                                                </h3>
+                                            </div>
+                                            <div class="task-summary-grid">
+                                                <div class="summary-stat">
+                                                    <div class="summary-stat-icon pending">
+                                                        <iconify-icon icon="line-md:list-3"></iconify-icon>
+                                                    </div>
+                                                    <div class="summary-stat-info">
+                                                        <span class="summary-stat-value" id="statPending">0</span>
+                                                        <span class="summary-stat-label">待下载</span>
+                                                    </div>
+                                                </div>
+                                                <div class="summary-stat">
+                                                    <div class="summary-stat-icon downloading">
+                                                        <iconify-icon icon="line-md:loading-twotone-loop" class="spin"></iconify-icon>
+                                                    </div>
+                                                    <div class="summary-stat-info">
+                                                        <span class="summary-stat-value" id="statDownloading">0</span>
+                                                        <span class="summary-stat-label">下载中</span>
+                                                    </div>
+                                                </div>
+                                                <div class="summary-stat">
+                                                    <div class="summary-stat-icon completed">
+                                                        <iconify-icon icon="line-md:confirm-circle"></iconify-icon>
+                                                    </div>
+                                                    <div class="summary-stat-info">
+                                                        <span class="summary-stat-value" id="statCompleted">0</span>
+                                                        <span class="summary-stat-label">已完成</span>
+                                                    </div>
+                                                </div>
+                                                <div class="summary-stat">
+                                                    <div class="summary-stat-icon failed">
+                                                        <iconify-icon icon="icon-park-outline:error"></iconify-icon>
+                                                    </div>
+                                                    <div class="summary-stat-info">
+                                                        <span class="summary-stat-value" id="statFailed">0</span>
+                                                        <span class="summary-stat-label">失败</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="log-container" id="logContainerMain">
-                                            <div id="logContentMain">
-                                                <div class="log-entry">等待任务开始...</div>
+
+                                        <!-- 日志区域 -->
+                                        <div class="task-log-card">
+                                            <div class="task-log-header">
+                                                <h3>
+                                                    <iconify-icon icon="line-md:text-box"></iconify-icon>
+                                                    <span>日志</span>
+                                                </h3>
+                                                <div class="log-actions">
+                                                    <button class="btn btn-sm btn-text icon-btn" id="copyLogBtn" title="复制日志">
+                                                        <iconify-icon icon="line-md:copy"></iconify-icon>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-text icon-btn" id="clearLogBtn" title="清空日志">
+                                                        <iconify-icon icon="line-md:remove"></iconify-icon>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="log-container" id="logContainerMain">
+                                                <div id="logContentMain">
+                                                    <div class="log-entry">等待任务开始...</div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -716,7 +613,7 @@
         <div id="logContainer"><div id="logContent"></div></div>
     </div>
 
-    <script src="/static/js/modal.js?v=20251214"></script>
+    <script src="/static/js/modal.js?v=20260130"></script>
     <script nomodule>
         (function () {
             function showLegacyMessage() {
@@ -733,6 +630,6 @@
             }
         })();
     </script>
-    <script type="module" src="/static/js/app.js?v=20260129"></script>
+    <script type="module" src="/static/js/app.js?v=20260130"></script>
 </body>
 </html>

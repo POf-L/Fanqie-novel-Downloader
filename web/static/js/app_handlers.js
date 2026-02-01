@@ -1,7 +1,7 @@
 /* ===================== 应用功能处理（搜索/下载/队列/版本） ===================== */
 
 import Toast from './toast.js';
-import QueueManager from './queue.js';
+import TaskManager from './unified_task.js';
 import { ConfirmDialog } from './dialogs.js';
 import Logger from './logger.js';
 import api from './api.js';
@@ -11,8 +11,30 @@ const searchState = {
     keyword: '',
     offset: 0,
     hasMore: false,
-    loading: false
+    loading: false,
+    statusFilter: ''
 };
+
+function detectInputType(input) {
+    if (!input) return 'keyword';
+    
+    const text = String(input).trim();
+    
+    // 检查是否为数字ID
+    if (/^\d+$/.test(text)) {
+        return 'id';
+    }
+    
+    // 检查是否为URL
+    if (text.includes('fanqienovel.com') || text.includes('http')) {
+        const match = text.match(/\/page\/(\d+)/);
+        if (match) {
+            return 'url';
+        }
+    }
+    
+    return 'keyword';
+}
 
 function normalizeBookId(input) {
     if (!input) return '';
@@ -26,16 +48,9 @@ function normalizeBookId(input) {
 }
 
 function getSelectedFormat() {
-    const select = document.getElementById('fileFormat');
-    if (select?.value) return select.value;
     const radio = document.querySelector('input[name="format"]:checked');
     if (radio?.value) return radio.value;
     return 'txt';
-}
-
-function getInputBookId() {
-    const input = document.getElementById('bookId');
-    return normalizeBookId(input?.value || '');
 }
 
 function getSearchResultContainer() {
@@ -80,7 +95,7 @@ function renderSearchResults(data, append = false) {
         const safeName = (book.book_name || '').replace(/"/g, '&quot;');
         const safeAuthor = (book.author || '').replace(/"/g, '&quot;');
         const abstract = book.abstract || '暂无简介';
-        const statusBadge = book.status ? `<span class="status-badge ongoing">${book.status}</span>` : '';
+        const statusBadge = book.status ? `<span class="status-badge ${book.status === '已完结' ? 'completed' : 'ongoing'}">${book.status}</span>` : '';
         const cover = book.cover_url ? `src="${book.cover_url}"` : '';
 
         return `
@@ -127,6 +142,7 @@ async function performSearch(append = false) {
 
     const keyword = searchState.keyword;
     const offset = append ? searchState.offset : 0;
+    const statusFilter = searchState.statusFilter;
 
     const searchBtn = document.getElementById('searchBtn');
     if (searchBtn && !append) {
@@ -139,12 +155,18 @@ async function performSearch(append = false) {
     try {
         const result = await api.search(keyword, offset);
         if (result.success) {
-            renderSearchResults(result.data, append);
+            let books = result.data?.books || [];
+            
+            if (statusFilter) {
+                books = books.filter(book => book.status === statusFilter);
+            }
+            
+            renderSearchResults({ books }, append);
             Logger.logKey('msg_search_success');
-            const added = result.data?.books?.length || 0;
-            searchState.offset = offset + added;
+            
+            searchState.offset = offset + books.length;
             searchState.hasMore = !!result.data?.has_more;
-            toggleLoadMore(searchState.hasMore);
+            toggleLoadMore(searchState.hasMore && books.length > 0);
         } else {
             Toast.error(result.message || '搜索失败');
             Logger.logKey('msg_search_empty');
@@ -159,21 +181,46 @@ async function performSearch(append = false) {
         searchState.loading = false;
         if (searchBtn && !append) {
             searchBtn.disabled = false;
-            searchBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg> 搜索';
+            searchBtn.innerHTML = '<iconify-icon icon="line-md:search"></iconify-icon>';
         }
     }
 }
 
-// ===================== 搜索功能 =====================
-
 async function handleSearch() {
     const keyword = document.getElementById('searchKeyword')?.value.trim();
+    const statusFilter = document.getElementById('statusFilter')?.value || '';
+    
     if (!keyword) {
         Toast.warning('请输入搜索关键词');
         return;
     }
 
+    const inputType = detectInputType(keyword);
+    console.log(`[DEBUG] 输入类型: ${inputType}, 内容: ${keyword}`);
+
+    if (inputType === 'id' || inputType === 'url') {
+        const bookId = normalizeBookId(keyword);
+        console.log(`[DEBUG] 识别为ID: ${bookId}`);
+        
+        try {
+            const result = await api.getBookInfo(bookId);
+            if (result.success && result.data) {
+                const book = result.data;
+                renderSearchResults({
+                    books: [book]
+                }, false);
+                searchState.hasMore = false;
+                toggleLoadMore(false);
+                Logger.logKey('msg_search_success');
+                return;
+            }
+        } catch (e) {
+            console.error('获取书籍信息失败:', e);
+        }
+    }
+
     searchState.keyword = keyword;
+    searchState.statusFilter = statusFilter;
     searchState.offset = 0;
     searchState.hasMore = false;
 
@@ -191,184 +238,151 @@ function clearSearchResults() {
     updateSearchHeader(0);
     toggleLoadMore(false);
     searchState.keyword = '';
+    searchState.statusFilter = '';
     searchState.offset = 0;
     searchState.hasMore = false;
 }
 
-// ===================== 下载处理 =====================
-
 async function handleDownload(bookId, bookName) {
-    const resolvedBookId = normalizeBookId(bookId || getInputBookId());
-    if (!resolvedBookId) {
-        Toast.warning('请输入书籍ID或链接');
-        return;
+    try {
+        const result = await api.getBookInfo(bookId);
+        if (!result.success || !result.data) {
+            Toast.error('获取书籍信息失败');
+            return;
+        }
+
+        const book = result.data;
+        await openChapterModal(book);
+    } catch (e) {
+        Toast.error('获取书籍信息失败: ' + e.message);
+        Logger.log(`获取书籍信息失败: ${e.message}`, 'error');
     }
+}
 
-    const savePath = document.getElementById('savePath')?.value.trim();
-    const fileFormat = getSelectedFormat();
-
-    if (!savePath) {
-        Toast.warning('请选择保存路径');
-        handleSelectFolder();
-        return;
-    }
-
+function handleAddToQueue(bookId, bookName) {
     const task = {
-        book_id: resolvedBookId,
-        save_path: savePath,
-        file_format: fileFormat
+        book_id: bookId,
+        book_name: bookName
     };
-
-    const result = await api.download(task);
-    if (result.success) {
-        Toast.success(`开始下载: ${bookName || resolvedBookId}`);
-        Logger.logKey('msg_download_start', bookName || resolvedBookId);
-    } else {
-        Toast.error(result.message || '下载启动失败');
-        Logger.logKey('msg_download_failed', bookName || resolvedBookId);
-    }
-}
-
-async function handleAddToQueue(bookId, bookName) {
-    const resolvedBookId = normalizeBookId(bookId || getInputBookId());
-    if (!resolvedBookId) {
-        Toast.warning('请输入书籍ID或链接');
-        return;
-    }
-
-    const savePath = document.getElementById('savePath')?.value.trim();
-
-    if (!savePath) {
-        Toast.warning('请先选择保存路径');
-        handleSelectFolder();
-        return;
-    }
-
-    const task = {
-        book_id: resolvedBookId,
-        book_name: bookName || resolvedBookId,
-        save_path: savePath,
-        file_format: getSelectedFormat()
-    };
-
-    QueueManager.add(task);
-    Logger.logKey('msg_queue_added', bookName || resolvedBookId);
-}
-
-async function handleCancel() {
-    const status = await api.getStatus();
-    if (status.is_downloading) {
-        ConfirmDialog.show('确定取消当前下载？', async () => {
-            const result = await api.cancel();
-            if (result.success) {
-                Toast.info('下载已取消');
-                Logger.log('下载已取消', 'warning');
-            } else {
-                Toast.error('取消失败');
-            }
-        }, { title: '取消下载', confirmText: '确定取消', confirmClass: 'btn-danger' });
-    } else {
-        Toast.info('没有正在进行的下载');
-    }
-}
-
-function handleClear() {
-    const input = document.getElementById('bookId');
-    if (input) input.value = '';
-
-    const inlineConfirm = document.getElementById('inlineConfirmContainer');
-    if (inlineConfirm) inlineConfirm.style.display = 'none';
-
-    Toast.info('已重置');
+    TaskManager.add(task);
 }
 
 async function handleBrowse() {
-    await handleSelectFolder();
+    handleSelectFolder();
+}
+
+function handleCancel() {
+    const bookIdInput = document.getElementById('bookId');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    
+    if (bookIdInput) bookIdInput.value = '';
+    if (downloadBtn) downloadBtn.style.display = 'inline-flex';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    
+    AppState.setCurrentBook(null);
+}
+
+function handleClear() {
+    handleCancel();
+    AppState.clearChapterSelection();
 }
 
 async function handleStartQueueDownload() {
-    const queue = QueueManager.getLocalQueue();
-    if (queue.length === 0) {
+    const tasks = TaskManager.getTasks();
+    if (tasks.length === 0) {
         Toast.warning('队列为空');
         return;
     }
 
-    const savePath = document.getElementById('savePath')?.value.trim();
+    const savePath = AppState.getSavePath();
     if (!savePath) {
-        Toast.warning('请先选择保存路径');
-        handleSelectFolder();
-        return;
-    }
-
-    const bookIds = queue.map(t => t.book_id);
-    const fileFormat = getSelectedFormat();
-
-    const result = await api.request('/api/batch-download', {
-        method: 'POST',
-        body: JSON.stringify({
-            book_ids: bookIds,
-            save_path: savePath,
-            file_format: fileFormat
-        })
-    });
-
-    if (result.success) {
-        Toast.success(result.message);
-        QueueManager.clear();
-    } else {
-        Toast.error(result.message || '批量下载启动失败');
-    }
-}
-
-function handleClearQueue() {
-    QueueManager.clear();
-}
-
-async function handleLoadFromFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const savePath = document.getElementById('savePath')?.value.trim();
-    if (!savePath) {
-        Toast.warning('请先选择保存路径');
-        handleSelectFolder();
-        e.target.value = '';
+        Toast.warning('请先设置保存路径');
         return;
     }
 
     try {
-        const text = await file.text();
-        const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-        const bookIds = [];
+        const format = getSelectedFormat();
+        const result = await api.request('/api/batch-download', {
+            method: 'POST',
+            body: JSON.stringify({
+                book_ids: tasks.map(t => t.book_id),
+                save_path: savePath,
+                file_format: format
+            })
+        });
 
-        for (const line of lines) {
-            const match = line.match(/fanqienovel\.com\/page\/(\d+)/);
-            if (match) {
-                bookIds.push(match[1]);
-            } else if (/^\d+$/.test(line)) {
-                bookIds.push(line);
-            }
-        }
-
-        if (bookIds.length > 0) {
-            Toast.success(`成功解析 ${bookIds.length} 个书籍ID`);
-            for (const bookId of bookIds) {
-                QueueManager.add({ book_id: bookId, save_path: savePath, file_format: getSelectedFormat() });
-            }
+        if (result.success) {
+            Toast.success('开始批量下载');
+            Logger.logKey('msg_download_start');
         } else {
-            Toast.error('未能解析到有效的书籍ID');
+            Toast.error(result.message || '启动失败');
         }
-    } catch (err) {
-        Toast.error('读取文件失败: ' + err.message);
+    } catch (e) {
+        Toast.error('启动失败: ' + e.message);
+        Logger.log(`启动失败: ${e.message}`, 'error');
     }
-
-    e.target.value = '';
 }
 
-// ===================== 队列管理 =====================
+function handleClearQueue() {
+    ConfirmDialog.show({
+        title: '清空队列',
+        message: '确定要清空所有任务吗？',
+        onConfirm: () => {
+            TaskManager.clear();
+        }
+    });
+}
+
+async function handleLoadFromFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+        const text = await file.text();
+        const lines = text.split('\n')
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith('#'));
+
+        if (lines.length === 0) {
+            Toast.warning('文件中没有有效的书籍ID');
+            return;
+        }
+
+        let addedCount = 0;
+        for (const line of lines) {
+            const bookId = normalizeBookId(line);
+            if (bookId) {
+                try {
+                    const result = await api.getBookInfo(bookId);
+                    if (result.success && result.data) {
+                        const task = {
+                            book_id: bookId,
+                            book_name: result.data.book_name || bookId
+                        };
+                        TaskManager.add(task);
+                        addedCount++;
+                    }
+                } catch (e) {
+                    console.error(`获取书籍 ${bookId} 信息失败:`, e);
+                }
+            }
+        }
+
+        if (addedCount > 0) {
+            Toast.success(`已添加 ${addedCount} 本书到队列`);
+        } else {
+            Toast.warning('没有添加任何书籍');
+        }
+    } catch (e) {
+        Toast.error('读取文件失败: ' + e.message);
+    }
+
+    event.target.value = '';
+}
 
 function renderQueue() {
-    QueueManager.render();
+    TaskManager.render();
 }
 
 function initQueueListInteractions() {
@@ -376,24 +390,42 @@ function initQueueListInteractions() {
     if (!container) return;
 
     container.addEventListener('click', (e) => {
-        const btn = e.target.closest('button');
-        if (!btn) return;
+        const action = e.target.closest('[data-action]');
+        if (!action) return;
 
-        if (btn.title === '移除') {
-            const id = parseFloat(btn.closest('.queue-item')?.dataset.id);
-            if (id) QueueManager.remove(id);
+        const actionType = action.dataset.action;
+        const item = action.closest('.queue-item');
+        if (!item) return;
+
+        const id = parseFloat(item.dataset.id);
+        const bookId = item.dataset.bookId;
+
+        switch (actionType) {
+            case 'remove':
+                if (id) {
+                    TaskManager.remove(id);
+                }
+                break;
+            case 'retry':
+                if (bookId) {
+                    TaskManager.updateTaskStatus(bookId, 'pending');
+                    TaskManager.render();
+                }
+                break;
         }
     });
 }
 
-// ===================== 版本信息 =====================
-
 async function fetchVersion() {
     try {
-        const data = await api.request('/api/version');
-        if (data.success) {
-            const versionEl = document.getElementById('currentVersion');
-            if (versionEl) versionEl.textContent = data.version;
+        const result = await api.getVersion();
+        if (result.success) {
+            const currentVersion = result.data.current_version;
+            const latestVersion = result.data.latest_version;
+            
+            if (currentVersion !== latestVersion) {
+                showUpdateModal(currentVersion, latestVersion, result.data.description);
+            }
         }
     } catch (e) {
         console.error('获取版本信息失败:', e);
@@ -414,6 +446,5 @@ export {
     initQueueListInteractions,
     renderQueue,
     clearSearchResults,
-    handleLoadMoreSearchResults,
-    getSelectedFormat
+    handleLoadMoreSearchResults
 };

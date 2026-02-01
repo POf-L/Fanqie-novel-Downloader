@@ -191,15 +191,17 @@ Desktop.ini
 # Note: fanqie.json is now tracked as local config file
 
 # Local runtime files (saved in program directory)
-fanqie_window_config.json
-fanqie_novel_downloader_config.json
-novels/
-.download_status.json
+# 现在使用统一的数据目录结构，所有文件都在程序同名子目录下
+# 格式：{程序名}/
+
+# 忽略所有程序数据目录
+fanqie_novel_downloader/
+novel_downloader/
+Fanqie-novel-Downloader/
 
 # WindsurfChatOpen
 .windsurfchatopen/
 .windsurfrules
 
 # Runtime caches
-cache/
 .omc/

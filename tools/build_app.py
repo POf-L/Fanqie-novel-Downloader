@@ -243,8 +243,8 @@ def get_platform_config(target_platform: str = None) -> dict:
         'platform': target_platform,
         'hidden_imports': get_hidden_imports(),
         'data_files': [
-            ('static', 'static'),
-            ('templates', 'templates'),
+            ('web/static', 'static'),
+            ('web/templates', 'templates'),
         ],
         'options': [],
     }

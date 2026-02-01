@@ -68,17 +68,22 @@ def _get_config_path():
 LOCAL_CONFIG_JSON = _get_config_path()
 
 def _get_user_pref_path():
-    """获取用户偏好配置文件路径（始终在外部可写目录）"""
-    import sys
-    import os
-    if getattr(sys, 'frozen', False):
-        base_dir = os.path.dirname(sys.executable)
-    else:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
-    config_dir = os.path.join(base_dir, 'config')
-    os.makedirs(config_dir, exist_ok=True)
-    return os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
+    """获取用户偏好配置文件路径（使用统一数据目录）"""
+    try:
+        from utils.app_data_manager import get_app_config_path
+        return get_app_config_path()
+    except ImportError:
+        # 如果导入失败，使用原有逻辑
+        import sys
+        import os
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        config_dir = os.path.join(base_dir, 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        return os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
 
 _LOCAL_CONFIG_FILE = _get_user_pref_path()
 

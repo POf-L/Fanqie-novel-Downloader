@@ -26,21 +26,27 @@ def cmd_config(args):
     from config.config import CONFIG
     import sys
 
-    # 获取配置文件路径
-    if getattr(sys, 'frozen', False):
-        # 打包环境
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
+    # 获取配置文件路径（使用统一数据目录）
+    try:
+        from utils.app_data_manager import get_config_dir, get_app_config_path
+        config_dir = get_config_dir()
+        config_file = get_app_config_path()
+    except ImportError:
+        # 如果导入失败，使用原有逻辑
+        if getattr(sys, 'frozen', False):
+            # 打包环境
+            if hasattr(sys, '_MEIPASS'):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
         else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-    else:
-        # 开发环境
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            # 开发环境
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # 创建 config 目录
-    config_dir = os.path.join(base_dir, 'config')
-    os.makedirs(config_dir, exist_ok=True)
-    config_file = os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
+        # 创建 config 目录
+        config_dir = os.path.join(base_dir, 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        config_file = os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
 
     # 读取本地配置
     def read_config():
@@ -198,21 +204,27 @@ def cmd_api(args):
     import requests
     import time
 
-    # 获取配置文件路径
-    if getattr(sys, 'frozen', False):
-        # 打包环境
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
+    # 获取配置文件路径（使用统一数据目录）
+    try:
+        from utils.app_data_manager import get_config_dir, get_app_config_path
+        config_dir = get_config_dir()
+        config_file = get_app_config_path()
+    except ImportError:
+        # 如果导入失败，使用原有逻辑
+        if getattr(sys, 'frozen', False):
+            # 打包环境
+            if hasattr(sys, '_MEIPASS'):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
         else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-    else:
-        # 开发环境
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            # 开发环境
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # 创建 config 目录
-    config_dir = os.path.join(base_dir, 'config')
-    os.makedirs(config_dir, exist_ok=True)
-    config_file = os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
+        # 创建 config 目录
+        config_dir = os.path.join(base_dir, 'config')
+        os.makedirs(config_dir, exist_ok=True)
+        config_file = os.path.join(config_dir, 'fanqie_novel_downloader_config.json')
 
     # 读取本地配置
     def read_config():

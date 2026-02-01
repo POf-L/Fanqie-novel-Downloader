@@ -321,8 +321,8 @@ def main():
     print(f"当前版本: {__version__}")
     
     # 显示配置文件路径
-    from web.web_app import get_config_dir
-    config_file = os.path.join(get_config_dir(), 'fanqie_novel_downloader_config.json')
+    from utils.app_data_manager import get_app_config_path
+    config_file = get_app_config_path()
     print(f"配置文件: {config_file}")
     
     # 生成随机访问令牌
