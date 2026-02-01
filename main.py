@@ -421,6 +421,7 @@ def main():
         print("\n" + get_unavailable_feature_message('gui_webview'))
         print("将使用浏览器模式...")
         
+        url = f'http://127.0.0.1:{port}?token={access_token}'
         import webbrowser
         time.sleep(1)
         webbrowser.open(url)
