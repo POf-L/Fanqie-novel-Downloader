@@ -1,0 +1,306 @@
+/* ===================== 动画效果增强 ===================== */
+
+/* 页面加载动画 */
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* 应用动画到元素 - 优化性能 */
+.dashboard-header {
+    animation: slideInUp 0.5s ease-out;
+}
+
+.dashboard-main {
+    animation: fadeIn 0.6s ease-out;
+}
+
+.search-item {
+    animation: slideInUp 0.3s ease-out backwards;
+    will-change: transform, opacity;
+}
+
+/* 减少动画延迟，避免大量项目时的性能问题 */
+.search-item:nth-child(1) { animation-delay: 0.02s; }
+.search-item:nth-child(2) { animation-delay: 0.04s; }
+.search-item:nth-child(3) { animation-delay: 0.06s; }
+.search-item:nth-child(4) { animation-delay: 0.08s; }
+.search-item:nth-child(5) { animation-delay: 0.1s; }
+
+.queue-item {
+    animation: slideInLeft 0.3s ease-out backwards;
+    will-change: transform, opacity;
+}
+
+.queue-item:nth-child(1) { animation-delay: 0.02s; }
+.queue-item:nth-child(2) { animation-delay: 0.1s; }
+.queue-item:nth-child(3) { animation-delay: 0.15s; }
+.queue-item:nth-child(4) { animation-delay: 0.2s; }
+.queue-item:nth-child(5) { animation-delay: 0.25s; }
+
+.task-status-card,
+.task-summary-card,
+.task-log-card {
+    animation: scaleIn 0.5s ease-out backwards;
+}
+
+.task-status-card { animation-delay: 0.1s; }
+.task-summary-card { animation-delay: 0.2s; }
+.task-log-card { animation-delay: 0.3s; }
+
+.setting-item {
+    animation: slideInUp 0.4s ease-out backwards;
+}
+
+.setting-item:nth-child(1) { animation-delay: 0.05s; }
+.setting-item:nth-child(2) { animation-delay: 0.1s; }
+.setting-item:nth-child(3) { animation-delay: 0.15s; }
+.setting-item:nth-child(4) { animation-delay: 0.2s; }
+.setting-item:nth-child(5) { animation-delay: 0.25s; }
+.setting-item:nth-child(6) { animation-delay: 0.3s; }
+
+/* 按钮点击动画 */
+@keyframes buttonPress {
+    0% { transform: scale(1); }
+    50% { transform: scale(0.95); }
+    100% { transform: scale(1); }
+}
+
+.btn:active {
+    animation: buttonPress 0.2s ease;
+}
+
+/* 进度条填充动画 */
+@keyframes progressFill {
+    from {
+        transform: scaleX(0);
+        transform-origin: left;
+    }
+    to {
+        transform: scaleX(1);
+        transform-origin: left;
+    }
+}
+
+.progress-bar {
+    animation: progressFill 0.5s ease-out;
+}
+
+/* 图标旋转动画 */
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spin {
+    animation: rotate 1s linear infinite;
+}
+
+/* 脉冲动画 */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+}
+
+/* 闪烁动画 */
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* 摇晃动画 */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+/* 弹跳动画 */
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+/* 渐变背景动画 */
+@keyframes gradientShift {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+/* 光晕效果 */
+@keyframes glow {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
+    }
+}
+
+/* 悬停时的光晕效果 */
+.btn-primary:hover {
+    animation: glow 2s ease-in-out infinite;
+}
+
+/* 加载状态动画 */
+@keyframes loadingDots {
+    0%, 20% {
+        content: '.';
+    }
+    40% {
+        content: '..';
+    }
+    60%, 100% {
+        content: '...';
+    }
+}
+
+/* 卡片翻转动画 */
+@keyframes cardFlip {
+    from {
+        transform: rotateY(0deg);
+    }
+    to {
+        transform: rotateY(180deg);
+    }
+}
+
+/* 滑入滑出动画 */
+@keyframes slideDown {
+    from {
+        max-height: 0;
+        opacity: 0;
+    }
+    to {
+        max-height: 500px;
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        max-height: 500px;
+        opacity: 1;
+    }
+    to {
+        max-height: 0;
+        opacity: 0;
+    }
+}
+
+/* 波纹效果 */
+@keyframes ripple {
+    0% {
+        transform: scale(0);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+
+.btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.btn:active::after {
+    width: 200px;
+    height: 200px;
+    opacity: 0;
+    transition: 0s;
+}
+
+/* 平滑滚动 */
+html {
+    scroll-behavior: smooth;
+}
+
+/* 减少动画（用户偏好） */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

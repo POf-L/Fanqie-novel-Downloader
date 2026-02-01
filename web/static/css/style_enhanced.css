@@ -1,0 +1,344 @@
+/* ===================== 页面美化增强样式 ===================== */
+
+/* 增强卡片效果 */
+.card {
+    box-shadow: var(--shadow-md);
+    transition: var(--transition);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+/* 美化搜索结果卡片 */
+.search-item {
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.search-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--primary);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.search-item:hover::before {
+    opacity: 1;
+}
+
+.search-item:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-focus);
+}
+
+/* 美化封面图片 */
+.search-cover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: var(--transition);
+}
+
+.search-item:hover .search-cover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* 纯色按钮效果 */
+.btn-primary {
+    background: var(--primary);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    transition: var(--transition);
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+    transform: translateY(-1px);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+/* 美化进度条 */
+.progress-bar {
+    background: var(--primary);
+    box-shadow: 0 2px 8px var(--primary-light);
+}
+
+/* 美化标签页 */
+.tab-btn.active {
+    background: var(--primary-light);
+    box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+/* 美化输入框 */
+.form-input:focus {
+    box-shadow: var(--focus-ring), 0 4px 12px var(--primary-lighter);
+}
+
+/* 美化队列项 */
+.queue-item {
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.queue-item:hover {
+    transform: translateX(4px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--primary);
+}
+
+/* 美化任务卡片 */
+.task-status-card,
+.task-summary-card,
+.task-log-card {
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.task-status-card:hover,
+.task-summary-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+/* 美化统计图标 */
+.summary-stat-icon {
+    transition: var(--transition);
+}
+
+.summary-stat:hover .summary-stat-icon {
+    transform: scale(1.1) rotate(5deg);
+}
+
+.summary-stat-icon.pending {
+    background: var(--warning-lighter);
+    color: var(--warning);
+}
+
+.summary-stat-icon.downloading {
+    background: var(--primary-lighter);
+    color: var(--primary);
+}
+
+.summary-stat-icon.completed {
+    background: var(--success-lighter);
+    color: var(--success);
+}
+
+.summary-stat-icon.failed {
+    background: var(--danger-lighter);
+    color: var(--danger);
+}
+
+/* 美化顶部导航栏 */
+.dashboard-header {
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(10px);
+    background: rgba(30, 41, 59, 0.9);
+}
+
+/* 美化版本标签 */
+.version-tag {
+    background: var(--primary-light);
+    border: 1px solid var(--primary-lighter);
+}
+
+/* 美化模态框 */
+.modal-content {
+    box-shadow: var(--shadow-lg), 0 0 40px var(--primary-lighter);
+}
+
+/* 美化日志容器 */
+.log-container {
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 美化设置项 */
+.setting-item {
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.setting-item:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+
+/* 美化滑块 */
+.setting-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bg-input);
+    outline: none;
+}
+
+.setting-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    box-shadow: 0 2px 8px var(--primary-light);
+    transition: var(--transition);
+}
+
+.setting-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px var(--primary-light);
+}
+
+.setting-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 8px var(--primary-light);
+    transition: var(--transition);
+}
+
+.setting-slider::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px var(--primary-light);
+}
+
+/* 美化空状态 */
+.empty-state {
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 美化加载动画 */
+.loading-spinner {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.05);
+    }
+}
+
+/* 美化格式选择器 */
+.format-option-card input:checked + .format-name {
+    background: var(--primary);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* 美化章节选择 */
+.chapter-item:hover {
+    background: var(--primary-light);
+}
+
+/* 美化状态徽章 */
+.status-badge {
+    backdrop-filter: blur(8px);
+    transition: var(--transition);
+}
+
+.status-badge:hover {
+    transform: scale(1.05);
+}
+
+/* 美化窗口控制按钮 */
+.win-btn {
+    transition: var(--transition);
+}
+
+.win-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 美化搜索栏 */
+.search-bar-container {
+    position: relative;
+}
+
+.input-group {
+    box-shadow: var(--shadow-sm);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+/* 美化书籍信息 */
+.book-info {
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.book-info:hover {
+    box-shadow: var(--shadow-md);
+}
+
+/* 美化队列工具栏 */
+.queue-toolbar {
+    box-shadow: var(--shadow-sm);
+}
+
+/* 删除背景渐变 */
+body::before {
+    display: none;
+}
+
+.dashboard-container {
+    position: relative;
+    z-index: 1;
+}
+
+/* 美化滚动条 */
+::-webkit-scrollbar-thumb {
+    background: var(--primary-light);
+    transition: var(--transition);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-lighter);
+}
+
+/* 美化图标按钮 */
+.icon-btn {
+    transition: var(--transition);
+}
+
+.icon-btn:hover {
+    transform: scale(1.05);
+}
+
+/* 美化搜索结果标题 */
+.search-title {
+    color: var(--text-primary);
+}
+
+.search-item:hover .search-title {
+    color: var(--primary);
+}
