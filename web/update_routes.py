@@ -26,7 +26,7 @@ def init_update_routes(
         """检查更新"""
         try:
             import sys
-            from utils.updater import check_and_notify
+            from utils.updater import check_and_notify, parse_release_assets, get_current_platform
             from config.config import __version__, __github_repo__
 
             if not getattr(sys, 'frozen', False):
@@ -40,9 +40,20 @@ def init_update_routes(
             update_info = check_and_notify(__version__, __github_repo__, silent=True)
 
             if update_info:
+                has_update = update_info.get('has_update', False)
+                
+                if has_update and update_info.get('release_info'):
+                    platform = get_current_platform()
+                    assets = parse_release_assets(update_info['release_info'], platform)
+                    
+                    if assets:
+                        recommended_asset = assets[0]
+                        update_info['download_url'] = recommended_asset['download_url']
+                        update_info['filename'] = recommended_asset['name']
+                
                 return jsonify({
                     'success': True,
-                    'has_update': update_info.get('has_update', False),
+                    'has_update': has_update,
                     'data': update_info
                 })
             else:
