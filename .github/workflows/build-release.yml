@@ -283,6 +283,8 @@ jobs:
             --hidden-import=utils.packaging_fixes \
             --hidden-import=utils.watermark \
             --hidden-import=utils.async_logger \
+            --hidden-import=utils.messages \
+            --hidden-import=utils.node_manager \
             --hidden-import=core \
             --hidden-import=core.novel_downloader \
             --hidden-import=core.cli \
@@ -463,7 +465,9 @@ jobs:
               --hidden-import=utils.updater \
               --hidden-import=utils.watermark \
               --hidden-import=utils.async_logger \
+              --hidden-import=utils.messages \
               --hidden-import=utils.runtime_bootstrap \
+              --hidden-import=utils.node_manager \
               --hidden-import=core \
               --hidden-import=core.novel_downloader \
               --hidden-import=packaging \
