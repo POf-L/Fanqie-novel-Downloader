@@ -278,7 +278,6 @@ jobs:
             --hidden-import=web.web_app \
             --hidden-import=utils \
             --hidden-import=utils.updater \
-            --hidden-import=utils.locales \
             --hidden-import=utils.encoding_utils \
             --hidden-import=utils.platform_utils \
             --hidden-import=utils.packaging_fixes \
@@ -401,7 +400,7 @@ jobs:
             # Install build dependencies for Pillow, cffi, and others
             apt-get install -y python3 python3-pip python3-venv python3-dev binutils git build-essential patchelf \
               libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev tk-dev tcl-dev \
-              libffi-dev libssl-dev libwebp-dev libxml2-dev libxslt-dev wget
+              libffi-dev libssl-dev libwebp-dev libxml2-dev libxslt-dev wget file
             # 安装新版 CMake (3.28+) 因为 termux-elf-cleaner 需要 3.25+
             wget -q https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-aarch64.tar.gz
             tar -xzf cmake-3.28.3-linux-aarch64.tar.gz -C /opt
@@ -418,12 +417,22 @@ jobs:
             cp termux-elf-cleaner /usr/local/bin/
             cd /
             rm -rf /tmp/termux-elf-cleaner
+            # 验证 termux-elf-cleaner 安装
+            termux-elf-cleaner --version || echo "termux-elf-cleaner version check failed"
           run: |
             cd /workspace
+            
+            # 设置环境变量以优化 ARM64 编译
+            export CFLAGS="-O2"
+            export CXXFLAGS="-O2"
+            export LDFLAGS="-Wl,--as-needed"
+            
             python3 -m venv venv --system-site-packages
             . venv/bin/activate
+            
             # Upgrade build tools
             pip install --upgrade pip setuptools wheel
+            
             # Install dependencies with extended timeout and binary preference
             # Try to find manylinux_aarch64 wheels to avoid compilation on QEMU
             pip install --default-timeout=3600 --prefer-binary -r config/requirements-termux.txt
@@ -449,12 +458,12 @@ jobs:
               --hidden-import=config.config \
               --hidden-import=version \
               --hidden-import=utils \
-              --hidden-import=utils.locales \
               --hidden-import=utils.encoding_utils \
               --hidden-import=utils.packaging_fixes \
               --hidden-import=utils.updater \
               --hidden-import=utils.watermark \
               --hidden-import=utils.async_logger \
+              --hidden-import=utils.runtime_bootstrap \
               --hidden-import=core \
               --hidden-import=core.novel_downloader \
               --hidden-import=packaging \
@@ -466,10 +475,27 @@ jobs:
               --collect-submodules PIL \
               --collect-submodules aiohttp \
               --collect-submodules asyncio \
+              --strip \
               core/novel_downloader.py
             
-            # 使用 termux-elf-cleaner 修复 ELF 解释器路径
-            termux-elf-cleaner dist/TomatoNovelDownloader-termux || echo "termux-elf-cleaner warning (non-fatal)"
+            # 验证生成的二进制文件
+            echo "=== 检查生成的二进制文件 ==="
+            ls -la dist/
+            file dist/TomatoNovelDownloader-termux
+            ldd dist/TomatoNovelDownloader-termux || echo "ldd failed - checking with readelf"
+            readelf -d dist/TomatoNovelDownloader-termux | head -20 || echo "readelf failed"
+            
+            # 使用 termux-elf-cleaner 修复 ELF 解释器路径和 RPATH
+            echo "=== 应用 termux-elf-cleaner ==="
+            termux-elf-cleaner --verbose dist/TomatoNovelDownloader-termux || echo "termux-elf-cleaner warning (non-fatal)"
+            
+            # 再次验证修复后的二进制文件
+            echo "=== 验证修复后的二进制文件 ==="
+            file dist/TomatoNovelDownloader-termux
+            ldd dist/TomatoNovelDownloader-termux || echo "ldd still failed after cleaning"
+            
+            # 检查可执行权限
+            chmod +x dist/TomatoNovelDownloader-termux
             
             # 在容器内完成重命名，避免权限问题
             cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
@@ -482,6 +508,25 @@ jobs:
             echo "✅ Termux ARM64 build successful"
             file dist/TomatoNovelDownloader-termux
             echo "File size: $(ls -lh dist/TomatoNovelDownloader-termux | awk '{print $5}')"
+            
+            # 检查可执行权限
+            if [ -x "dist/TomatoNovelDownloader-termux" ]; then
+              echo "✅ Executable permissions set correctly"
+            else
+              echo "❌ Executable permissions missing"
+              chmod +x dist/TomatoNovelDownloader-termux
+            fi
+            
+            # 检查重命名的文件
+            if [ -f "dist/TomatoNovelDownloader-termux-arm64" ]; then
+              echo "✅ ARM64 renamed file exists"
+              file dist/TomatoNovelDownloader-termux-arm64
+              # 确保重命名的文件也有执行权限
+              chmod +x dist/TomatoNovelDownloader-termux-arm64
+            else
+              echo "❌ ARM64 renamed file missing"
+              exit 1
+            fi
           else
             echo "❌ Termux build failed"
             exit 1

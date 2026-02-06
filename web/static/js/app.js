@@ -103,11 +103,11 @@ class QueueManager {
     // 获取状态文本
     getStatusText(status) {
         const texts = {
-            pending: i18n.t('queue_status_pending') || '等待中',
-            downloading: i18n.t('queue_status_downloading') || '下载中',
-            completed: i18n.t('queue_status_completed') || '已完成',
-            failed: i18n.t('queue_status_failed') || '失败',
-            skipped: i18n.t('queue_status_skipped') || '已跳过'
+            pending: '等待中',
+            downloading: '下载中',
+            completed: '已完成',
+            failed: '失败',
+            skipped: '已跳过'
         };
         return texts[status] || status;
     }
@@ -300,10 +300,10 @@ class QueueManager {
     updateQueueUI(status) {
         const list = document.getElementById('queueList');
         if (!list) return;
-        
+
         const tasks = status.tasks || [];
         if (tasks.length === 0) return;
-        
+
         // 更新每个任务的状态显示
         tasks.forEach(task => {
             const taskEl = list.querySelector(`[data-task-id="${task.id}"]`);
@@ -317,7 +317,7 @@ class QueueManager {
                         taskEl.dataset.status = nextStatus;
                     }
                 }
-                
+
                 const progressEl = taskEl.querySelector('.queue-item-progress');
                 const nextProgress = typeof task.progress === 'number' ? task.progress : 0;
                 if (progressEl && nextStatus === 'downloading') {
@@ -331,7 +331,7 @@ class QueueManager {
                     progressEl.style.display = 'none';
                     taskEl.dataset.progress = String(nextProgress);
                 }
-                
+
                 // 显示/隐藏重试按钮
                 const retryBtn = taskEl.querySelector('.retry-btn');
                 if (retryBtn) {
@@ -341,9 +341,14 @@ class QueueManager {
                         retryBtn.dataset.visible = String(shouldShowRetry);
                     }
                 }
+
+                // 任务完成或失败时，从本地队列中删除
+                if (nextStatus === 'completed' || nextStatus === 'failed' || nextStatus === 'skipped') {
+                    AppState.removeFromQueue(task.id);
+                }
             }
         });
-        
+
         // 更新摘要
         const summary = document.getElementById('queueSummary');
         if (summary) {
@@ -386,10 +391,10 @@ class ConfirmDialog {
     static show(options = {}) {
         return new Promise((resolve) => {
             const {
-                title = i18n.t('confirm_title') || '确认',
+                title = '确认',
                 message = '',
-                confirmText = i18n.t('btn_confirm') || '确定',
-                cancelText = i18n.t('btn_cancel') || '取消',
+                confirmText = '确定',
+                cancelText = '取消',
                 type = 'info' // info, warning, danger
             } = options;
 
@@ -439,29 +444,29 @@ function showDuplicateDownloadDialog(bookInfo, record, downloadTime) {
         modal.innerHTML = `
             <div class="modal-content confirm-dialog confirm-warning" style="max-width: 450px;">
                 <div class="modal-header">
-                    <h3>${i18n.t('title_duplicate_download') || '重复下载提示'}</h3>
+                    <h3>重复下载提示</h3>
                     <button class="modal-close" type="button">×</button>
                 </div>
                 <div class="modal-body">
                     <div style="margin-bottom: 15px;">
                         <p style="color: #ffaa00; margin-bottom: 10px;">
-                            ⚠️ ${i18n.t('msg_book_already_downloaded') || '该书籍已下载过'}
+                            ⚠️ 该书籍已下载过
                         </p>
                         <div style="background: #1a1a2e; padding: 12px; border-radius: 4px; font-size: 12px;">
-                            <p style="margin: 4px 0;"><strong>${i18n.t('label_book_name') || '书名'}:</strong> ${record.book_name}</p>
-                            <p style="margin: 4px 0;"><strong>${i18n.t('label_download_time') || '下载时间'}:</strong> ${downloadTime}</p>
-                            <p style="margin: 4px 0;"><strong>${i18n.t('label_file_status') || '文件状态'}:</strong> 
+                            <p style="margin: 4px 0;"><strong>书名:</strong> ${record.book_name}</p>
+                            <p style="margin: 4px 0;"><strong>下载时间:</strong> ${downloadTime}</p>
+                            <p style="margin: 4px 0;"><strong>文件状态:</strong> 
                                 ${fileExists 
-                                    ? '<span style="color: #00ff00;">' + (i18n.t('status_file_exists') || '文件存在') + '</span>' 
-                                    : '<span style="color: #ff4444;">' + (i18n.t('status_file_missing') || '文件已移动或删除') + '</span>'}
+                                    ? '<span style="color: #00ff00;">文件存在</span>' 
+                                    : '<span style="color: #ff4444;">文件已移动或删除</span>'}
                             </p>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end;">
-                    <button class="btn btn-secondary cancel-btn" type="button">${i18n.t('btn_cancel') || '取消'}</button>
-                    ${fileExists ? `<button class="btn btn-secondary open-btn" type="button">${i18n.t('btn_open_existing') || '打开已有文件'}</button>` : ''}
-                    <button class="btn btn-primary download-btn" type="button">${i18n.t('btn_download_anyway') || '仍然下载'}</button>
+                    <button class="btn btn-secondary cancel-btn" type="button">取消</button>
+                    ${fileExists ? `<button class="btn btn-secondary open-btn" type="button">打开已有文件</button>` : ''}
+                    <button class="btn btn-primary download-btn" type="button">仍然下载</button>
                 </div>
             </div>
         `;
@@ -495,7 +500,7 @@ class FolderBrowser {
     static async show(options = {}) {
         return new Promise((resolve) => {
             const {
-                title = i18n.t('folder_browser_title') || '选择文件夹',
+                title = '选择文件夹',
                 initialPath = ''
             } = options;
 
@@ -790,7 +795,6 @@ const AppState = {
         const browseBtn = document.getElementById('browseBtn');
         const startQueueBtn = document.getElementById('startQueueBtn');
         const clearQueueBtn = document.getElementById('clearQueueBtn');
-        const apiSourceSelect = document.getElementById('apiSourceSelect');
         
         if (this.isDownloading) {
             downloadBtn.style.display = 'none';
@@ -799,7 +803,6 @@ const AppState = {
             browseBtn.disabled = true;
             if (startQueueBtn) startQueueBtn.disabled = true;
             if (clearQueueBtn) clearQueueBtn.disabled = true;
-            if (apiSourceSelect) apiSourceSelect.disabled = true;
         } else {
             downloadBtn.style.display = 'inline-block';
             cancelBtn.style.display = 'none';
@@ -807,7 +810,6 @@ const AppState = {
             browseBtn.disabled = false;
             if (startQueueBtn) startQueueBtn.disabled = false;
             if (clearQueueBtn) clearQueueBtn.disabled = false;
-            if (apiSourceSelect) apiSourceSelect.disabled = false;
         }
     }
 };
@@ -844,6 +846,58 @@ class Logger {
         this.container = document.getElementById(containerId);
         this.maxEntries = 100;
         this.entries = [];
+        this.messages = {
+            // 应用相关
+            'msg_app_start': '应用启动',
+            'msg_version_info': '版本信息: ',
+            'msg_fetch_version_fail': '获取版本信息失败',
+            'msg_init_app': '初始化应用',
+            'msg_module_loaded': '模块加载成功',
+            'msg_module_fail': '模块加载失败: ',
+            'msg_init_fail': '初始化失败',
+            'msg_token_loaded': '访问令牌已加载',
+            'msg_ready': '应用就绪',
+            'msg_init_partial': '部分初始化成功',
+            'msg_check_network': '请检查网络连接',
+            
+            // 搜索相关
+            'msg_searching': '正在搜索: ',
+            'msg_search_fail': '搜索失败: ',
+            'log_search_success': '搜索成功，找到 ',
+            'log_search_no_results_x': '没有找到搜索结果',
+            'log_selected': '已选择: ',
+            
+            // 书籍信息相关
+            'msg_book_info_fail': '获取书籍信息失败: ',
+            'log_get_chapter_list': '获取章节列表: ',
+            'log_confirmed_selection': '已确认选择，共 ',
+            'log_cancel_selection': '已取消选择',
+            
+            // 下载相关
+            'msg_task_started': '下载任务已开始',
+            'msg_start_download_fail': '开始下载失败: ',
+            'msg_download_cancelled': '下载已取消',
+            'msg_cancel_fail': '取消下载失败: ',
+            'msg_added_to_queue': '已添加到下载队列: ',
+            'msg_removed_from_queue': '已从队列中移除: ',
+            'msg_queue_started': '队列开始下载，共 ',
+            'msg_queue_cleared': '队列已清空',
+            'log_prepare_download': '准备下载: ',
+            'log_chapter_range': '章节范围: ',
+            'log_mode_manual': '手动模式，共 ',
+            'log_download_all': '下载全部章节: ',
+            'log_show_dialog_fail': '显示对话框失败: ',
+            
+            // 文件夹相关
+            'msg_folder_fail': '文件夹操作失败: ',
+            'msg_open_folder_dialog': '打开文件夹对话框',
+            'msg_save_path_updated': '保存路径已更新: ',
+            'msg_settings_cleared': '设置已清除',
+            
+            // 其他
+            'log_scp_access': '已切换到单章模式',
+            'log_scp_revert': '已退出单章模式'
+        };
     }
     
     logKey(key, ...args) {
@@ -925,13 +979,36 @@ class Logger {
     
     _formatText(data) {
         if (data.type === 'key') {
-            return (typeof i18n !== 'undefined' ? i18n.t(data.key, ...(data.args || [])) : data.key) + (data.suffix || '');
-        } else {
-            let msg = data.message;
-            if (typeof i18n !== 'undefined') {
-                msg = i18n.translateBackendMsg(msg);
+            let text = this.messages[data.key] || data.key;
+            // 如果有参数，将它们附加到文本后面
+            if (data.args && data.args.length > 0) {
+                // 对于某些特殊的键，需要特殊处理参数格式
+                if (data.key === 'log_selected') {
+                    // 格式: 已选择: 书籍名 (ID)
+                    text += data.args[0] + ' (' + data.args[1] + ')';
+                } else if (data.key === 'log_search_success') {
+                    // 格式: 搜索成功，找到 X 本书
+                    text += data.args[0] + ' 本书';
+                } else if (data.key === 'log_confirmed_selection') {
+                    // 格式: 已确认选择，共 X 章
+                    text += data.args[0] + ' 章';
+                } else if (data.key === 'log_mode_manual') {
+                    // 格式: 手动模式，共 X 章
+                    text += data.args[0] + ' 章';
+                } else if (data.key === 'log_chapter_range') {
+                    // 格式: 章节范围: X - Y
+                    text += data.args[0] + ' - ' + data.args[1];
+                } else if (data.key === 'msg_queue_started') {
+                    // 格式: 队列开始下载，共 X 个任务
+                    text += data.args[0] + ' 个任务';
+                } else {
+                    // 默认处理：直接连接参数
+                    text += data.args.join('');
+                }
             }
-            return msg;
+            return text;
+        } else {
+            return data.message;
         }
     }
     
@@ -1184,12 +1261,12 @@ class APIClient {
         
         if (this.lastStatusSnapshot.statusKey !== statusKey || this.lastStatusSnapshot.queueInfo !== queueInfo) {
             if (statusKey === 'downloading') {
-                statusTextEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg> ${i18n.t('status_downloading')}${queueInfo}`;
+                statusTextEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg> 下载中${queueInfo}`;
             } else if (statusKey === 'completed') {
-                statusTextEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> ${i18n.t('status_completed')}`;
+                statusTextEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> 下载完成`;
                 updateProgressBadge(100);
             } else {
-                statusTextEl.textContent = i18n.t('status_ready');
+                statusTextEl.textContent = '准备下载';
             }
             this.lastStatusSnapshot.statusKey = statusKey;
             this.lastStatusSnapshot.queueInfo = queueInfo;
@@ -1280,29 +1357,6 @@ class APIClient {
             return result;
         } catch (error) {
             console.error('启动队列下载失败:', error);
-            return { success: false, message: error.message };
-        }
-    }
-
-    // ========== 下载接口选择 API ==========
-    async getApiSources() {
-        try {
-            return await this.request('/api/api-sources');
-        } catch (error) {
-            return { success: false, message: error.message };
-        }
-    }
-
-    async selectApiSource(mode, baseUrl = '') {
-        try {
-            return await this.request('/api/api-sources/select', {
-                method: 'POST',
-                body: JSON.stringify({
-                    mode,
-                    base_url: baseUrl
-                })
-            });
-        } catch (error) {
             return { success: false, message: error.message };
         }
     }
@@ -1508,12 +1562,12 @@ function updateProgressBadge(progress) {
 
 function formatQueueChapterInfo(task) {
     if (task && Array.isArray(task.selected_chapters) && task.selected_chapters.length > 0) {
-        return i18n.t('queue_item_chapters_manual', task.selected_chapters.length);
+        return `已选择 ${task.selected_chapters.length} 章`;
     }
     if (typeof task?.start_chapter === 'number' && typeof task?.end_chapter === 'number') {
-        return i18n.t('queue_item_chapters_range', task.start_chapter, task.end_chapter);
+        return `第 ${task.start_chapter} - ${task.end_chapter} 章`;
     }
-    return i18n.t('queue_item_chapters_all');
+    return '全部章节';
 }
 
 function renderQueue() {
@@ -1522,7 +1576,7 @@ function renderQueue() {
     if (!list || !summary) return;
 
     const tasks = Array.isArray(AppState.downloadQueue) ? AppState.downloadQueue : [];
-    summary.textContent = i18n.t('queue_summary_count', tasks.length);
+    summary.textContent = `队列: ${tasks.length} 个任务`;
 
     if (tasks.length === 0) {
         list.innerHTML = `
@@ -1530,7 +1584,7 @@ function renderQueue() {
                 <div class="empty-state-icon">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M3 12h18"></path><path d="M3 18h18"></path></svg>
                 </div>
-                <div class="empty-state-text">${i18n.t('queue_empty')}</div>
+                <div class="empty-state-text">队列为空，请添加下载任务</div>
             </div>
         `;
         return;
@@ -1544,7 +1598,7 @@ function renderQueue() {
         item.className = 'queue-item';
         item.dataset.taskId = task.id;
 
-        const title = task.book_name || task.book_id || i18n.t('queue_unknown_book');
+        const title = task.book_name || task.book_id || '未知书籍';
         const meta = [
             task.author || '',
             task.book_id ? `ID: ${task.book_id}` : ''
@@ -1570,8 +1624,8 @@ function renderQueue() {
                 </div>
             </div>
             <div class="queue-item-actions">
-                <button class="btn btn-sm btn-text retry-btn" type="button" data-action="retry" style="display: ${status === 'failed' ? 'inline-flex' : 'none'};">${i18n.t('btn_retry') || '重试'}</button>
-                <button class="btn btn-sm btn-text remove-btn" type="button" data-action="remove">${i18n.t('btn_remove_from_queue')}</button>
+                <button class="btn btn-sm btn-text retry-btn" type="button" data-action="retry" style="display: ${status === 'failed' ? 'inline-flex' : 'none'};">重试</button>
+                <button class="btn btn-sm btn-text remove-btn" type="button" data-action="remove">移出队列</button>
             </div>
         `;
 
@@ -1596,7 +1650,7 @@ function initQueueListInteractions() {
         if (!taskId) return;
         
         const task = AppState.downloadQueue.find(t => t && String(t.id) === String(taskId));
-        const title = task?.book_name || task?.book_id || i18n.t('queue_unknown_book');
+        const title = task?.book_name || task?.book_id || '未知书籍';
         
         if (actionBtn.dataset.action === 'remove') {
             AppState.removeFromQueue(taskId);
@@ -1613,19 +1667,19 @@ function initQueueListInteractions() {
 
 async function handleStartQueueDownload() {
     if (AppState.isDownloading) {
-        Toast.warning(i18n.t('alert_download_in_progress'));
+        Toast.warning('下载进行中，请等待完成');
         return;
     }
 
     const tasks = Array.isArray(AppState.downloadQueue) ? AppState.downloadQueue : [];
     if (tasks.length === 0) {
-        Toast.warning(i18n.t('alert_queue_empty'));
+        Toast.warning('队列为空');
         return;
     }
 
     const savePath = document.getElementById('savePath').value.trim();
     if (!savePath) {
-        Toast.warning(i18n.t('alert_select_path'));
+        Toast.warning('请选择保存路径');
         switchTab('download');
         return;
     }
@@ -1669,20 +1723,20 @@ async function handleStartQueueDownload() {
         const duplicateList = duplicateBooks.map(b => {
             const time = new Date(b.download_time).toLocaleString();
             const status = b.file_exists
-                ? `<span style="color: #00ff00;">${i18n.t('status_file_exists') || '文件存在'}</span>`
-                : `<span style="color: #ff4444;">${i18n.t('status_file_missing') || '文件已移动或删除'}</span>`;
+                ? `<span style="color: #00ff00;">文件存在</span>`
+                : `<span style="color: #ff4444;">文件已移动或删除</span>`;
             return `<li style="margin: 4px 0;"><strong>${b.book_name}</strong> - ${time} (${status})</li>`;
         }).join('');
 
         const confirmed = await ConfirmDialog.show({
-            title: i18n.t('title_duplicate_download') || '重复下载提示',
+            title: '重复下载提示',
             message: `
                 <div style="margin-bottom: 10px;">
-                    <p style="color: #ffaa00;">⚠️ ${i18n.t('msg_batch_duplicate_found', duplicateBooks.length) || `发现 ${duplicateBooks.length} 本书籍已下载过：`}</p>
+                    <p style="color: #ffaa00;">⚠️ 发现 ${duplicateBooks.length} 本书籍已下载过：</p>
                     <ul style="max-height: 200px; overflow-y: auto; padding-left: 20px; margin: 10px 0; background: #1a1a2e; padding: 12px 12px 12px 30px; border-radius: 4px; font-size: 12px;">
                         ${duplicateList}
                     </ul>
-                    <p>${i18n.t('msg_batch_duplicate_confirm') || '是否继续下载？'}</p>
+                    <p>是否继续下载？</p>
                 </div>
             `,
             type: 'warning'
@@ -1703,13 +1757,13 @@ async function handleStartQueueDownload() {
     const result = await api.startQueue(payload, savePath, fileFormat);
     if (result && result.success) {
         logger.logKey('msg_queue_started', payload.length);
-        AppState.clearQueue();
+        // 不立即清空队列，等待任务完成后再逐个删除
         AppState.setDownloading(true);
         api.startStatusPolling();
         return;
     }
 
-    const message = result?.message || i18n.t('msg_start_download_fail', '');
+    const message = result?.message || '启动下载失败';
     logger.log(message);
     Toast.error(message);
 }
@@ -1719,8 +1773,8 @@ async function handleClearQueue() {
     if (tasks.length === 0) return;
 
     const confirmed = await ConfirmDialog.show({
-        title: i18n.t('confirm_title') || '确认',
-        message: i18n.t('confirm_clear_queue'),
+        title: '确认',
+        message: '确定要清空队列吗？',
         type: 'warning'
     });
     if (!confirmed) return;
@@ -1754,14 +1808,14 @@ async function handleLoadFromFile(event) {
         const result = await response.json();
         
         if (!result.success) {
-            Toast.error(result.message || i18n.t('alert_load_file_fail') || '加载文件失败');
+            Toast.error('加载文件失败');
             return;
         }
         
         const { books, skipped, valid_count, skipped_count } = result.data;
         
         if (valid_count === 0) {
-            Toast.warning(i18n.t('alert_no_valid_books') || '文件中没有有效的书籍ID');
+            Toast.warning('文件中没有有效的书籍ID');
             return;
         }
         
@@ -1771,7 +1825,7 @@ async function handleLoadFromFile(event) {
             const task = {
                 id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
                 book_id: book.book_id,
-                book_name: i18n.t('queue_unknown_book') || '未知书籍',
+                book_name: '未知书籍',
                 author: '',
                 cover_url: '',
                 abstract: '',
@@ -1787,9 +1841,9 @@ async function handleLoadFromFile(event) {
             addedCount++;
         }
         
-        let message = i18n.t('msg_loaded_from_file', addedCount) || `已从文件加载 ${addedCount} 本书籍`;
+        let message = `已从文件加载 ${addedCount} 本书籍`;
         if (skipped_count > 0) {
-            message += ` (${i18n.t('msg_skipped_lines', skipped_count) || `跳过 ${skipped_count} 行`})`;
+            message += ` (跳过 ${skipped_count} 行)`;
         }
         
         Toast.success(message);
@@ -1800,139 +1854,8 @@ async function handleLoadFromFile(event) {
         
     } catch (e) {
         console.error('Load from file error:', e);
-        Toast.error(i18n.t('alert_load_file_fail') || '加载文件失败');
+        Toast.error('加载文件失败');
     }
-}
-
-/* ===================== 下载接口选择 ===================== */
-
-let apiSourcesCache = null;
-let apiSourceControlsInitialized = false;
-
-function renderApiSourcesUI(data) {
-    const select = document.getElementById('apiSourceSelect');
-    if (!select) return;
-
-    apiSourcesCache = data;
-
-    const sources = Array.isArray(data?.sources) ? data.sources : [];
-    const mode = data?.mode || 'auto';
-    const current = data?.current || '';
-
-    select.innerHTML = '';
-
-    const autoOpt = document.createElement('option');
-    autoOpt.value = '__auto__';
-    autoOpt.textContent = i18n.t('api_auto_select');
-    select.appendChild(autoOpt);
-
-    // 过滤节点：只显示有动态位置信息且测速成功的节点
-    const filteredSources = sources.filter(src => {
-        // 必须有动态位置名称（说明IP解析和位置查询成功）
-        // 且必须测速成功（available=true）
-        return src.dynamic_name && src.available;
-    });
-
-    filteredSources.forEach(src => {
-        const opt = document.createElement('option');
-        opt.value = src.base_url;
-
-        // 使用动态获取的位置名称
-        const name = src.dynamic_name;
-        const ms = typeof src.latency_ms === 'number' ? src.latency_ms : '?';
-
-        // 显示格式：位置名称 [IP地址] (延迟ms)
-        if (src.resolved_ip) {
-            opt.textContent = `${name} [${src.resolved_ip}] (${ms}ms)`;
-        } else {
-            opt.textContent = `${name} (${ms}ms)`;
-        }
-
-        select.appendChild(opt);
-    });
-
-    // Select current mode/endpoint
-    if (mode === 'auto') {
-        select.value = '__auto__';
-    } else if (current) {
-        select.value = current;
-    }
-
-    // Log status
-    const currentSrc = filteredSources.find(s => s.base_url === current);
-    if (current && currentSrc) {
-        // 使用动态获取的位置名称
-        const currentName = currentSrc.dynamic_name;
-        if (currentSrc.available) {
-            const ms = typeof currentSrc.latency_ms === 'number' ? currentSrc.latency_ms : '?';
-            logger.logKey(mode === 'auto' ? 'api_status_auto' : 'api_status_manual', currentName, ms);
-        }
-    }
-}
-
-function setApiSelectLoading(loading) {
-    const wrapper = document.querySelector('.api-select-wrapper');
-    const select = document.getElementById('apiSourceSelect');
-    if (wrapper && select) {
-        if (loading) {
-            wrapper.classList.add('loading');
-            select.disabled = true;
-        } else {
-            wrapper.classList.remove('loading');
-            select.disabled = false;
-        }
-    }
-}
-
-async function refreshApiSourcesUI() {
-    setApiSelectLoading(true);
-    logger.logKey('api_checking_sources');
-
-    const result = await api.getApiSources();
-    setApiSelectLoading(false);
-    
-    if (!result || !result.success) {
-        logger.logKey('api_check_failed', result?.message || '');
-        return;
-    }
-
-    renderApiSourcesUI(result);
-}
-
-function initApiSourceControlsLazy() {
-    // 仅绑定事件，不立即加载节点列表
-    if (apiSourceControlsInitialized) return;
-    apiSourceControlsInitialized = true;
-
-    const select = document.getElementById('apiSourceSelect');
-    if (!select) return;
-
-    select.addEventListener('change', async () => {
-        const value = select.value;
-        if (!value || value === '') return;
-        
-        setApiSelectLoading(true);
-        
-        if (value === '__auto__') {
-            const res = await api.selectApiSource('auto');
-            if (!res.success) {
-                Toast.error(res.message || i18n.t('api_select_failed'));
-            }
-            await refreshApiSourcesUI();
-            return;
-        }
-
-        const res = await api.selectApiSource('manual', value);
-        if (!res.success) {
-            Toast.error(res.message || i18n.t('api_select_failed'));
-        }
-        await refreshApiSourcesUI();
-    });
-}
-
-function initApiSourceControls() {
-    initApiSourceControlsLazy();
-    refreshApiSourcesUI();
 }
 
 /* ===================== UI 事件处理 ===================== */
@@ -1945,14 +1868,6 @@ function initializeUI(skipApiSources = false) {
     AppState.loadQueue();
     renderQueue();
     initQueueListInteractions();
-
-    // 初始化下载接口选择（可跳过以加速启动）
-    if (!skipApiSources) {
-        initApiSourceControls();
-    } else {
-        // 仅绑定事件，不立即加载
-        initApiSourceControlsLazy();
-    }
     
     // 初始化保存路径
     api.getSavePath().then(path => {
@@ -2016,39 +1931,7 @@ function initializeUI(skipApiSources = false) {
     initChapterModalEvents();
     initSearchListInteractions();
     
-    // 初始化语言切换
-    const langBtn = document.getElementById('langToggle');
-    if (langBtn) {
-        const langIcon = document.getElementById('langIcon');
-        
-        const updateLangBtn = (lang) => {
-            // 中文时显示英国旗帜(点击切换到英文)，英文时显示中国旗帜(点击切换到中文)
-            langIcon.setAttribute('icon', lang === 'zh' ? 'circle-flags:uk' : 'circle-flags:cn');
-        };
-        
-        // Initial state
-        updateLangBtn(i18n.lang);
-        i18n.updatePage();
-        
-        langBtn.addEventListener('click', () => {
-            i18n.toggleLanguage();
-        });
-        
-        i18n.onLanguageChange((lang) => {
-            updateLangBtn(lang);
-            logger.refresh();
-            renderQueue();
-            if (apiSourcesCache) renderApiSourcesUI(apiSourcesCache);
-            
-            // 语言切换后重新调整路径字体大小
-            requestAnimationFrame(() => {
-                const pathInput = document.getElementById('savePath');
-                if (pathInput && pathInput.value) {
-                    adjustPathFontSize(pathInput);
-                }
-            });
-        });
-    }
+    // 语言切换功能已移除
 
     // 初始化风格切换
     const styleBtn = document.getElementById('styleToggle');
@@ -2159,7 +2042,7 @@ function initSearchListInteractions() {
 async function handleSearch() {
     const keyword = document.getElementById('searchKeyword').value.trim();
     if (!keyword) {
-        Toast.warning(i18n.t('alert_input_keyword'));
+        Toast.warning('请输入搜索关键词');
         return;
     }
     
@@ -2176,7 +2059,7 @@ async function handleSearch() {
     const result = await api.searchBooks(keyword, 0);
     
     searchBtn.disabled = false;
-    searchBtn.textContent = i18n.t('btn_search');
+    searchBtn.textContent = '搜索';
     
     if (result && result.books) {
         displaySearchResults(result.books, false, result.has_more);
@@ -2198,7 +2081,7 @@ async function loadMoreResults() {
     const result = await api.searchBooks(currentSearchKeyword, searchOffset);
     
     loadMoreBtn.disabled = false;
-    loadMoreBtn.textContent = i18n.t('btn_load_more');
+    loadMoreBtn.textContent = '加载更多';
     
     if (result && result.books && result.books.length > 0) {
         displaySearchResults(result.books, true, result.has_more);
@@ -2229,10 +2112,10 @@ function displaySearchResults(books, append = false, hasMore = false) {
                 <div class="empty-state-icon">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 </div>
-                <div class="empty-state-text">${i18n.t('search_no_results')}</div>
+                <div class="empty-state-text">没有找到相关书籍</div>
             </div>
         `;
-        countSpan.textContent = i18n.t('search_count_prefix') + '0' + i18n.t('search_count_suffix');
+        countSpan.textContent = '找到 0 本'
         headerContainer.style.display = 'none';
         return;
     }
@@ -2245,8 +2128,8 @@ function displaySearchResults(books, append = false, hasMore = false) {
         item.dataset.bookName = book.book_name || '';
         searchBookCache.set(book.book_id, book);
         
-        const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + i18n.t('meta_word_count_suffix') : '';
-        const chapterCount = book.chapter_count ? book.chapter_count + i18n.t('meta_chapter_count_suffix') : '';
+        const wordCount = book.word_count ? (book.word_count / 10000).toFixed(1) + ' 万字' : '';
+        const chapterCount = book.chapter_count ? book.chapter_count + ' 章' : '';
         const status = book.status || '';
         
         // Translate status
@@ -2254,13 +2137,13 @@ function displaySearchResults(books, append = false, hasMore = false) {
         let statusClass = 'ongoing';
         
         if (status === '完结' || status === '已完结') {
-            displayStatus = i18n.t('status_complete');
+            displayStatus = '已完结';
             statusClass = 'complete';
         } else if (status === '连载' || status === '连载中') {
-            displayStatus = i18n.t('status_ongoing');
+            displayStatus = '连载中';
         }
         
-        const abstractText = book.abstract || i18n.t('label_no_desc');
+        const abstractText = book.abstract || '暂无简介';
         const needsExpand = abstractText.length > 100;
         
         item.innerHTML = `
@@ -2277,7 +2160,7 @@ function displaySearchResults(books, append = false, hasMore = false) {
                 </div>
             </div>
             <div class="search-actions">
-                <button class="btn btn-sm btn-primary" type="button" data-action="add-queue">${i18n.t('btn_add_to_queue')}</button>
+                <button class="btn btn-sm btn-primary" type="button" data-action="add-queue">添加到队列</button>
             </div>
         `;
 
@@ -2292,7 +2175,7 @@ function displaySearchResults(books, append = false, hasMore = false) {
     
     // 更新计数
     const totalCount = listContainer.querySelectorAll('.search-item').length;
-    countSpan.textContent = `${i18n.t('search_count_prefix')}${totalCount}${i18n.t('search_count_suffix')}`;
+    countSpan.textContent = `找到 ${totalCount} 本`;
 }
 
 function selectBook(bookId, bookName) {
@@ -2319,7 +2202,7 @@ function clearSearchResults() {
 async function handleSelectChapters() {
     const bookId = document.getElementById('bookId').value.trim();
     if (!bookId) {
-        Toast.warning(i18n.t('alert_input_book_id'));
+        Toast.warning('请输入书籍ID');
         return;
     }
     
@@ -2328,9 +2211,9 @@ async function handleSelectChapters() {
     if (bookId.includes('fanqienovel.com')) {
         const match = bookId.match(/\/page\/(\d+)/);
         if (match) validId = match[1];
-        else { Toast.error(i18n.t('alert_url_format_error')); return; }
+        else { Toast.error('URL格式不正确，请检查链接'); return; }
     } else if (!/^\d+$/.test(bookId)) {
-        Toast.error(i18n.t('alert_id_number'));
+        Toast.error('书籍ID必须是数字');
         return;
     }
     
@@ -2338,7 +2221,7 @@ async function handleSelectChapters() {
     const listContainer = document.getElementById('chapterList');
     
     modal.style.display = 'flex';
-    listContainer.innerHTML = `<div style="text-align: center; padding: 20px;">${i18n.t('text_fetching_chapters')}</div>`;
+    listContainer.innerHTML = `<div style="text-align: center; padding: 20px;">正在加载章节列表...</div>`;
     
     logger.logKey('log_get_chapter_list', validId);
     const bookInfo = await api.getBookInfo(validId);
@@ -2347,7 +2230,7 @@ async function handleSelectChapters() {
         currentChapters = bookInfo.chapters;
         renderChapterList(bookInfo.chapters);
     } else {
-        listContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: red;">${i18n.t('text_fetch_chapter_fail')}</div>`;
+        listContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: red;">获取章节列表失败</div>`;
     }
 }
 
@@ -2391,7 +2274,7 @@ function renderChapterList(chapters) {
 function updateSelectedCount() {
     const checkboxes = document.querySelectorAll('#chapterList input[type="checkbox"]');
     const checked = Array.from(checkboxes).filter(cb => cb.checked);
-    document.getElementById('selectedCount').textContent = i18n.t('label_selected_count', checked.length, checkboxes.length);
+    document.getElementById('selectedCount').textContent = `已选择 ${checked.length}/${checkboxes.length} 章`;
 }
 
 function toggleAllChapters(checked) {
@@ -2415,12 +2298,12 @@ function confirmChapterSelection() {
     const btn = document.getElementById('selectChaptersBtn');
     if (btn) { // check existence as it might not be there in all versions
         if (AppState.selectedChapters) {
-            btn.textContent = i18n.t('btn_selected_count', AppState.selectedChapters.length);
+            btn.textContent = `已选 ${AppState.selectedChapters.length} 章`;
             btn.classList.remove('btn-info');
             btn.classList.add('btn-success');
             logger.logKey('log_confirmed_selection', AppState.selectedChapters.length);
         } else {
-            btn.textContent = i18n.t('btn_select_chapters');
+            btn.textContent = '选择章节';
             btn.classList.remove('btn-success');
             btn.classList.add('btn-info');
             logger.logKey('log_cancel_selection');
@@ -2447,7 +2330,7 @@ async function checkForUpdate() {
 }
 
 function simpleMarkdownToHtml(markdown) {
-    if (!markdown) return i18n.t('text_no_changelog');
+    if (!markdown) return '暂无更新日志';
     
     let html = markdown;
     
@@ -2530,7 +2413,7 @@ async function showUpdateModal(updateInfo) {
     updateDescription.style.display = 'block';
     versionSelector.style.display = 'none';
     downloadUpdateBtn.disabled = false;
-    downloadUpdateBtn.textContent = i18n.t('btn_download_update');
+    downloadUpdateBtn.textContent = '下载更新';
     
     const modalFooter = document.querySelector('.modal-footer');
     if (modalFooter) modalFooter.style.display = 'flex';
@@ -2541,7 +2424,7 @@ async function showUpdateModal(updateInfo) {
     currentVersion.textContent = updateInfo.current_version;
     latestVersion.textContent = updateInfo.latest_version;
     
-    const releaseBody = updateInfo.release_info?.body || updateInfo.message || i18n.t('text_no_changelog');
+    const releaseBody = updateInfo.release_info?.body || updateInfo.message || '暂无更新日志';
     updateDescription.innerHTML = simpleMarkdownToHtml(releaseBody);
     
     // 获取可下载的版本选项
@@ -2553,7 +2436,7 @@ async function showUpdateModal(updateInfo) {
         
         if (result.success && result.assets && result.assets.length > 0) {
             // 显示版本选择器
-            versionSelector.innerHTML = `<h4>${i18n.t('update_select_version')}</h4>`;
+            versionSelector.innerHTML = `<h4>选择版本</h4>`;
             const optionsContainer = document.createElement('div');
             optionsContainer.className = 'version-options';
             
@@ -2573,15 +2456,15 @@ async function showUpdateModal(updateInfo) {
                     radio.checked = true;
                 }
                 
-                let typeText = i18n.t('update_type_standard');
-                if (asset.type === 'standalone') typeText = i18n.t('update_type_standalone');
-                else if (asset.type === 'debug') typeText = i18n.t('update_type_debug');
+                let typeText = '标准版';
+                if (asset.type === 'standalone') typeText = '独立版';
+                else if (asset.type === 'debug') typeText = '调试版';
                 
                 const label = document.createElement('span');
                 label.innerHTML = `
                     <strong>${typeText}</strong> 
                     (${asset.size_mb} MB)
-                    ${asset.recommended ? `<span class="badge">${i18n.t('update_badge_rec')}</span>` : ''}
+                    ${asset.recommended ? `<span class="badge">推荐</span>` : ''}
                     <br>
                     <small>${asset.description}</small>
                 `;
@@ -2611,7 +2494,7 @@ async function showUpdateModal(updateInfo) {
             downloadUpdateBtn.onclick = async () => {
                 const selectedRadio = document.querySelector('input[name="version"]:checked');
                 if (!selectedRadio) {
-                    Toast.warning(i18n.t('alert_select_version'));
+                    Toast.warning('请选择版本');
                     return;
                 }
                 
@@ -2621,7 +2504,7 @@ async function showUpdateModal(updateInfo) {
                 if (canAutoUpdate) {
                     // 自动更新流程 (支持 Windows/Linux/macOS)
                     downloadUpdateBtn.disabled = true;
-                    downloadUpdateBtn.textContent = i18n.t('update_btn_downloading');
+                    downloadUpdateBtn.textContent = '下载中...';
                     
                     // 下载开始后禁止关闭弹窗
                     if (modal.setDownloading) modal.setDownloading(true);
@@ -2637,16 +2520,16 @@ async function showUpdateModal(updateInfo) {
                         progressContainer.id = 'updateProgressContainer';
                         progressContainer.innerHTML = `
                             <div class="update-progress-card">
-                                <h4 class="update-progress-title">${i18n.t('update_progress_title')}</h4>
+                                <h4 class="update-progress-title">下载进度</h4>
                                 <div class="update-progress-info">
-                                    <span id="updateProgressText">${i18n.t('update_status_connecting')}</span>
+                                    <span id="updateProgressText">正在连接...</span>
                                     <span id="updateProgressPercent">0%</span>
                                 </div>
                                 <div class="multi-thread-progress" id="multiThreadProgress">
                                 </div>
                                 <div id="threadInfo" class="thread-info"></div>
                                 <div class="update-progress-hint">
-                                    ${i18n.t('update_warn_dont_close')}
+                                    下载进行中，请勿关闭窗口
                                 </div>
                             </div>
                         `;
@@ -2700,8 +2583,8 @@ async function showUpdateModal(updateInfo) {
                                     const multiProgress = document.getElementById('multiThreadProgress');
                                     const threadInfo = document.getElementById('threadInfo');
                                     multiProgress.innerHTML = `<div class="thread-segment" style="width:100%;background:linear-gradient(90deg, #f59e0b 0%, #fbbf24 50%, #f59e0b 100%);animation:merging-pulse 1.5s ease-in-out infinite;"></div>`;
-                                    threadInfo.textContent = i18n.t('update_status_merging');
-                                    progressText.textContent = i18n.t('update_status_merging');
+                                    threadInfo.textContent = '正在合并文件...';
+                                    progressText.textContent = '正在合并文件...';
                                     progressPercent.textContent = '100%';
                                     setTimeout(pollProgress, 300);
                                 } else if (status.is_downloading) {
@@ -2719,28 +2602,28 @@ async function showUpdateModal(updateInfo) {
                                             html += `<div class="thread-segment" style="width:${width}%;background:linear-gradient(to right, ${color} ${filled}%, rgba(255,255,255,0.1) ${filled}%);"></div>`;
                                         });
                                         multiProgress.innerHTML = html;
-                                        threadInfo.textContent = `${status.thread_count || 1} ${i18n.t('update_threads')}`;
+                                        threadInfo.textContent = `${status.thread_count || 1} 线程`;
                                     } else {
                                         // 单线程或无法获取文件大小时显示单色进度条
                                         multiProgress.innerHTML = `<div class="thread-segment" style="width:100%;background:linear-gradient(to right, #3b82f6 ${status.progress}%, rgba(255,255,255,0.1) ${status.progress}%);"></div>`;
-                                        threadInfo.textContent = status.thread_count > 1 ? `${status.thread_count} ${i18n.t('update_threads')}` : '';
+                                        threadInfo.textContent = status.thread_count > 1 ? `${status.thread_count} 线程` : '';
                                     }
                                     
-                                    progressText.textContent = status.message || i18n.t('update_btn_downloading');
+                                    progressText.textContent = status.message || '下载中...';
                                     progressPercent.textContent = status.progress + '%';
                                     setTimeout(pollProgress, 300);
                                 } else if (status.completed) {
                                     const multiProgress = document.getElementById('multiThreadProgress');
                                     multiProgress.innerHTML = `<div class="thread-segment" style="width:100%;background:#10b981;"></div>`;
-                                    progressText.textContent = i18n.t('update_status_complete');
+                                    progressText.textContent = '下载完成';
                                     progressPercent.textContent = '100%';
                                     
                                     // 下载完成后，将原来的下载按钮变成安装按钮
                                     downloadUpdateBtn.disabled = false;
-                                    downloadUpdateBtn.textContent = i18n.t('update_btn_install');
+                                    downloadUpdateBtn.textContent = '安装更新';
                                     downloadUpdateBtn.onclick = async () => {
                                         downloadUpdateBtn.disabled = true;
-                                        downloadUpdateBtn.textContent = i18n.t('update_btn_preparing');
+                                        downloadUpdateBtn.textContent = '准备中...';
                                         
                                         try {
                                             const applyRes = await fetch('/api/apply-update', { 
@@ -2750,27 +2633,27 @@ async function showUpdateModal(updateInfo) {
                                             const applyResult = await applyRes.json();
                                             
                                             if (applyResult.success) {
-                                                downloadUpdateBtn.textContent = i18n.t('update_btn_restarting');
+                                                downloadUpdateBtn.textContent = '重启中...';
                                                 progressText.textContent = applyResult.message;
                                             } else {
-                                                Toast.error(i18n.t('alert_apply_update_fail') + applyResult.message);
+                                                Toast.error('应用更新失败: ' + applyResult.message);
                                                 downloadUpdateBtn.disabled = false;
-                                                downloadUpdateBtn.textContent = i18n.t('update_btn_install');
+                                                downloadUpdateBtn.textContent = '安装更新';
                                             }
                                         } catch (e) {
-                                            Toast.error(i18n.t('alert_apply_update_fail') + e.message);
+                                            Toast.error('应用更新失败: ' + e.message);
                                             downloadUpdateBtn.disabled = false;
-                                            downloadUpdateBtn.textContent = i18n.t('update_btn_install');
+                                            downloadUpdateBtn.textContent = '安装更新';
                                         }
                                     };
                                 } else if (status.error) {
                                     progressText.textContent = status.message;
                                     downloadUpdateBtn.disabled = false;
-                                    downloadUpdateBtn.textContent = i18n.t('update_btn_retry');
+                                    downloadUpdateBtn.textContent = '重试';
                                 } else {
                                     // 初始状态或等待状态，继续轮询
                                     if (!status.is_downloading && !status.completed && !status.error) {
-                                        progressText.textContent = status.message || i18n.t('update_status_ready');
+                                        progressText.textContent = status.message || '准备下载...';
                                     }
                                     setTimeout(pollProgress, 300);
                                 }
@@ -2783,9 +2666,9 @@ async function showUpdateModal(updateInfo) {
                         setTimeout(pollProgress, 500);
                         
                     } catch (e) {
-                        Toast.error(i18n.t('alert_download_fail') + e.message);
+                        Toast.error('下载失败: ' + e.message);
                         downloadUpdateBtn.disabled = false;
-                        downloadUpdateBtn.textContent = i18n.t('update_btn_default');
+                        downloadUpdateBtn.textContent = '下载更新';
                     }
                 } else {
                     // 非 Windows 或非自动更新模式，使用浏览器下载
@@ -2829,7 +2712,7 @@ async function showUpdateModal(updateInfo) {
     
     const tryCloseModal = () => {
         if (isUpdateDownloading) {
-            Toast.warning(i18n.t('update_warn_dont_close'));
+            Toast.warning('下载进行中，请勿关闭');
             return;
         }
         modal.style.display = 'none';
@@ -2861,7 +2744,7 @@ async function handleAddToQueue(bookIdOverride = null, prefill = null) {
     const bookId = (bookIdOverride ?? document.getElementById('bookId').value).trim();
 
     if (!bookId) {
-        Toast.warning(i18n.t('alert_input_book_id'));
+        Toast.warning('请输入书籍ID');
         return;
     }
 
@@ -2870,12 +2753,12 @@ async function handleAddToQueue(bookIdOverride = null, prefill = null) {
     if (bookId.includes('fanqienovel.com')) {
         const match = bookId.match(/\/page\/(\d+)/);
         if (!match) {
-            Toast.error(i18n.t('alert_url_error'));
+            Toast.error('URL格式不正确');
             return;
         }
         normalizedId = match[1];
     } else if (!/^\d+$/.test(bookId)) {
-        Toast.error(i18n.t('alert_id_number'));
+        Toast.error('书籍ID必须是数字');
         return;
     }
 
@@ -2944,11 +2827,11 @@ function showInlineConfirm(bookId, prefill = null) {
 
         // Prefill (search results / user input)
         const preTitle = prefill?.book_name || bookId;
-        const preAuthor = prefill?.author ? `${i18n.t('text_author')}${prefill.author}` : i18n.t('text_fetching_book_info');
+        const preAuthor = prefill?.author ? `作者: ${prefill.author}` : '正在获取书籍信息...';
         titleEl.textContent = preTitle;
         authorEl.textContent = preAuthor;
         abstractEl.textContent = prefill?.abstract || '';
-        chaptersEl.textContent = prefill?.chapter_count ? i18n.t('label_total_chapters', prefill.chapter_count) : '';
+        chaptersEl.textContent = prefill?.chapter_count ? `共 ${prefill.chapter_count} 章` : '';
 
         const coverUrl = prefill?.cover_url || '';
         if (coverUrl) {
@@ -2975,7 +2858,7 @@ function showInlineConfirm(bookId, prefill = null) {
 
         const updateSelectedCount = () => {
             const checked = manualList.querySelectorAll('input[type="checkbox"]:checked').length;
-            selectedCountEl.textContent = i18n.t('label_dialog_selected', checked);
+            selectedCountEl.textContent = `已选 ${checked} 项`;
         };
 
         const renderChaptersControls = () => {
@@ -3109,10 +2992,10 @@ function showInlineConfirm(bookId, prefill = null) {
             endSelect.innerHTML = '';
             manualList.innerHTML = `
                 <div class="empty-state">
-                    <div class="empty-state-text">${i18n.t('text_fetching_chapters')}</div>
+                    <div class="empty-state-text">正在加载章节列表...</div>
                 </div>
             `;
-            selectedCountEl.textContent = i18n.t('label_dialog_selected', 0);
+            selectedCountEl.textContent = `已选 0 项`;
         };
 
         const updateModeUI = () => {
@@ -3124,10 +3007,10 @@ function showInlineConfirm(bookId, prefill = null) {
             // 无论哪种模式，加载中或出错时都禁用确认按钮
             if (InlineConfirmState.loading) {
                 if (mode !== 'all') {
-                    setHint(i18n.t('text_fetching_chapters'), true);
+                    setHint('正在加载章节列表...', true);
                     showLoadingChapters();
                 } else {
-                    setHint(i18n.t('text_fetching_book_info'), true);
+                    setHint('正在获取书籍信息...', true);
                 }
                 confirmBtn.disabled = true;
                 return;
@@ -3191,13 +3074,13 @@ function showInlineConfirm(bookId, prefill = null) {
             applyQuickRangeBtn.addEventListener('click', async () => {
                 const inputValue = quickRangeInput.value.trim();
                 if (!inputValue) {
-                    Toast.warning(i18n.t('alert_enter_range') || '请输入章节范围');
+                    Toast.warning('请输入章节范围');
                     return;
                 }
 
                 const chapters = InlineConfirmState.chapters || [];
                 if (chapters.length === 0) {
-                    Toast.warning(i18n.t('text_fetching_chapters') || '正在加载章节列表...');
+                    Toast.warning('正在加载章节列表...');
                     return;
                 }
 
@@ -3233,14 +3116,14 @@ function showInlineConfirm(bookId, prefill = null) {
                             });
                             updateSelectedCount();
 
-                            Toast.success(i18n.t('quick_range_applied', result.data.chapters.length) || `已应用范围，选中 ${result.data.chapters.length} 章`);
+                            Toast.success(`已应用范围，选中 ${result.data.chapters.length} 章`);
                         }
 
                         // 显示警告
                         if (result.data.warnings && result.data.warnings.length > 0) {
                             quickRangeResult.innerHTML = `<span style="color: #ffaa00;">⚠️ ${result.data.warnings.join('; ')}</span>`;
                         } else {
-                            quickRangeResult.innerHTML = `<span style="color: #00ff00;">✓ ${i18n.t('quick_range_applied', result.data.chapters.length) || `已选中 ${result.data.chapters.length} 章`}</span>`;
+                            quickRangeResult.innerHTML = `<span style="color: #00ff00;">✓ 已选中 ${result.data.chapters.length} 章</span>`;
                         }
                     } else {
                         const errorMsg = result.data?.errors?.join('; ') || result.message || '解析失败';
@@ -3278,7 +3161,7 @@ function showInlineConfirm(bookId, prefill = null) {
                     const startIdx = parseInt(startSelect.value, 10);
                     const endIdx = parseInt(endSelect.value, 10);
                     if (Number.isNaN(startIdx) || Number.isNaN(endIdx) || startIdx > endIdx) {
-                        Toast.error(i18n.t('alert_chapter_range_error'));
+                        Toast.error('章节范围错误');
                         return;
                     }
                     startChapter = startIdx + 1;
@@ -3292,7 +3175,7 @@ function showInlineConfirm(bookId, prefill = null) {
                     }
                     const inputValue = quickRangeInput.value.trim();
                     if (!inputValue) {
-                        Toast.warning(i18n.t('alert_enter_range') || '请输入章节范围');
+                        Toast.warning('请输入章节范围');
                         return;
                     }
 
@@ -3334,7 +3217,7 @@ function showInlineConfirm(bookId, prefill = null) {
                         .filter(n => !Number.isNaN(n));
 
                     if (selectedChapters.length === 0) {
-                        Toast.warning(i18n.t('alert_select_one_chapter'));
+                        Toast.warning('请至少选择一个章节');
                         return;
                     }
                     logger.logKey('log_mode_manual', selectedChapters.length);
@@ -3374,7 +3257,7 @@ function showInlineConfirm(bookId, prefill = null) {
                                         body: JSON.stringify({ path: record.save_path })
                                     });
                                 } catch (e) {
-                                    Toast.info(i18n.t('msg_file_path') + ': ' + record.save_path);
+                                    Toast.info('文件路径: ' + record.save_path);
                                 }
                             }
                             return;
@@ -3417,7 +3300,7 @@ function showInlineConfirm(bookId, prefill = null) {
                 const info = await api.getBookInfo(bookId);
                 if (!info) {
                     InlineConfirmState.loading = false;
-                    InlineConfirmState.error = i18n.t('text_fetch_chapter_fail');
+                    InlineConfirmState.error = '获取章节列表失败';
                     updateModeUI();
                     return;
                 }
@@ -3429,9 +3312,9 @@ function showInlineConfirm(bookId, prefill = null) {
 
                 // Update book info block
                 titleEl.textContent = info.book_name || preTitle;
-                authorEl.textContent = `${i18n.t('text_author')}${info.author || prefill?.author || ''}`;
+                authorEl.textContent = `作者: ${info.author || prefill?.author || ''}`;
                 abstractEl.textContent = info.abstract || prefill?.abstract || '';
-                chaptersEl.textContent = i18n.t('label_total_chapters', InlineConfirmState.chapters.length);
+                chaptersEl.textContent = `共 ${InlineConfirmState.chapters.length} 章`;
 
                 if (info.cover_url) {
                     coverEl.src = info.cover_url;
@@ -3443,14 +3326,14 @@ function showInlineConfirm(bookId, prefill = null) {
                 updateModeUI();
             } catch (e) {
                 InlineConfirmState.loading = false;
-                InlineConfirmState.error = e?.message || i18n.t('text_fetch_chapter_fail');
+                InlineConfirmState.error = e?.message || '获取章节列表失败';
                 updateModeUI();
             }
         })();
     } catch (e) {
         console.error('Error showing inline confirm:', e);
         logger.logKey('log_show_dialog_fail', e.message);
-        Toast.error(i18n.t('alert_show_dialog_fail'));
+        Toast.error('显示对话框失败');
     }
 }
 
@@ -3476,9 +3359,9 @@ function showConfirmDialogLegacy(bookInfo) {
     if (AppState.selectedChapters) {
         selectionHtml = `
             <div class="chapter-selection-info" style="padding: 12px; background: #0f0f23; border: 2px solid #00ff00;">
-                <p style="margin: 0 0 8px 0; color: #00ff00; font-family: 'Press Start 2P', monospace; font-size: 11px;">${i18n.t('label_manual_selected', AppState.selectedChapters.length)}</p>
-                <p style="margin: 0 0 10px 0; color: #008800; font-size: 10px;">${i18n.t('hint_manual_mode')}</p>
-                <button class="btn btn-sm btn-secondary" onclick="window.reSelectChapters()">${i18n.t('btn_reselect')}</button>
+                <p style="margin: 0 0 8px 0; color: #00ff00; font-family: 'Press Start 2P', monospace; font-size: 11px;">已选择 ${AppState.selectedChapters.length} 章</p>
+                <p style="margin: 0 0 10px 0; color: #008800; font-size: 10px;">手动选择模式</p>
+                <button class="btn btn-sm btn-secondary" onclick="window.reSelectChapters()">重新选择</button>
             </div>
         `;
     } else {
@@ -3486,25 +3369,25 @@ function showConfirmDialogLegacy(bookInfo) {
             <div class="chapter-range">
                 <label>
                     <input type="radio" name="chapterMode" value="all" checked>
-                    ${i18n.t('radio_all_chapters')}
+                    全部章节
                 </label>
                 <label>
                     <input type="radio" name="chapterMode" value="range">
-                    ${i18n.t('radio_range_chapters')}
+                    章节范围
                 </label>
                 <label>
                     <input type="radio" name="chapterMode" value="quick">
-                    ${i18n.t('radio_quick_range') || '快速范围输入'}
+                    快速范围输入
                 </label>
                 <label>
                     <input type="radio" name="chapterMode" value="manual">
-                    ${i18n.t('radio_manual_chapters')}
+                    手动选择
                 </label>
             </div>
             
             <div class="chapter-inputs" id="chapterInputs" style="display: none;">
                 <div class="input-row">
-                    <label>${i18n.t('label_start_chapter')}</label>
+                    <label>起始章节</label>
                     <select id="startChapter" class="chapter-select">
                         ${bookInfo.chapters.map((ch, idx) => 
                             `<option value="${idx}">${ch.title}</option>`
@@ -3512,7 +3395,7 @@ function showConfirmDialogLegacy(bookInfo) {
                     </select>
                 </div>
                 <div class="input-row">
-                    <label>${i18n.t('label_end_chapter')}</label>
+                    <label>结束章节</label>
                     <select id="endChapter" class="chapter-select">
                         ${bookInfo.chapters.map((ch, idx) => 
                             `<option value="${idx}" ${idx === bookInfo.chapters.length - 1 ? 'selected' : ''}>${ch.title}</option>`
@@ -3523,26 +3406,26 @@ function showConfirmDialogLegacy(bookInfo) {
             
             <div class="chapter-quick-range" id="chapterQuickRange" style="display: none; margin-top: 12px;">
                 <div class="input-row" style="margin-bottom: 8px;">
-                    <label>${i18n.t('label_quick_range') || '章节范围'}</label>
+                    <label>章节范围</label>
                     <input type="text" id="quickRangeInput" class="form-input" 
-                           placeholder="${i18n.t('placeholder_quick_range') || '例如: 1-100, 150, 200-300'}"
+                           placeholder="例如: 1-100, 150, 200-300"
                            style="width: 100%; font-family: monospace;">
                 </div>
                 <div class="quick-range-hint" style="font-size: 11px; color: #888; margin-bottom: 8px;">
-                    ${i18n.t('hint_quick_range') || '支持格式: 单个数字(5)、范围(1-100)、多个范围(1-10, 50-100)'}
+                    支持格式: 单个数字(5)、范围(1-100)、多个范围(1-10, 50-100)
                 </div>
                 <div id="quickRangeResult" style="font-size: 12px; min-height: 20px;"></div>
                 <button class="btn btn-sm btn-secondary" id="applyQuickRangeBtn" style="margin-top: 8px;">
-                    ${i18n.t('btn_apply_range') || '应用范围'}
+                    应用范围
                 </button>
             </div>
             
             <div class="chapter-manual-container" id="chapterManualContainer" style="display: none; margin-top: 12px;">
                 <div class="chapter-actions" style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 2px solid #006600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                    <button class="btn btn-sm btn-secondary" onclick="window.selectAllChaptersInDialog()">${i18n.t('btn_select_all')}</button>
-                    <button class="btn btn-sm btn-secondary" onclick="window.selectNoneChaptersInDialog()">${i18n.t('btn_select_none')}</button>
-                    <button class="btn btn-sm btn-secondary" onclick="window.invertChaptersInDialog()">${i18n.t('btn_invert_selection')}</button>
-                    <span id="dialogSelectedCount" style="margin-left: 15px; font-weight: bold;">${i18n.t('label_dialog_selected', 0)}</span>
+                    <button class="btn btn-sm btn-secondary" onclick="window.selectAllChaptersInDialog()">全选</button>
+                    <button class="btn btn-sm btn-secondary" onclick="window.selectNoneChaptersInDialog()">全不选</button>
+                    <button class="btn btn-sm btn-secondary" onclick="window.invertChaptersInDialog()">反选</button>
+                    <span id="dialogSelectedCount" style="margin-left: 15px; font-weight: bold;">已选 0 项</span>
                 </div>
                 <div class="chapter-list" id="dialogChapterList" style="max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px;">
                     ${bookInfo.chapters.map((ch, idx) => `
@@ -3559,7 +3442,7 @@ function showConfirmDialogLegacy(bookInfo) {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h3>${i18n.t('title_confirm_download')}</h3>
+                <h3>确认下载</h3>
                 <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
             </div>
             
@@ -3568,21 +3451,21 @@ function showConfirmDialogLegacy(bookInfo) {
                     ${bookInfo.cover_url ? `<img src="${bookInfo.cover_url}" alt="封面" class="book-cover" onerror="this.style.display='none'">` : ''}
                     <div class="book-details">
                         <h3 class="book-title">${bookInfo.book_name}</h3>
-                        <p class="book-author">${i18n.t('text_author')}${bookInfo.author}</p>
+                        <p class="book-author">作者: ${bookInfo.author}</p>
                         <p class="book-abstract">${bookInfo.abstract}</p>
-                        <p class="book-chapters">${i18n.t('label_total_chapters', bookInfo.chapters.length)}</p>
+                        <p class="book-chapters">共 ${bookInfo.chapters.length} 章</p>
                     </div>
                 </div>
                 
                 <div class="chapter-selection">
-                    <h3>${i18n.t('title_chapter_selection')}</h3>
+                    <h3>章节选择</h3>
                     ${selectionHtml}
                 </div>
             </div>
             
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">${i18n.t('btn_cancel')}</button>
-                <button class="btn btn-primary" id="confirmDownloadBtn">${i18n.t('btn_confirm_add_to_queue')}</button>
+                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">取消</button>
+                <button class="btn btn-primary" id="confirmDownloadBtn">添加到队列</button>
             </div>
         </div>
     `;
@@ -3646,7 +3529,7 @@ function showConfirmDialogLegacy(bookInfo) {
                             if (errors.length > 0) {
                                 html += `<span style="color: #ff4444;">❌ ${errors.join(', ')}</span>`;
                             } else if (chapters.length > 0) {
-                                html += `<span style="color: #00ff00;">✓ ${i18n.t('quick_range_selected', chapters.length) || '已选择 ' + chapters.length + ' 章'}</span>`;
+                                html += `<span style="color: #00ff00;">✓ 已选择 ${chapters.length} 章</span>`;
                             }
                             
                             if (warnings.length > 0) {
@@ -3668,7 +3551,7 @@ function showConfirmDialogLegacy(bookInfo) {
             applyQuickRangeBtn.addEventListener('click', async () => {
                 const inputValue = quickRangeInput.value.trim();
                 if (!inputValue) {
-                    Toast.warning(i18n.t('alert_enter_range') || '请输入章节范围');
+                    Toast.warning('请输入章节范围');
                     return;
                 }
                 
@@ -3704,15 +3587,15 @@ function showConfirmDialogLegacy(bookInfo) {
                             });
                             window.updateDialogSelectedCount();
                             
-                            Toast.success(i18n.t('quick_range_applied', result.data.chapters.length) || `已应用范围，选中 ${result.data.chapters.length} 章`);
+                            Toast.success(`已应用范围，选中 ${result.data.chapters.length} 章`);
                         }
                     } else if (result.data && result.data.errors.length > 0) {
                         Toast.error(result.data.errors.join(', '));
                     } else {
-                        Toast.warning(i18n.t('alert_no_chapters_selected') || '没有选中任何章节');
+                        Toast.warning('没有选中任何章节');
                     }
                 } catch (e) {
-                    Toast.error(i18n.t('alert_parse_range_fail') || '解析范围失败');
+                    Toast.error('解析范围失败');
                 }
             });
         }
@@ -3739,7 +3622,7 @@ function showConfirmDialogLegacy(bookInfo) {
                     endChapter = parseInt(modal.querySelector('#endChapter').value);
                     
                     if (startChapter > endChapter) {
-                        Toast.error(i18n.t('alert_chapter_range_error'));
+                        Toast.error('章节范围错误');
                         return;
                     }
 
@@ -3755,7 +3638,7 @@ function showConfirmDialogLegacy(bookInfo) {
                     selectedChapters = Array.from(checkboxes).map(cb => parseInt(cb.value));
                     
                     if (selectedChapters.length === 0) {
-                        Toast.warning(i18n.t('alert_select_one_chapter'));
+                        Toast.warning('请至少选择一个章节');
                         return;
                     }
                     
@@ -3799,7 +3682,7 @@ function showConfirmDialogLegacy(bookInfo) {
                                 body: JSON.stringify({ path: record.save_path })
                             });
                         } catch (e) {
-                            Toast.info(i18n.t('msg_file_path') + ': ' + record.save_path);
+                            Toast.info('文件路径: ' + record.save_path);
                         }
                     }
                     modal.remove();
@@ -3834,15 +3717,15 @@ function showConfirmDialogLegacy(bookInfo) {
     } catch (e) {
         console.error('Error showing confirm dialog:', e);
         logger.logKey('log_show_dialog_fail', e.message);
-        Toast.error(i18n.t('alert_show_dialog_fail'));
+        Toast.error('显示对话框失败');
     }
 }
 
 
 async function handleCancel() {
     const confirmed = await ConfirmDialog.show({
-        title: i18n.t('confirm_title') || '确认',
-        message: i18n.t('confirm_cancel_download'),
+        title: '确认',
+        message: '确定要取消下载吗？',
         type: 'warning'
     });
     if (confirmed) {
@@ -3856,7 +3739,7 @@ window.updateDialogSelectedCount = function() {
     const checked = Array.from(checkboxes).filter(cb => cb.checked);
     const countElement = document.getElementById('dialogSelectedCount');
     if (countElement) {
-        countElement.textContent = i18n.t('label_dialog_selected', checked.length);
+        countElement.textContent = `已选 ${checked.length} 项`;
     }
 };
 
@@ -3890,8 +3773,8 @@ window.reSelectChapters = function() {
 
 async function handleClear() {
     const confirmed = await ConfirmDialog.show({
-        title: i18n.t('confirm_title') || '确认',
-        message: i18n.t('confirm_clear_settings'),
+        title: '确认',
+        message: '确定要清空所有设置吗？',
         type: 'warning'
     });
     if (confirmed) {
@@ -3913,7 +3796,7 @@ async function handleBrowse() {
     logger.logKey('msg_open_folder_dialog');
     
     const selectedPath = await FolderBrowser.show({
-        title: i18n.t('folder_browser_title') || '选择保存目录',
+        title: '选择保存目录',
         initialPath: currentPath
     });
     
@@ -3927,6 +3810,73 @@ async function handleBrowse() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     logger.logKey('msg_app_start');
+    
+    // 初始化遮罩控制 - 等待节点测试完成
+    const initLoadingOverlay = document.getElementById('initLoadingOverlay');
+    const dashboardContainer = document.querySelector('.dashboard-container');
+    
+    // 检查服务是否已初始化完成（通过检查API状态）
+    async function waitForInitialization() {
+        const maxWaitTime = 10000; // 最大等待10秒
+        const checkInterval = 500; // 每500ms检查一次
+        let waitTime = 0;
+        
+        while (waitTime < maxWaitTime) {
+            try {
+                // 检查API是否可用
+                const response = await fetch('/api/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.initialized || data.node_test_completed) {
+                        // 初始化完成，隐藏遮罩
+                        if (initLoadingOverlay) {
+                            initLoadingOverlay.style.opacity = '0';
+                            setTimeout(() => {
+                                initLoadingOverlay.style.display = 'none';
+                            }, 500);
+                        }
+                        if (dashboardContainer) {
+                            dashboardContainer.classList.add('show');
+                        }
+                        return true;
+                    }
+                }
+            } catch (error) {
+                // API还未就绪，继续等待
+            }
+            
+            // 更新加载文本
+            const loadingText = document.querySelector('.init-loading-text');
+            if (loadingText) {
+                const elapsed = Math.floor(waitTime / 1000);
+                if (elapsed < 3) {
+                    loadingText.textContent = '正在测试API节点可用性和速度...';
+                } else if (elapsed < 6) {
+                    loadingText.textContent = '正在启动服务...';
+                } else {
+                    loadingText.textContent = '即将完成...';
+                }
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            waitTime += checkInterval;
+        }
+        
+        // 超时后强制显示界面
+        if (initLoadingOverlay) {
+            initLoadingOverlay.style.opacity = '0';
+            setTimeout(() => {
+                initLoadingOverlay.style.display = 'none';
+            }, 500);
+        }
+        if (dashboardContainer) {
+            dashboardContainer.classList.add('show');
+        }
+        return false;
+    }
+    
+    // 开始等待初始化
+    waitForInitialization();
     
     // 从URL获取访问令牌
     const urlParams = new URLSearchParams(window.location.search);
@@ -4118,7 +4068,7 @@ class SettingsManager {
             }
         } catch (error) {
             console.error('加载设置失败:', error);
-            Toast.warning(i18n.t('settings_load_error') || '加载设置失败,使用默认配置');
+            Toast.warning('加载设置失败,使用默认配置');
         }
     }
 
@@ -4144,25 +4094,25 @@ class SettingsManager {
 
             if (data.success) {
                 this.currentSettings = settings;
-                this.showMessage('success', i18n.t('settings_save_success') || '设置已保存');
-                Toast.success(i18n.t('settings_save_success') || '设置已保存');
+                this.showMessage('success', '设置已保存');
+                Toast.success('设置已保存');
             } else {
-                this.showMessage('error', data.error || (i18n.t('settings_save_error') || '保存失败'));
-                Toast.error(data.error || (i18n.t('settings_save_error') || '保存失败'));
+                this.showMessage('error', data.error || '保存失败');
+                Toast.error(data.error || '保存失败');
             }
         } catch (error) {
             console.error('保存设置失败:', error);
-            this.showMessage('error', i18n.t('settings_save_error') || '保存失败');
-            Toast.error(i18n.t('settings_save_error') || '保存失败');
+            this.showMessage('error', '保存失败');
+            Toast.error('保存失败');
         }
     }
 
     // 重置为默认设置
     resetSettings() {
-        if (confirm(i18n.t('settings_reset_confirm') || '确定要恢复默认设置吗?')) {
+        if (confirm('确定要恢复默认设置吗?')) {
             this.currentSettings = { ...this.defaultSettings };
             this.updateUI();
-            Toast.info(i18n.t('settings_reset_done') || '已恢复默认设置,请点击保存按钮');
+            Toast.info('已恢复默认设置,请点击保存按钮');
         }
     }
 
@@ -4183,42 +4133,42 @@ class SettingsManager {
     // 验证设置值
     validateSettings(settings) {
         if (settings.max_workers < 1 || settings.max_workers > 100) {
-            Toast.warning(i18n.t('settings_validate_max_workers') || '最大并发数必须在1-100之间');
+            Toast.warning('最大并发数必须在1-100之间');
             return false;
         }
 
         if (settings.request_rate_limit < 0 || settings.request_rate_limit > 10) {
-            Toast.warning(i18n.t('settings_validate_rate_limit') || '请求间隔必须在0-10秒之间');
+            Toast.warning('请求间隔必须在0-10秒之间');
             return false;
         }
 
         if (settings.connection_pool_size < 10 || settings.connection_pool_size > 500) {
-            Toast.warning(i18n.t('settings_validate_pool_size') || '连接池大小必须在10-500之间');
+            Toast.warning('连接池大小必须在10-500之间');
             return false;
         }
 
         if (settings.async_batch_size < 1 || settings.async_batch_size > 200) {
-            Toast.warning(i18n.t('settings_validate_batch_size') || '异步批次大小必须在1-200之间');
+            Toast.warning('异步批次大小必须在1-200之间');
             return false;
         }
 
         if (settings.max_retries < 0 || settings.max_retries > 10) {
-            Toast.warning(i18n.t('settings_validate_retries') || '最大重试次数必须在0-10之间');
+            Toast.warning('最大重试次数必须在0-10之间');
             return false;
         }
 
         if (settings.request_timeout < 5 || settings.request_timeout > 300) {
-            Toast.warning(i18n.t('settings_validate_timeout') || '请求超时必须在5-300秒之间');
+            Toast.warning('请求超时必须在5-300秒之间');
             return false;
         }
 
         if (settings.api_rate_limit < 1 || settings.api_rate_limit > 200) {
-            Toast.warning(i18n.t('settings_validate_api_rate') || 'API速率限制必须在1-200之间');
+            Toast.warning('API速率限制必须在1-200之间');
             return false;
         }
 
         if (settings.rate_limit_window < 0.1 || settings.rate_limit_window > 10) {
-            Toast.warning(i18n.t('settings_validate_rate_window') || '速率窗口必须在0.1-10秒之间');
+            Toast.warning('速率窗口必须在0.1-10秒之间');
             return false;
         }
 

@@ -13,7 +13,6 @@ import tempfile
 import time
 from packaging import version as pkg_version
 from typing import Optional, Dict, Tuple, List
-from utils.locales import t
 
 # 更新检查缓存
 _UPDATE_CACHE = {}
@@ -224,17 +223,17 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
             # 分类 Windows 版本
             if 'Standalone' in name:
                 asset_type = 'standalone'
-                description = t("up_desc_standalone")
+                description = "单文件版 (推荐)"
                 recommended = True
                 print(f'[DEBUG]   -> Matched: standalone')
             elif 'debug' in name.lower():
                 asset_type = 'debug'
-                description = t("up_desc_debug")
+                description = "调试版"
                 recommended = False
                 print(f'[DEBUG]   -> Matched: debug')
             else:
                 asset_type = 'standard'
-                description = t("up_desc_standard")
+                description = "标准版"
                 recommended = False
                 print(f'[DEBUG]   -> Matched: standard')
         
@@ -242,14 +241,14 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
             if not ('linux' in name.lower() and not name.endswith('.exe')):
                 continue
             asset_type = 'debug' if 'debug' in name.lower() else 'release'
-            description = t("up_desc_linux_debug") if asset_type == 'debug' else t("up_desc_linux_release")
+            description = "调试版" if asset_type == 'debug' else "发布版"
             recommended = asset_type == 'release'
         
         elif platform == 'macos':
             if not ('macos' in name.lower() and not name.endswith('.exe')):
                 continue
             asset_type = 'debug' if 'debug' in name.lower() else 'release'
-            description = t("up_desc_linux_debug") if asset_type == 'debug' else t("up_desc_linux_release")
+            description = "调试版" if asset_type == 'debug' else "发布版"
             recommended = asset_type == 'release'
         
         else:
@@ -297,7 +296,7 @@ def format_update_message(latest_info: Dict) -> str:
         if len(latest_info.get('body', '')) > 300:
             body += '...'
     
-    message = t("up_auto_update_msg", version, name, body if body else '(无更新说明)', url)
+    message = f"发现新版本: {version}\n更新名称: {name}\n\n更新说明:\n{body if body else '(无更新说明)'}\n\n详情链接: {url}"
     
     return message
 
@@ -317,7 +316,7 @@ def check_and_notify(current_version: str, repo: str, silent: bool = False) -> O
     
     if result is None:
         if not silent:
-            print(t("up_check_fail"))
+            print("检查更新失败")
         return None
     
     has_update, latest_info = result
@@ -339,7 +338,7 @@ def check_and_notify(current_version: str, repo: str, silent: bool = False) -> O
         }
     else:
         if not silent:
-            print(t("up_latest", current_version))
+            print(f"当前已是最新版本 ({current_version})")
         return {
             'has_update': False,
             'current_version': current_version,
@@ -374,7 +373,7 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     # 检查是否为打包后的 exe
     if not getattr(sys, 'frozen', False):
         print('[DEBUG] Not a frozen executable, cannot auto-update')
-        print(t("up_not_frozen"))
+        print("非打包环境，不支持自动更新")
         return False
     
     # 获取当前程序路径
@@ -385,7 +384,7 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     # 检查新版本文件是否存在
     if not os.path.exists(new_exe_path):
         print(f'[DEBUG] New file does not exist!')
-        print(t("up_new_missing", new_exe_path))
+        print(f"未找到新版本文件: {new_exe_path}")
         return False
     
     print(f'[DEBUG] New file size: {os.path.getsize(new_exe_path)} bytes')
@@ -458,7 +457,7 @@ if exist "{current_exe_path}" (
             goto :move_retry
         )
         echo ERROR: Cannot backup old version after 5 attempts.
-        echo Please close all instances and try again.
+        echo 请关闭所有实例并重试。
         pause
         exit /b 1
     )
@@ -566,14 +565,14 @@ exit /b 0
         )
         
         print(f'[DEBUG] Update script started with PID: {process.pid}')
-        print(t("up_script_started"))
+        print("更新脚本已启动，程序即将退出并进行更新")
         return True
         
     except Exception as e:
         import traceback
         print(f'[DEBUG] Failed to create/start update script:')
         traceback.print_exc()
-        print(t("up_create_script_fail", e))
+        print(f"创建更新脚本失败: {e}")
         return False
 
 
@@ -596,7 +595,7 @@ def apply_unix_update(new_binary_path: str, current_binary_path: str = None) -> 
     
     # 检查是否为打包后的程序
     if not getattr(sys, 'frozen', False):
-        print(t("up_not_frozen_linux"))
+        print("非打包环境，不支持自动更新")
         return False
     
     # 获取当前程序路径
@@ -605,7 +604,7 @@ def apply_unix_update(new_binary_path: str, current_binary_path: str = None) -> 
     
     # 检查新版本文件是否存在
     if not os.path.exists(new_binary_path):
-        print(t("up_new_missing_linux", new_binary_path))
+        print(f"未找到新版本文件: {new_binary_path}")
         return False
     
     # 获取当前进程 PID
@@ -709,11 +708,11 @@ exit 0
                 # 如果没有找到终端，直接后台运行
                 subprocess.Popen(['bash', script_path], start_new_session=True)
         
-        print(t("up_script_started"))
+        print("更新脚本已启动，请重新启动程序")
         return True
         
     except Exception as e:
-        print(t("up_create_script_fail", e))
+        print(f"创建更新脚本失败: {e}")
         return False
 
 
@@ -735,7 +734,7 @@ def apply_update(new_file_path: str, current_path: str = None) -> bool:
     elif sys.platform in ('linux', 'darwin'):
         return apply_unix_update(new_file_path, current_path)
     else:
-        print(t("up_platform_unsupported", sys.platform))
+        print(f"不支持的操作系统: {sys.platform}")
         return False
 
 

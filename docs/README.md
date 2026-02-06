@@ -1,290 +1,119 @@
-# 番茄小说下载器
+# 📚 番茄小说下载器文档
 
-一个现代化、高效的番茄小说下载器，使用 Python 构建，配备简洁、响应式的网页界面。
+欢迎来到番茄小说下载器的文档中心！这里包含了项目的完整使用和开发文档。
 
-## 功能特性
+## 📋 文档导航
 
--   **图书搜索**: 轻松按标题或作者搜索图书。
--   **批量下载**: 一次下载多本图书。
--   **格式支持**: 导出为 **TXT**（纯文本）或 **EPUB**（电子书）格式。
--   **封面图片**: 自动获取并在 EPUB 文件中嵌入图书封面。
--   **章节选择**: 下载完整图书、特定范围或手动选择的章节。
--   **跨平台**: 支持 Windows、macOS、Linux 和 Termux（Android）。
--   **☁️ GitHub Actions 云端下载**: 无需本地环境，直接在 GitHub 云端批量下载小说。
+### 🚀 快速开始
 
-## 安装与使用
+| 文档 | 描述 | 适合人群 |
+|------|------|----------|
+| [☁️ GitHub Actions 云端下载](CLOUD_DOWNLOAD.md) | 无需安装，直接在云端下载小说 | **所有用户（推荐）** |
+| [💻 本地安装使用](LOCAL_INSTALLATION.md) | 下载安装包到本地使用 | 希望本地安装的用户 |
+| [🤖 Termux 专用指南](TERMUX_GUIDE.md) | Android/Termux 环境使用指南 | Android 用户 |
 
-### 方式一：GitHub Actions 云端下载 ☁️ (推荐)
+### 📖 详细指南
 
-**无需安装任何软件，直接在 GitHub 云端下载小说！**
+| 文档 | 描述 | 内容深度 |
+|------|------|----------|
+| [📚 用户使用指南](USER_GUIDE.md) | 详细的功能介绍和使用技巧 | ⭐⭐⭐⭐⭐ |
+| [🤝 贡献指南](CONTRIBUTING.md) | 开发者贡献代码和文档指南 | 开发者 |
 
-#### 快速开始（3步）
+### 🔧 开发文档
 
-1. **进入 Actions 页面**
-   - 打开本仓库
-   - 点击顶部的 **Actions** 标签
-   - 选择左侧的 **Download Novels** 工作流
+| 文档 | 描述 | 目标读者 |
+|------|------|----------|
+| [🏗️ API 文档](API.md) | API 接口详细说明 | 开发者 |
+| [🔌 插件开发](PLUGIN_DEVELOPMENT.md) | 插件系统开发指南 | 高级开发者 |
+| [🐛 故障排除](TROUBLESHOOTING.md) | 常见问题解决方案 | 所有用户 |
 
-2. **触发下载**
-   - 点击 **Run workflow** 按钮
-   - 填写参数：
-     ```
-     书籍ID列表: 7372503659137005093, 7372528691033300280
-     输出格式: txt 或 epub
-     保存路径: downloads
-     并发数量: 3
-     ```
-   - 点击绿色的 **Run workflow** 开始
+## 🎯 按使用场景选择文档
 
-3. **下载文件**
-   - 等待执行完成（5-15分钟）
-   - 进入运行详情页面
-   - 在底部 **Artifacts** 区域下载压缩包
+### 🆕 新用户
 
-#### 主要特性
+1. **首次使用** → [☁️ GitHub Actions 云端下载](CLOUD_DOWNLOAD.md)
+2. **本地安装** → [💻 本地安装使用](LOCAL_INSTALLATION.md)
+3. **Android 用户** → [🤖 Termux 专用指南](TERMUX_GUIDE.md)
 
-- 🚀 **云端执行**：无需本地安装 Python 环境
-- 📦 **批量下载**：支持一次性下载多本小说
-- 🔄 **并发控制**：可配置并发数量（1-5）
-- 💾 **自动保存**：下载完成后自动打包为 Artifact
-- 📊 **详细报告**：生成下载统计报告
-- ⏰ **长期保存**：Artifact 保留 30 天
+### 🔧 高级用户
 
-#### 参数说明
+1. **深入了解功能** → [📚 用户使用指南](USER_GUIDE.md)
+2. **自定义配置** → [📚 用户使用指南](USER_GUIDE.md#配置管理)
+3. **命令行使用** → [📚 用户使用指南](USER_GUIDE.md#命令行详解)
 
-| 参数 | 说明 | 示例 |
-| :--- | :--- | :--- |
-| **书籍ID列表** | 要下载的书籍ID（逗号或空格分隔） | `7372503659137005093, 7372528691033300280` |
-| **输出格式** | `txt` 或 `epub` | `txt` |
-| **保存路径** | 下载文件保存位置（可选） | `downloads` |
-| **并发数量** | 同时下载的书籍数（1-5，可选） | `3` |
+### �‍💻 开发者
 
-#### 如何获取书籍ID
+1. **贡献代码** → [🤝 贡献指南](CONTRIBUTING.md)
+2. **API 开发** → [🏗️ API 文档](API.md)
+3. **插件开发** → [🔌 插件开发](PLUGIN_DEVELOPMENT.md)
 
-**方法1：从网页URL获取**
-```
-URL: https://fanqienovel.com/page/7372503659137005093
-书籍ID: 7372503659137005093
-```
+## 🔍 快速查找
 
-**方法2：使用搜索功能**
-```bash
-python core/cli.py search "斗破苍穹"
-```
+### 常见问题快速导航
 
-#### 使用示例
+| 问题 | 解决方案文档 |
+|------|-------------|
+| 🤔 如何开始使用？ | [☁️ GitHub Actions 云端下载](CLOUD_DOWNLOAD.md#快速开始) |
+| 🐛 下载失败怎么办？ | [📚 用户使用指南](USER_GUIDE.md#常见问题) |
+| 📱 Android 如何使用？ | [🤖 Termux 专用指南](TERMUX_GUIDE.md) |
+| 💻 本地安装出错？ | [💻 本地安装使用](LOCAL_INSTALLATION.md#故障排除) |
+| 🔧 如何配置代理？ | [📚 用户使用指南](USER_GUIDE.md#配置管理) |
+| 🤝 如何贡献代码？ | [🤝 贡献指南](CONTRIBUTING.md) |
 
-**示例 1：下载单本小说（TXT格式）**
-```
-书籍ID列表: 7372503659137005093
-输出格式: txt
-保存路径: downloads
-并发数量: 1
-```
+### 功能快速导航
 
-**示例 2：批量下载多本小说（EPUB格式）**
-```
-书籍ID列表: 7372503659137005093, 7372528691033300280, 7123456789012345678
-输出格式: epub
-保存路径: novels/fantasy
-并发数量: 3
-```
+| 功能 | 相关文档 |
+|------|----------|
+| 🔍 搜索功能 | [📚 用户使用指南](USER_GUIDE.md#搜索功能) |
+| ⬇️ 批量下载 | [📚 用户使用指南](USER_GUIDE.md#批量操作) |
+| 📄 格式转换 | [📚 用户使用指南](USER_GUIDE.md#格式说明) |
+| ⚙️ 高级配置 | [📚 用户使用指南](USER_GUIDE.md#高级功能) |
+| 💻 命令行使用 | [📚 用户使用指南](USER_GUIDE.md#命令行详解) |
 
-**示例 3：大批量下载（高并发）**
-```
-书籍ID列表: 7372503659137005093, 7372528691033300280, 7123456789012345678, 7234567890123456789, 7345678901234567890
-输出格式: txt
-保存路径: downloads/batch-2024
-并发数量: 5
-```
+## 🆕 最新更新
 
-#### 下载报告
+### 2024-01-XX 文档重构
 
-每次下载完成后，会在 Actions 运行页面的 **Summary** 标签中生成详细报告，包含：
+- ✨ **文档结构重组**: 按用户需求重新组织文档结构
+- 📚 **新增云端下载指南**: 详细介绍 GitHub Actions 使用方法
+- 🔧 **完善本地安装指南**: 添加更多平台和故障排除内容
+- 🤖 **优化 Termux 指南**: 解决 ARM64 兼容性问题
+- 📖 **增强用户指南**: 添加更多使用技巧和示例
+- 🤝 **新增贡献指南**: 完善开发者贡献流程
 
-- **下载配置**：书籍数量、输出格式、并发数、保存路径
-- **下载结果**：成功文件数量、总文件大小、Artifact 名称
-- **下载指引**：如何获取下载的文件、Artifact 保留时间
+## 📝 文档反馈
 
-#### 常见问题
+### 反馈渠道
 
-<details>
-<summary><b>Q: Artifact 在哪里下载？</b></summary>
+- **GitHub Issues**: [文档问题反馈](https://github.com/POf-L/Fanqie-novel-Downloader/issues?q=is%3Aissue+is%3Aopen+label%3Adocumentation)
+- **GitHub Discussions**: [文档讨论](https://github.com/POf-L/Fanqie-novel-Downloader/discussions/category/documentation)
+- **Pull Request**: 直接提交文档改进
 
-进入 Actions 运行详情页 → 滚动到页面底部 → 在 **Artifacts** 区域找到压缩包
-</details>
+### 文档贡献者
 
-<details>
-<summary><b>Q: Artifact 保留多久？</b></summary>
+感谢以下贡献者对文档的改进：
 
-保留 30 天，建议及时下载到本地保存
-</details>
+- [@POf-L](https://github.com/POf-L) - 项目创建者和主要维护者
+- *欢迎更多贡献者加入！*
 
-<details>
-<summary><b>Q: 可以下载多少本书？</b></summary>
+## 🔗 相关链接
 
-理论上无限制，建议单次不超过 20 本，避免超时（Actions 单次运行最长 6 小时）
-</details>
+- 🏠 **项目主页**: [https://github.com/POf-L/Fanqie-novel-Downloader](https://github.com/POf-L/Fanqie-novel-Downloader)
+- 📦 **下载页面**: [Releases](https://github.com/POf-L/Fanqie-novel-Downloader/releases)
+- 🐛 **问题反馈**: [Issues](https://github.com/POf-L/Fanqie-novel-Downloader/issues)
+- 💬 **讨论区**: [Discussions](https://github.com/POf-L/Fanqie-novel-Downloader/discussions)
 
-<details>
-<summary><b>Q: 下载速度慢怎么办？</b></summary>
+## 📄 许可证
 
-1. 增加并发数（最大5）
-2. 分批下载
-3. 选择 TXT 格式（比 EPUB 快）
-</details>
-
-<details>
-<summary><b>Q: 下载失败怎么办？</b></summary>
-
-1. 检查书籍ID是否正确
-2. 查看 Actions 日志中的错误信息
-3. 稍后重试
-</details>
-
-<details>
-<summary><b>Q: 支持断点续传吗？</b></summary>
-
-当前版本不支持。下载失败后重新运行，项目会自动跳过已存在的文件
-</details>
-
-<details>
-<summary><b>Q: 可以定时自动下载吗？</b></summary>
-
-当前版本仅支持手动触发。如需定时任务，可修改 `.github/workflows/download-novels.yml` 添加 `schedule` 触发器：
-
-```yaml
-on:
-  workflow_dispatch:
-    # ... 现有配置
-  schedule:
-    - cron: '0 2 * * *'  # 每天凌晨2点执行
-```
-</details>
-
-<details>
-<summary><b>Q: 可以自动提交到仓库吗？</b></summary>
-
-可以修改 workflow 添加自动提交步骤：
-
-```yaml
-- name: 提交下载的文件
-  run: |
-    git config user.name "GitHub Actions"
-    git config user.email "actions@github.com"
-    git add downloads/
-    git commit -m "Auto download novels"
-    git push
-```
-</details>
-
-#### 工作流程
-
-```
-手动触发 (输入参数)
-  ↓
-检出代码
-  ↓
-设置 Python 环境
-  ↓
-安装依赖
-  ↓
-解析书籍ID列表
-  ↓
-执行批量下载 (并发)
-  ↓
-统计下载结果
-  ↓
-上传为 Artifact
-  ↓
-生成下载报告
-  ↓
-完成
-```
-
-#### 安全说明
-
-- ✅ 工作流仅有 `contents: read` 权限
-- ✅ 不会修改仓库内容（除非你自定义）
-- ✅ 下载的文件仅保存在 Artifact 中
-- ✅ 30天后自动删除
+所有文档内容遵循 [MIT 许可证](../LICENSE)，可以自由使用和修改。
 
 ---
 
-### 方式二：本地安装使用
+<div align="center">
 
-#### Windows / macOS / Linux
+**[⬆️ 返回项目主页](../README.md)**
 
-1.  **下载**: 从 [发布页面](https://github.com/POf-L/Fanqie-novel-Downloader/releases) 获取最新版本。
-2.  **运行**:
-    -   **Windows**: 运行 `.exe` 文件。
-    -   **Linux/macOS**: 授予执行权限（`chmod +x ...`）并运行二进制文件。
+Made with ❤️ by TomatoNovelDownloader Team
 
-#### 源代码（Python）
-
-要求: Python 3.7+
-
-1.  克隆仓库:
-    ```bash
-    git clone https://github.com/POf-L/Fanqie-novel-Downloader.git
-    cd Fanqie-novel-Downloader
-    ```
-
-2.  安装依赖:
-    ```bash
-    pip install -r config/requirements.txt
-    ```
-
-3.  运行程序:
-    ```bash
-    # GUI 模式
-    python main.py
-
-    # CLI 模式
-    python core/cli.py --help
-    ```
-
----
-
-## 使用指南
-
-### GUI 界面使用
-
-1. 启动程序后会自动打开网页界面
-2. 在搜索框输入书名或作者名
-3. 选择要下载的书籍
-4. 选择格式（TXT/EPUB）和章节范围
-5. 点击下载按钮
-
-### CLI 命令行使用
-
-```bash
-# 搜索书籍
-python core/cli.py search "斗破苍穹"
-
-# 查看书籍信息
-python core/cli.py info 7372503659137005093
-
-# 下载单本书籍
-python core/cli.py download 7372503659137005093 --format txt
-
-# 批量下载
-python core/cli.py batch-download 7372503659137005093 7372528691033300280 --format epub --concurrent 3
-```
-
----
-
-## 更多信息
-
-### 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-### 📄 许可证
-
-本项目采用开源许可证，详见 LICENSE 文件。
-
-### ⭐ 支持项目
-
-如果这个项目对你有帮助，请给个 Star ⭐ 支持一下！
+</div>
 

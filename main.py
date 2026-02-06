@@ -7,6 +7,7 @@
 import sys
 import os
 import traceback
+from utils.runtime_bootstrap import ensure_runtime_path, apply_packaging_fixes, apply_encoding_fixes
 
 # 使用最底层的方式写入错误信息（不依赖print）
 def _write_error(msg):
@@ -45,43 +46,22 @@ def _global_exception_handler(exc_type, exc_value, exc_tb):
 sys.excepthook = _global_exception_handler
 
 # 添加打包环境路径 - 必须在所有其他导入之前
+_base = ensure_runtime_path()
 if getattr(sys, 'frozen', False):
-    if hasattr(sys, '_MEIPASS'):
-        _base = sys._MEIPASS
-    else:
-        _base = os.path.dirname(sys.executable)
-    if _base not in sys.path:
-        sys.path.insert(0, _base)
     _write_error(f"[DEBUG] 打包环境路径: {_base}")
     _write_error(f"[DEBUG] sys.path: {sys.path[:3]}...")
 
 # 打包兼容性修复
-try:
-    from utils.packaging_fixes import apply_all_fixes
-    apply_all_fixes()
-    _write_error("[DEBUG] packaging_fixes 加载成功")
-except ImportError as e:
-    _write_error(f"[DEBUG] packaging_fixes 导入失败: {e}")
-except Exception as e:
-    _write_error(f"[DEBUG] packaging_fixes 执行失败: {e}")
+apply_packaging_fixes(lambda msg: _write_error(f"[DEBUG] {msg}"))
 
 # 编码处理
-try:
-    from utils.encoding_utils import setup_utf8_encoding, patch_print, safe_print
-    setup_utf8_encoding()
-    patch_print()
-    print = safe_print
-    _write_error("[DEBUG] encoding_utils 加载成功")
-except ImportError as e:
-    _write_error(f"[DEBUG] encoding_utils 导入失败: {e}")
-    if sys.platform == 'win32':
-        try:
-            os.system('chcp 65001 >nul 2>&1')
-            os.environ['PYTHONIOENCODING'] = 'utf-8'
-        except:
-            pass
-except Exception as e:
-    _write_error(f"[DEBUG] encoding_utils 执行失败: {e}")
+_safe_print = apply_encoding_fixes(lambda msg: _write_error(f"[DEBUG] {msg}"))
+if _safe_print:
+    print = _safe_print
+
+# 禁用 SSL 警告
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 import subprocess
 import time
@@ -90,7 +70,6 @@ import requests
 import secrets
 import socket
 from pathlib import Path
-from utils.locales import t
 from utils.platform_utils import (
     detect_platform,
     get_window_config,
@@ -130,7 +109,7 @@ def run_flask_app(port, access_token):
             threaded=True
         )
     except Exception as e:
-        print(t("main_flask_fail", e))
+        print(f"Flask 启动失败: {e}")
         sys.exit(1)
 
 def open_web_interface(port, access_token):
@@ -215,7 +194,7 @@ def open_web_interface(port, access_token):
                         )
                     except Exception:
                         pass
-                print(t("main_app_closed"))
+                print("程序已关闭")
             
             # 获取平台适配的窗口配置
             window_config = get_window_config()
@@ -250,8 +229,8 @@ def open_web_interface(port, access_token):
                 # 处理 'NoneType' object has no attribute 'BrowserProcessId' 等浏览器引擎初始化错误
                 error_msg = str(e)
                 if 'BrowserProcessId' in error_msg or 'NoneType' in error_msg:
-                    print(t("main_webview_init_fail", error_msg))
-                    print(t("main_switch_browser"))
+                    print("WebView 初始化失败: " + error_msg)
+                    print("将切换到浏览器模式")
                     raise ImportError("WebView engine failed")
                 else:
                     raise
@@ -259,14 +238,14 @@ def open_web_interface(port, access_token):
                 # 处理其他 webview 相关错误
                 error_msg = str(e)
                 if any(keyword in error_msg.lower() for keyword in ['browser', 'webview', 'edge', 'chromium']):
-                    print(t("main_webview_fail", error_msg))
-                    print(t("main_switch_browser"))
+                    print("WebView 启动失败: " + error_msg)
+                    print("将切换到浏览器模式")
                     raise ImportError("WebView failed to start")
                 else:
                     raise
             
         except ImportError:
-            print(t("main_webview_unavailable"))
+            print("当前环境不可用 WebView，将使用浏览器打开")
             import webbrowser
             time.sleep(2)  # 等待 Flask 启动
             webbrowser.open(url)
@@ -276,17 +255,17 @@ def open_web_interface(port, access_token):
                 while True:
                     time.sleep(1)
             except KeyboardInterrupt:
-                print("\n" + t("main_app_closed"))
+                print("\n程序已关闭")
                 sys.exit(0)
     
     except Exception as e:
-        print(t("main_interface_fail", e))
+        print("界面启动失败: " + str(e))
         sys.exit(1)
 
 def main():
     """主函数"""
     print("=" * 50)
-    print(t("main_title"))
+    print("番茄小说下载器")
     print("=" * 50)
     
     # 检测平台信息
@@ -299,13 +278,13 @@ def main():
         print("\n提示: Termux 环境请使用 CLI 模式: python cli.py --help")
     
     # 显示版本信息
-    from config.config import __version__, __github_repo__
-    print(t("main_version", __version__))
+    from config.config import __version__, __github_repo__, CONFIG
+    print(f"版本: {__version__}")
     
     # 显示配置文件路径
     import tempfile
     config_file = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
-    print(t("main_config_path", config_file))
+    print(f"配置文件路径: {config_file}")
     
     # 生成随机访问令牌
     access_token = secrets.token_urlsafe(32)
@@ -315,12 +294,35 @@ def main():
         base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
         webview2_path = os.path.join(base_path, 'WebView2')
         if os.path.exists(webview2_path):
-            print(t("main_webview2_config", webview2_path))
+            print(f"使用打包内置 WebView2: {webview2_path}")
             os.environ["WEBVIEW2_BROWSER_EXECUTABLE_FOLDER"] = webview2_path
     
     # 查找可用端口
     port = find_free_port()
     
+    print("\n正在启动...")
+    
+    # 在后台线程中启动 Flask
+    flask_thread = threading.Thread(target=run_flask_app, args=(port, access_token), daemon=True)
+    flask_thread.start()
+    
+    # 等待 Flask 启动
+    print("等待服务启动...")
+    max_retries = 30
+    url = f'http://127.0.0.1:{port}?token={access_token}'
+    for i in range(max_retries):
+        try:
+            response = requests.get(url, timeout=1)
+            if response.status_code == 200:
+                print("服务已启动")
+                break
+        except:
+            if i < max_retries - 1:
+                time.sleep(0.5)
+            else:
+                print("服务启动超时")
+                sys.exit(1)
+
     # 检查更新(异步，不阻塞启动) - 优化版：移除延迟，增加超时控制
     def check_update_async():
         try:
@@ -328,81 +330,72 @@ def main():
             # 移除 time.sleep(2) 延迟，立即开始检查
             # 使用更短的超时时间，避免长时间阻塞
             check_and_notify(__version__, __github_repo__, silent=False)
-        except Exception:
-            # 静默处理异常，不影响主程序启动
-            pass
+        except Exception as e:
+            # 显示更新检测失败的提示，但不影响程序运行
+            print(f"\n⚠ 更新检测失败: {str(e)}")
+            print("💡 这不影响程序正常使用，可以手动检查更新:")
+            print(f"   GitHub: {__github_repo__}/releases")
 
     # 使用守护线程，程序退出时自动结束
     update_thread = threading.Thread(target=check_update_async, daemon=True)
     update_thread.start()
-    
-    # 检查依赖 - 优化版：并行检查，减少阻塞时间
-    print("\n" + t("main_check_deps"))
-    required_packages = {
-        'flask': 'Flask',
-        'flask_cors': 'Flask-CORS',
-    }
 
-    def check_package(module_name):
-        """检查单个包是否可用"""
+    # 同步测试API节点并选择最优节点（等待测试完成）
+    print("\n正在测试API节点可用性和速度...")
+    optimal_node = None
+    node_tester = None
+
+    def test_api_nodes_async():
+        """后台线程测试API节点"""
+        nonlocal optimal_node, node_tester
         try:
-            __import__(module_name)
-            return module_name, True
-        except ImportError:
-            return module_name, False
+            import asyncio
+            from utils.node_manager import test_and_select_optimal_node, initialize_node_management, get_node_tester, get_health_monitor
 
-    # 并行检查所有依赖
-    import concurrent.futures
-    missing_packages = []
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        # 提交所有检查任务
-        future_to_module = {
-            executor.submit(check_package, module): (module, name)
-            for module, name in required_packages.items()
-        }
-
-        # 收集结果
-        for future in concurrent.futures.as_completed(future_to_module):
-            module, name = future_to_module[future]
+            # 在新的事件循环中运行异步测试
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
-                _, available = future.result(timeout=2)  # 2秒超时
-                if available:
-                    print(f"[OK] {name}")
+                # 设置15秒超时（测试8个节点需要更多时间）
+                optimal_node = loop.run_until_complete(
+                    asyncio.wait_for(test_and_select_optimal_node(CONFIG), timeout=15.0)
+                )
+                if optimal_node:
+                    print(f"✓ 已选择最优API节点: {optimal_node}")
                 else:
-                    print(f"[X] {name}")
-                    missing_packages.append(name)
-            except Exception:
-                print(f"[X] {name}")
-                missing_packages.append(name)
-    
-    if missing_packages:
-        print(f"\n{t('main_missing_deps', ', '.join(missing_packages))}")
-        print(t("main_install_deps"))
-        sys.exit(1)
-    
-    print("\n" + t("main_starting"))
-    
-    # 在后台线程中启动 Flask
-    flask_thread = threading.Thread(target=run_flask_app, args=(port, access_token), daemon=True)
-    flask_thread.start()
-    
-    # 等待 Flask 启动
-    print(t("main_wait_server"))
-    max_retries = 30
-    url = f'http://127.0.0.1:{port}?token={access_token}'
-    for i in range(max_retries):
-        try:
-            response = requests.get(url, timeout=1)
-            if response.status_code == 200:
-                print(t("main_server_started"))
-                break
-        except:
-            if i < max_retries - 1:
-                time.sleep(0.5)
-            else:
-                print(t("main_server_timeout"))
-                sys.exit(1)
+                    print("❌ 所有API节点都不可用")
+                    print("=" * 50)
+                    print("程序无法启动，原因如下：")
+                    print("1. 网络连接问题")
+                    print("2. 所有API节点都已下线")
+                    print("3. 防火墙或代理拦截")
+                    print("4. 节点返回防护页面（非JSON格式）")
+                    print("=" * 50)
+                    print("请联系开发者修复节点列表")
+                    print(f"GitHub: {__github_repo__}")
+                    print("=" * 50)
+                    # 退出程序
+                    sys.exit(1)
+
+                # 初始化节点管理模块
+                node_tester = get_node_tester()
+                if node_tester:
+                    status_cache, health_monitor = initialize_node_management(node_tester)
+                    health_monitor.start_monitoring()
+                    print("✓ 节点健康监控已启动")
+
+            except asyncio.TimeoutError:
+                print("⚠ API节点测试超时（15秒），将使用默认配置")
+            except Exception as e:
+                print(f"⚠ API节点测试异常: {e}")
+            finally:
+                loop.close()
+        except Exception as e:
+            print(f"⚠ API节点测试初始化异常: {e}")
+
+    # 在后台线程中执行节点测试
+    test_thread = threading.Thread(target=test_api_nodes_async, daemon=True)
+    test_thread.start()
     
     # 检查 GUI 可用性并选择合适的界面模式
     if platform_info.is_termux:
@@ -421,12 +414,11 @@ def main():
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("\n" + t("main_app_closed"))
+            print("\n程序已关闭")
             sys.exit(0)
     elif not platform_info.is_gui_available:
         # GUI 不可用：使用浏览器模式
-        print("\n" + get_unavailable_feature_message('gui_webview'))
-        print("将使用浏览器模式...")
+        print("\n" + "GUI 不可用，将使用浏览器模式...")
         
         import webbrowser
         time.sleep(1)
@@ -437,12 +429,18 @@ def main():
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("\n" + t("main_app_closed"))
+            print("\n程序已关闭")
             sys.exit(0)
     else:
-        # 正常 GUI 模式
-        print("\n" + t("main_opening_interface"))
+        # 正常 GUI 模式 - 先打开界面
+        print("\n正在打开界面...")
         open_web_interface(port, access_token)
+        
+        # 等待节点测试完成（GUI 已打开）
+        print("等待节点测试完成...")
+        test_thread.join(timeout=20)
+        if test_thread.is_alive():
+            print("⚠ 节点测试超时，但程序将继续运行")
 
 if __name__ == '__main__':
     main()

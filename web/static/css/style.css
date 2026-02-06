@@ -141,51 +141,6 @@ body {
     -webkit-app-region: no-drag;
 }
 
-.header-api-source {
-    display: flex;
-    align-items: center;
-}
-
-.api-select-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.api-select-wrapper .form-input {
-    width: 180px;
-    padding: 8px 32px 8px 12px;
-    font-size: 12px;
-    appearance: none;
-    -webkit-appearance: none;
-    cursor: pointer;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a6adbb' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-}
-
-.api-select-wrapper .form-input:disabled {
-    opacity: 0.7;
-    cursor: wait;
-}
-
-.api-select-loading {
-    position: absolute;
-    right: 10px;
-    font-size: 14px;
-    color: var(--primary);
-    display: none;
-}
-
-.api-select-wrapper.loading .form-input {
-    background-image: none;
-    padding-right: 32px;
-}
-
-.api-select-wrapper.loading .api-select-loading {
-    display: block;
-}
-
 .github-link {
     display: flex;
     align-items: center;
@@ -619,8 +574,13 @@ iconify-icon {
 
 .search-desc.collapsed {
     display: -webkit-box;
+    display: -moz-box;
+    display: box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
+    -moz-box-orient: vertical;
+    box-orient: vertical;
     overflow: hidden;
 }
 
@@ -933,10 +893,10 @@ iconify-icon {
 /* 队列控制按钮 */
 .queue-controls {
     display: flex;
-    gap: 8px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 10px;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
 }
 
 .queue-controls .btn {
@@ -1257,6 +1217,88 @@ iconify-icon {
     .spin {
         animation: none !important;
     }
+}
+
+
+/* ===================== 初始化加载遮罩 ===================== */
+
+.init-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, var(--bg-body) 0%, #0f1419 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(10px);
+}
+
+.init-loading-content {
+    text-align: center;
+    color: var(--text-primary);
+    max-width: 400px;
+    padding: 2rem;
+}
+
+.init-loading-spinner {
+    margin-bottom: 2rem;
+    font-size: 4rem;
+    color: var(--primary);
+}
+
+.init-loading-spinner .spin {
+    animation: spin 2s linear infinite;
+}
+
+.init-loading-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+}
+
+.init-loading-text {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+    line-height: 1.5;
+}
+
+.init-loading-progress {
+    width: 100%;
+    height: 4px;
+    background: var(--bg-input);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.init-loading-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+    border-radius: 2px;
+    width: 0%;
+    animation: loading-progress 5s ease-in-out forwards;
+}
+
+@keyframes loading-progress {
+    0% { width: 0%; }
+    50% { width: 70%; }
+    80% { width: 85%; }
+    100% { width: 100%; }
+}
+
+/* 隐藏初始化遮罩时的过渡效果 */
+.dashboard-container {
+    transition: opacity 0.5s ease, pointer-events 0.5s ease;
+}
+
+.dashboard-container.show {
+    opacity: 1 !important;
+    pointer-events: auto !important;
 }
 
 
@@ -1666,17 +1708,24 @@ iconify-icon {
 /* ===================== 设置页面样式 ===================== */
 
 .settings-container {
-    padding: 24px;
-    max-width: 800px;
-    margin: 0 auto;
+    padding: 12px 16px;
+    margin: 0;
+    width: 100%;
 }
 
 .settings-section {
-    margin-bottom: 32px;
+    margin-bottom: 16px;
     background: var(--bg-card);
-    border-radius: var(--radius-md);
-    padding: 20px;
+    border-radius: var(--radius-lg);
+    padding: 16px;
     border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.settings-section:hover {
+    box-shadow: var(--shadow-md);
+    border-color: rgba(255, 255, 255, 0.12);
 }
 
 .settings-section-title {
@@ -1685,7 +1734,7 @@ iconify-icon {
     gap: 8px;
     font-size: 16px;
     font-weight: 600;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     color: var(--text-primary);
 }
 
@@ -1696,14 +1745,25 @@ iconify-icon {
 
 .settings-grid {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
 }
 
 .setting-item {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
+    padding: 12px;
+    background: var(--bg-input);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    transition: var(--transition);
+}
+
+.setting-item:hover {
+    background: var(--bg-input-focus);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
 }
 
 .setting-label {
@@ -1715,7 +1775,7 @@ iconify-icon {
 .setting-control {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
 }
 
 .setting-control .form-input {
@@ -1732,8 +1792,8 @@ iconify-icon {
     display: flex;
     gap: 12px;
     justify-content: center;
-    margin-top: 32px;
-    padding: 0 24px;
+    margin-top: 20px;
+    padding: 0;
 }
 
 .settings-actions .btn {
@@ -1741,7 +1801,7 @@ iconify-icon {
 }
 
 .settings-message {
-    margin-top: 20px;
+    margin-top: 16px;
     padding: 12px 16px;
     border-radius: var(--radius-sm);
     text-align: center;
@@ -1773,7 +1833,11 @@ iconify-icon {
 }
 
 @media (min-width: 768px) {
-    .settings-grid {
-        grid-template-columns: repeat(2, 1fr);
+    .queue-settings {
+        grid-template-columns: 1fr 1fr;
+    }
+    .queue-settings .form-group:nth-child(2) {
+        grid-column: span 2;
+        order: 3;
     }
 }

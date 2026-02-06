@@ -32,6 +32,7 @@ import time
 from datetime import datetime
 from typing import Dict, Optional
 from fake_useragent import UserAgent
+from utils.runtime_bootstrap import get_runtime_base_path
 
 _LOCAL_CONFIG_FILE = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader_config.json')
 
@@ -41,13 +42,7 @@ def _get_config_path():
     import sys
 
     if getattr(sys, 'frozen', False):
-        # 打包环境
-        if hasattr(sys, '_MEIPASS'):
-            # PyInstaller
-            base_path = sys._MEIPASS
-        else:
-            # 其他打包工具
-            base_path = os.path.dirname(sys.executable)
+        base_path = get_runtime_base_path()
 
         # 尝试多个可能的位置
         possible_paths = [

@@ -6,37 +6,20 @@
 import sys
 import os
 
-# 添加父目录到路径以便导入其他模块（打包环境和开发环境都需要）
-if getattr(sys, 'frozen', False):
-    # 打包环境
-    if hasattr(sys, '_MEIPASS'):
-        _base_path = sys._MEIPASS
-    else:
-        _base_path = os.path.dirname(sys.executable)
-    if _base_path not in sys.path:
-        sys.path.insert(0, _base_path)
-else:
-    # 开发环境
+if __package__ in (None, ""):
     _parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if _parent_dir not in sys.path:
         sys.path.insert(0, _parent_dir)
 
+from utils.runtime_bootstrap import ensure_runtime_path, apply_encoding_fixes
+
+# 添加父目录到路径以便导入其他模块（打包环境和开发环境都需要）
+ensure_runtime_path()
+
 # 一劳永逸的编码处理 - 必须在所有其他导入之前
-try:
-    from utils.encoding_utils import setup_utf8_encoding, patch_print, safe_print
-    # 设置全局UTF-8编码环境
-    setup_utf8_encoding()
-    # 替换print函数为编码安全版本
-    patch_print()
-    print = safe_print  # 确保当前模块使用安全版本
-except ImportError:
-    # 如果编码工具不存在，使用基本的编码设置
-    if sys.platform == 'win32':
-        try:
-            os.system('chcp 65001 >nul 2>&1')
-            os.environ['PYTHONIOENCODING'] = 'utf-8'
-        except:
-            pass
+_safe_print = apply_encoding_fixes()
+if _safe_print:
+    print = _safe_print
 
 import argparse
 from typing import Optional
@@ -46,9 +29,45 @@ import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+from utils.book_id import extract_book_id
 
 from utils.platform_utils import detect_platform, get_feature_status_report
-from utils.locales import t
+
+
+def _extract_book_id(raw_value: str) -> str:
+    """从输入值中提取书籍ID，支持纯ID或fanqie URL。"""
+    return extract_book_id(raw_value) or ""
+
+
+def _normalize_single_book_id(raw_value: str) -> Optional[str]:
+    """标准化单个书籍ID；无效时返回None。"""
+    book_id = _extract_book_id(raw_value)
+    return book_id if book_id.isdigit() else None
+
+
+def _normalize_file_format(file_format: Optional[str]) -> str:
+    """标准化导出格式，非法值回退txt并输出警告。"""
+    fmt = file_format or 'txt'
+    if fmt not in ['txt', 'epub']:
+        print(f"警告: 不支持的格式 '{fmt}'，使用默认格式 txt")
+        return 'txt'
+    return fmt
+
+
+def _resolve_save_path(raw_path: Optional[str], default_subdir: Optional[str] = None) -> str:
+    """标准化保存路径并确保目录存在。"""
+    save_path = raw_path
+    if not save_path:
+        home = os.path.expanduser('~')
+        if default_subdir:
+            save_path = os.path.join(home, default_subdir)
+        else:
+            save_path = os.path.join(home, 'Downloads')
+            if not os.path.exists(save_path):
+                save_path = home
+
+    os.makedirs(save_path, exist_ok=True)
+    return save_path
 
 
 def format_table(headers: list, rows: list, col_widths: Optional[list] = None) -> str:
@@ -158,19 +177,12 @@ def cmd_info(args):
     """显示书籍信息命令"""
     from core.novel_downloader import get_api_manager
     
-    book_id = args.book_id
-    if not book_id:
+    if not args.book_id:
         print("错误: 请提供书籍ID")
         return 1
-    
-    # 从 URL 提取 ID
-    if 'fanqienovel.com' in book_id:
-        import re
-        match = re.search(r'/page/(\d+)', book_id)
-        if match:
-            book_id = match.group(1)
-    
-    if not book_id.isdigit():
+
+    book_id = _normalize_single_book_id(args.book_id)
+    if not book_id:
         print("错误: 书籍ID必须是数字")
         return 1
     
@@ -218,41 +230,18 @@ def cmd_download(args):
     """下载书籍命令"""
     from core.novel_downloader import downloader_instance
     from utils.platform_utils import detect_platform
-    import os
     
-    book_id = args.book_id
-    if not book_id:
+    if not args.book_id:
         print("错误: 请提供书籍ID")
         return 1
-    
-    # 从 URL 提取 ID
-    if 'fanqienovel.com' in book_id:
-        import re
-        match = re.search(r'/page/(\d+)', book_id)
-        if match:
-            book_id = match.group(1)
-    
-    if not book_id.isdigit():
+
+    book_id = _normalize_single_book_id(args.book_id)
+    if not book_id:
         print("错误: 书籍ID必须是数字")
         return 1
-    
-    # 确定保存路径
-    save_path = args.path
-    if not save_path:
-        # 默认保存到用户下载目录
-        home = os.path.expanduser('~')
-        save_path = os.path.join(home, 'Downloads')
-        if not os.path.exists(save_path):
-            save_path = home
-    
-    # 确保目录存在
-    os.makedirs(save_path, exist_ok=True)
-    
-    # 确定格式
-    file_format = args.format or 'txt'
-    if file_format not in ['txt', 'epub']:
-        print(f"警告: 不支持的格式 '{file_format}'，使用默认格式 txt")
-        file_format = 'txt'
+
+    save_path = _resolve_save_path(args.path)
+    file_format = _normalize_file_format(args.format)
     
     print(f"开始下载书籍: {book_id}")
     print(f"保存路径: {save_path}")
@@ -285,25 +274,18 @@ def cmd_download(args):
 def cmd_batch_download(args):
     """批量下载书籍命令"""
     from core.novel_downloader import batch_downloader
-    import os
     import time
 
     # 解析书籍ID列表
     book_ids = []
     if args.book_ids:
         # 从命令行参数获取
-        for book_id in args.book_ids:
-            # 从 URL 提取 ID
-            if 'fanqienovel.com' in book_id:
-                import re
-                match = re.search(r'/page/(\d+)', book_id)
-                if match:
-                    book_id = match.group(1)
-
-            if book_id.isdigit():
-                book_ids.append(book_id)
+        for raw_value in args.book_ids:
+            normalized_id = _normalize_single_book_id(raw_value)
+            if normalized_id:
+                book_ids.append(normalized_id)
             else:
-                print(f"警告: 跳过无效的书籍ID: {book_id}")
+                print(f"警告: 跳过无效的书籍ID: {raw_value}")
 
     if args.file:
         # 从文件读取书籍ID列表
@@ -313,13 +295,9 @@ def cmd_batch_download(args):
                     line = line.strip()
                     if line and not line.startswith('#'):
                         # 支持 ID 或 URL 格式
-                        if 'fanqienovel.com' in line:
-                            import re
-                            match = re.search(r'/page/(\d+)', line)
-                            if match:
-                                book_ids.append(match.group(1))
-                        elif line.isdigit():
-                            book_ids.append(line)
+                        normalized_id = _normalize_single_book_id(line)
+                        if normalized_id:
+                            book_ids.append(normalized_id)
         except FileNotFoundError:
             print(f"错误: 文件不存在: {args.file}")
             return 1
@@ -331,20 +309,8 @@ def cmd_batch_download(args):
         print("错误: 请提供至少一个书籍ID")
         return 1
 
-    # 确定保存路径
-    save_path = args.path
-    if not save_path:
-        home = os.path.expanduser('~')
-        save_path = os.path.join(home, 'Downloads', 'FanqieNovels')
-
-    # 确保目录存在
-    os.makedirs(save_path, exist_ok=True)
-
-    # 确定格式
-    file_format = args.format or 'txt'
-    if file_format not in ['txt', 'epub']:
-        print(f"警告: 不支持的格式 '{file_format}'，使用默认格式 txt")
-        file_format = 'txt'
+    save_path = _resolve_save_path(args.path, default_subdir='Downloads/FanqieNovels')
+    file_format = _normalize_file_format(args.format)
 
     # 并发设置
     max_concurrent = min(args.concurrent or 3, 5)  # 最大5个并发
@@ -531,10 +497,6 @@ def cmd_config(args):
         if 'watermark_enabled' in cfg:
             print(f"水印开关: {'开启' if cfg['watermark_enabled'] else '关闭'}")
 
-        # 语言配置
-        if 'language' in cfg:
-            print(f"界面语言: {cfg['language']}")
-
         # 保存路径
         if 'save_path' in cfg:
             print(f"默认保存路径: {cfg['save_path']}")
@@ -569,7 +531,7 @@ def cmd_config(args):
             value = value.lower() in ['true', '1', 'yes', 'on', '开启']
 
         # 字符串类型配置
-        elif key in ['api_base_url', 'api_base_url_mode', 'language', 'save_path']:
+        elif key in ['api_base_url', 'api_base_url_mode', 'save_path']:
             value = str(value)
 
         else:

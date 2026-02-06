@@ -7,26 +7,16 @@
 import sys
 import os
 
-# 添加父目录到路径以便导入其他模块（打包环境和开发环境都需要）
-if getattr(sys, 'frozen', False):
-    # 打包环境
-    if hasattr(sys, '_MEIPASS'):
-        _base_path = sys._MEIPASS
-    else:
-        _base_path = os.path.dirname(sys.executable)
-    if _base_path not in sys.path:
-        sys.path.insert(0, _base_path)
-else:
-    # 开发环境
+if __package__ in (None, ""):
     _parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if _parent_dir not in sys.path:
         sys.path.insert(0, _parent_dir)
 
-try:
-    from utils.packaging_fixes import apply_all_fixes
-    apply_all_fixes()
-except ImportError:
-    pass
+from utils.runtime_bootstrap import ensure_runtime_path, apply_packaging_fixes
+
+# 添加父目录到路径以便导入其他模块（打包环境和开发环境都需要）
+ensure_runtime_path()
+apply_packaging_fixes()
 
 import time
 import requests
@@ -47,8 +37,28 @@ from urllib3.util.retry import Retry
 
 from config.config import CONFIG, print_lock, get_headers
 from utils.watermark import apply_watermark_to_chapter
-from utils.locales import t
 from utils.async_logger import async_print, safe_print
+from utils.messages import t
+from core.text_utils import (
+    normalize_title as _tu_normalize_title,
+    extract_title_core as _tu_extract_title_core,
+    parse_novel_text_with_catalog as _tu_parse_novel_text_with_catalog,
+    parse_novel_text as _tu_parse_novel_text,
+    sanitize_filename as _tu_sanitize_filename,
+    generate_filename as _tu_generate_filename,
+    process_chapter_content as _tu_process_chapter_content,
+)
+from core.state_store import (
+    get_status_file_path as _ss_get_status_file_path,
+    get_content_file_path as _ss_get_content_file_path,
+    get_status_dir as _ss_get_status_dir,
+    load_status as _ss_load_status,
+    load_saved_content as _ss_load_saved_content,
+    save_status as _ss_save_status,
+    save_content as _ss_save_content,
+    clear_status as _ss_clear_status,
+    has_saved_state as _ss_has_saved_state,
+)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 requests.packages.urllib3.disable_warnings()
@@ -96,20 +106,6 @@ class APIManager:
     """
 
     def __init__(self):
-        # 优先使用已选择的 api_base_url；否则回退到 api_sources 第一个
-        preferred_base_url = (CONFIG.get("api_base_url") or "").strip().rstrip('/')
-        if preferred_base_url:
-            self.base_url = preferred_base_url
-        else:
-            api_sources = CONFIG.get("api_sources", [])
-            base_url = ""
-            if api_sources and isinstance(api_sources, list) and len(api_sources) > 0:
-                first = api_sources[0]
-                if isinstance(first, dict):
-                    base_url = first.get("base_url") or first.get("api_base_url") or ""
-                elif isinstance(first, str):
-                    base_url = first
-            self.base_url = (base_url or "").strip().rstrip('/')
         self.endpoints = CONFIG["endpoints"]
         self._tls = threading.local()
         self._async_session: Optional[aiohttp.ClientSession] = None
@@ -119,6 +115,287 @@ class APIManager:
         # 预初始化异步会话以减少启动延迟
         self._session_initialized = False
         self._init_lock = asyncio.Lock()
+        
+        # 获取最优节点（优先使用节点测试器的结果）
+        self.base_url = self._get_optimal_node_from_tester() or self._get_optimal_node()
+
+    def _get_optimal_node_from_tester(self) -> Optional[str]:
+        """从节点测试器获取已测试的最优节点"""
+        try:
+            from utils.node_manager import get_node_tester
+            tester = get_node_tester()
+            if tester:
+                optimal_node = tester.get_optimal_node()
+                if optimal_node:
+                    safe_print(f"使用节点测试器选择的最优节点: {optimal_node}")
+                    return optimal_node
+        except Exception as e:
+            safe_print(f"获取节点测试器结果失败: {e}")
+        return None
+
+    def _get_optimal_node(self) -> str:
+        """自动优选支持批量下载的节点"""
+        api_sources = CONFIG.get("api_sources", [])
+        if not api_sources:
+            return ""
+        
+        # 优先选择支持批量下载的节点
+        full_download_nodes = []
+        other_nodes = []
+        
+        for source in api_sources:
+            if isinstance(source, dict):
+                base_url = (source.get("base_url") or source.get("api_base_url") or "").strip().rstrip('/')
+                supports_full = source.get("supports_full_download", True)
+                if base_url:
+                    if supports_full:
+                        full_download_nodes.append(base_url)
+                    else:
+                        other_nodes.append(base_url)
+            elif isinstance(source, str):
+                base_url = str(source).strip().rstrip('/')
+                if base_url:
+                    other_nodes.append(base_url)
+        
+        # 优先返回支持批量下载的第一个节点
+        if full_download_nodes:
+            optimal_node = full_download_nodes[0]
+            safe_print(f"自动选择支持批量下载的节点: {optimal_node}")
+            return optimal_node
+        
+        # 如果没有支持批量下载的节点，返回第一个可用节点
+        if other_nodes:
+            optimal_node = other_nodes[0]
+            safe_print(f"选择节点: {optimal_node}")
+            return optimal_node
+        
+        return ""
+
+    def _candidate_base_urls(self) -> List[str]:
+        """返回候选 API 节点列表（优先支持批量下载的节点，排除故障节点）"""
+        candidates: List[str] = []
+
+        # 尝试从节点测试器获取可用节点列表
+        try:
+            from utils.node_manager import get_node_tester
+            node_tester = get_node_tester()
+            if node_tester:
+                test_results = node_tester.get_test_results()
+                failed_nodes = set()
+
+                # 收集故障节点
+                for node_url, result in test_results.items():
+                    if not result.get('available', False):
+                        failed_nodes.add(node_url)
+
+                # 获取健康监控的故障节点列表（如果有）
+                try:
+                    from utils.node_manager import get_health_monitor
+                    health_monitor = get_health_monitor()
+                    if health_monitor:
+                        failed_nodes.update(health_monitor.get_failed_nodes())
+                except:
+                    pass
+
+                # 过滤掉故障节点
+                api_sources = CONFIG.get("api_sources", [])
+                full_download_nodes = []
+                other_nodes = []
+
+                for source in api_sources or []:
+                    if isinstance(source, dict):
+                        base = (source.get("base_url") or source.get("api_base_url") or "").strip().rstrip('/')
+                        supports_full = source.get("supports_full_download", True)
+                        if base and base not in failed_nodes:
+                            if supports_full:
+                                full_download_nodes.append(base)
+                            else:
+                                other_nodes.append(base)
+                    else:
+                        base = str(source or "").strip().rstrip('/')
+                        if base and base not in failed_nodes:
+                            other_nodes.append(base)
+
+                # 如果没有可用节点，返回所有节点（降级处理）
+                if not full_download_nodes and not other_nodes:
+                    for source in api_sources or []:
+                        if isinstance(source, dict):
+                            base = (source.get("base_url") or source.get("api_base_url") or "").strip().rstrip('/')
+                            supports_full = source.get("supports_full_download", True)
+                            if base:
+                                if supports_full:
+                                    full_download_nodes.append(base)
+                                else:
+                                    other_nodes.append(base)
+                        else:
+                            base = str(source or "").strip().rstrip('/')
+                            if base:
+                                other_nodes.append(base)
+
+                # 当前节点优先（如果存在）
+                current = (self.base_url or "").strip().rstrip('/')
+                if current:
+                    if current in full_download_nodes:
+                        candidates.append(current)
+                        full_download_nodes.remove(current)
+                    elif current in other_nodes:
+                        candidates.append(current)
+                        other_nodes.remove(current)
+
+                # 添加支持批量下载的节点
+                candidates.extend(full_download_nodes)
+                # 添加其他节点
+                candidates.extend(other_nodes)
+
+                return candidates
+
+        except Exception as e:
+            # 如果获取节点测试器失败，降级到原始逻辑
+            pass
+
+        # 降级逻辑：返回所有节点
+        api_sources = CONFIG.get("api_sources", [])
+        full_download_nodes = []
+        other_nodes = []
+
+        for source in api_sources or []:
+            if isinstance(source, dict):
+                base = (source.get("base_url") or source.get("api_base_url") or "").strip().rstrip('/')
+                supports_full = source.get("supports_full_download", True)
+                if base:
+                    if supports_full:
+                        full_download_nodes.append(base)
+                    else:
+                        other_nodes.append(base)
+            else:
+                base = str(source or "").strip().rstrip('/')
+                if base:
+                    other_nodes.append(base)
+
+        # 当前节点优先（如果存在）
+        current = (self.base_url or "").strip().rstrip('/')
+        if current:
+            if current in full_download_nodes:
+                candidates.append(current)
+                full_download_nodes.remove(current)
+            elif current in other_nodes:
+                candidates.append(current)
+                other_nodes.remove(current)
+
+        # 添加支持批量下载的节点
+        candidates.extend(full_download_nodes)
+        # 添加其他节点
+        candidates.extend(other_nodes)
+
+        return candidates
+
+    def _debug_enabled(self) -> bool:
+        """始终启用调试日志（所有运行默认输出到终端）"""
+        return True
+
+    def _debug_log(self, message: str):
+        if self._debug_enabled():
+            safe_print(f"[API DEBUG] {message}")
+
+    def _switch_base_url(self, base_url: str):
+        """切换当前生效节点"""
+        normalized = (base_url or "").strip().rstrip('/')
+        if not normalized:
+            return
+        self.base_url = normalized
+        self._debug_log(f"自动切换 API 节点 -> {normalized}")
+
+    def update_optimal_node(self):
+        """更新最优节点（从节点测试器获取最新结果）"""
+        try:
+            from utils.node_manager import get_node_tester
+            tester = get_node_tester()
+            if tester:
+                optimal_node = tester.get_optimal_node()
+                if optimal_node and optimal_node != self.base_url:
+                    self._switch_base_url(optimal_node)
+                    safe_print(f"已更新到新的最优节点: {optimal_node}")
+                    return True
+        except Exception as e:
+            safe_print(f"更新最优节点失败: {e}")
+        return False
+
+    def get_node_status_info(self) -> Dict:
+        """获取当前节点状态信息"""
+        try:
+            from utils.node_manager import get_node_tester
+            tester = get_node_tester()
+            if tester:
+                return tester.get_node_status_summary()
+        except Exception:
+            pass
+        
+        # 如果节点测试器不可用，返回基本信息
+        return {
+            'current_node': self.base_url,
+            'total_nodes': len(CONFIG.get('api_sources', [])),
+            'test_completed': False
+        }
+
+    def _request_with_failover(self, endpoint: str, params: Dict) -> Optional[requests.Response]:
+        """同步请求（自动故障切换 API 节点）"""
+        last_exception = None
+        timeout = CONFIG["request_timeout"]
+        candidates = self._candidate_base_urls()
+        self._debug_log(
+            f"请求开始 endpoint={endpoint}, params={params}, timeout={timeout}, candidates={candidates}"
+        )
+
+        for index, base in enumerate(candidates, start=1):
+            url = f"{base}{endpoint}"
+            self._debug_log(f"尝试节点[{index}/{len(candidates)}]: {url}")
+            try:
+                response = self._get_session().get(
+                    url,
+                    params=params,
+                    headers=get_headers(),
+                    timeout=timeout
+                )
+
+                # 成功返回时，记住该可用节点
+                if response.status_code == 200:
+                    self._debug_log(f"节点响应成功 status=200: {base}")
+                    if base != self.base_url:
+                        safe_print(f"API节点已自动切换到更优节点: {base}")
+                        self._switch_base_url(base)
+                    return response
+
+                # 5xx 视为节点故障，尝试下一个
+                if response.status_code >= 500:
+                    self._debug_log(f"节点响应异常 status={response.status_code}，继续切换: {base}")
+                    continue
+
+                # 4xx 等业务错误直接返回，避免误切换
+                self._debug_log(f"节点返回业务状态 status={response.status_code}，停止切换: {base}")
+                return response
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                last_exception = e
+                self._debug_log(f"节点网络异常 {type(e).__name__}: {base} -> {e}")
+                continue
+            except requests.RequestException as e:
+                last_exception = e
+                self._debug_log(f"节点请求异常 {type(e).__name__}: {base} -> {e}")
+                continue
+
+        if last_exception:
+            self._debug_log(f"所有节点尝试失败，抛出最后异常: {last_exception}")
+            # 提供友好的错误提示
+            error_msg = f"所有API节点都不可用，请检查网络连接或稍后重试。"
+            if isinstance(last_exception, requests.exceptions.Timeout):
+                error_msg = f"所有API节点请求超时，请检查网络连接。"
+            elif isinstance(last_exception, requests.exceptions.ConnectionError):
+                error_msg = f"无法连接到任何API节点，请检查网络连接。"
+            safe_print(f"⚠ {error_msg}")
+            safe_print(f"💡 提示：可以稍后重试，或检查网络连接")
+            raise last_exception
+        self._debug_log("所有节点尝试完毕，未得到有效响应")
+        safe_print("⚠ 所有API节点都无法返回有效响应，请稍后重试")
+        return None
 
     def _get_session(self) -> requests.Session:
         """获取同步HTTP会话"""
@@ -296,15 +573,28 @@ class APIManager:
     def search_books(self, keyword: str, offset: int = 0) -> Optional[Dict]:
         """搜索书籍"""
         try:
-            url = f"{self.base_url}{self.endpoints['search']}"
             params = {"key": keyword, "tab_type": "3", "offset": str(offset)}
-            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
-            
+            response = self._request_with_failover(self.endpoints['search'], params)
+            if response is None:
+                return None
+
             if response.status_code == 200:
-                data = response.json()
-                if data.get("code") == 200:
-                    return data
-            return None
+                try:
+                    data = response.json()
+                    if data.get("code") == 200:
+                        return data
+                    else:
+                        safe_print(f"搜索失败: API返回错误码 {data.get('code')}, 消息: {data.get('message', '未知错误')}")
+                        return None
+                except Exception as e:
+                    # 响应不是有效的JSON，记录响应内容
+                    response_text = response.text[:500]  # 只记录前500字符
+                    safe_print(f"搜索响应解析失败: {str(e)}")
+                    safe_print(f"响应内容: {response_text}")
+                    return None
+            else:
+                safe_print(f"搜索请求失败: HTTP {response.status_code}")
+                return None
         except Exception as e:
             safe_print(t("dl_search_error", str(e)))
             return None
@@ -312,27 +602,32 @@ class APIManager:
     def get_book_detail(self, book_id: str) -> Optional[Dict]:
         """获取书籍详情，返回 dict 或 None，如果书籍下架会返回 {'_error': 'BOOK_REMOVE'}"""
         try:
-            url = f"{self.base_url}{self.endpoints['detail']}"
             params = {"book_id": book_id}
-            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
-            
+            response = self._request_with_failover(self.endpoints['detail'], params)
+            if response is None:
+                return None
+
             if response.status_code == 200:
-                data = response.json()
-                if data.get("code") == 200 and "data" in data:
-                    level1_data = data["data"]
-                    # 检查是否有错误信息（如书籍下架）
-                    if isinstance(level1_data, dict):
-                        inner_msg = level1_data.get("message", "")
-                        inner_code = level1_data.get("code")
-                        if inner_msg == "BOOK_REMOVE" or inner_code == 101109:
-                            return {"_error": "BOOK_REMOVE", "_message": "书籍已下架"}
-                        if "data" in level1_data:
-                            inner_data = level1_data["data"]
-                            # 如果内层 data 是空的，也可能是下架
-                            if isinstance(inner_data, dict) and not inner_data and inner_msg:
-                                return {"_error": inner_msg, "_message": inner_msg}
-                            return inner_data
-                    return level1_data
+                try:
+                    data = response.json()
+                    if data.get("code") == 200 and "data" in data:
+                        level1_data = data["data"]
+                        # 检查是否有错误信息（如书籍下架）
+                        if isinstance(level1_data, dict):
+                            inner_msg = level1_data.get("message", "")
+                            inner_code = level1_data.get("code")
+                            if inner_msg == "BOOK_REMOVE" or inner_code == 101109:
+                                return {"_error": "BOOK_REMOVE", "_message": "书籍已下架"}
+                            if "data" in level1_data:
+                                inner_data = level1_data["data"]
+                                # 如果内层 data 是空的，也可能是下架
+                                if isinstance(inner_data, dict) and not inner_data and inner_msg:
+                                    return {"_error": inner_msg, "_message": inner_msg}
+                                return inner_data
+                        return level1_data
+                except Exception as e:
+                    safe_print(f"书籍详情响应解析失败: {str(e)}")
+                    return None
             return None
         except Exception as e:
             safe_print(t("dl_detail_error", str(e)))
@@ -343,9 +638,10 @@ class APIManager:
         GET /api/directory - 参数: fq_id
         """
         try:
-            url = f"{self.base_url}/api/directory"
             params = {"fq_id": book_id}
-            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+            response = self._request_with_failover('/api/directory', params)
+            if response is None:
+                return None
             
             if response.status_code == 200:
                 data = response.json()
@@ -362,9 +658,10 @@ class APIManager:
         try:
             safe_print(t("dl_chapter_list_start", book_id))
                 
-            url = f"{self.base_url}{self.endpoints['book']}"
             params = {"book_id": book_id}
-            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+            response = self._request_with_failover(self.endpoints['book'], params)
+            if response is None:
+                return None
             
             safe_print(t("dl_chapter_list_resp", response.status_code))
             
@@ -387,9 +684,10 @@ class APIManager:
         try:
             # 优先尝试简化的 /api/chapter 接口（更稳定）
             chapter_endpoint = self.endpoints.get('chapter', '/api/chapter')
-            url = f"{self.base_url}{chapter_endpoint}"
             params = {"item_id": item_id}
-            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+            response = self._request_with_failover(chapter_endpoint, params)
+            if response is None:
+                return None
             
             if response.status_code == 200:
                 data = response.json()
@@ -397,9 +695,10 @@ class APIManager:
                     return data["data"]
             
             # 回退到 /api/content 接口
-            url = f"{self.base_url}{self.endpoints['content']}"
             params = {"tab": "小说", "item_id": item_id}
-            response = self._get_session().get(url, params=params, headers=get_headers(), timeout=CONFIG["request_timeout"])
+            response = self._request_with_failover(self.endpoints['content'], params)
+            if response is None:
+                return None
             
             if response.status_code == 200:
                 data = response.json()
@@ -969,20 +1268,12 @@ class APIManager:
 
 def _normalize_title(title: str) -> str:
     """标准化章节标题，用于模糊匹配"""
-    # 移除空格
-    s = re.sub(r'\s+', '', title)
-    # 统一标点：中文逗号、顿号、点号统一
-    s = re.sub(r'[,，、．.·]', '', s)
-    # 阿拉伯数字转中文数字的映射（用于比较）
-    return s.lower()
+    return _tu_normalize_title(title)
 
 
 def _extract_title_core(title: str) -> str:
     """提取标题核心部分（去掉章节号前缀）"""
-    # 移除 "第x章"、"数字、"、"数字." 等前缀
-    s = re.sub(r'^(第[0-9一二三四五六七八九十百千]+章[、,，\s]*)', '', title)
-    s = re.sub(r'^(\d+[、,，.\s]+)', '', s)
-    return s.strip()
+    return _tu_extract_title_core(title)
 
 
 def parse_novel_text_with_catalog(text: str, catalog: List[Dict]) -> List[Dict]:
@@ -995,113 +1286,12 @@ def parse_novel_text_with_catalog(text: str, catalog: List[Dict]) -> List[Dict]:
     Returns:
         带内容的章节列表 [{'title': '...', 'id': '...', 'index': ..., 'content': '...'}, ...]
     """
-    if not catalog:
-        return []
-    
-    def escape_for_regex(s: str) -> str:
-        return re.escape(s)
-    
-    def find_title_in_text(title: str, search_text: str, start_offset: int = 0) -> Optional[tuple]:
-        """在文本中查找标题，返回 (match_start, match_end) 或 None"""
-        # 1. 精确匹配
-        pattern = re.compile(r'^[ \t]*' + escape_for_regex(title) + r'[ \t]*$', re.MULTILINE)
-        match = pattern.search(search_text)
-        if match:
-            return (start_offset + match.start(), start_offset + match.end())
-        
-        # 2. 模糊匹配：提取标题核心部分
-        title_core = _extract_title_core(title)
-        if title_core and len(title_core) >= 2:
-            # 匹配包含核心标题的行
-            pattern = re.compile(r'^[^\n]*' + escape_for_regex(title_core) + r'[^\n]*$', re.MULTILINE)
-            match = pattern.search(search_text)
-            if match:
-                return (start_offset + match.start(), start_offset + match.end())
-        
-        return None
-    
-    # 查找每个章节标题在文本中的位置
-    chapter_positions = []
-    for ch in catalog:
-        title = ch['title']
-        result = find_title_in_text(title, text)
-        if result:
-            chapter_positions.append({
-                'title': title,
-                'id': ch.get('id', ''),
-                'index': ch['index'],
-                'line_start': result[0],  # 标题行开始位置
-                'start': result[1]        # 内容开始位置（标题行之后）
-            })
-    
-    if not chapter_positions:
-        return []
-    
-    # 按位置排序
-    chapter_positions.sort(key=lambda x: x['line_start'])
-    
-    # 提取每章内容
-    chapters = []
-    for i, pos in enumerate(chapter_positions):
-        if i + 1 < len(chapter_positions):
-            end = chapter_positions[i + 1]['line_start']
-        else:
-            end = len(text)
-        
-        content = text[pos['start']:end].strip()
-        chapters.append({
-            'title': pos['title'],
-            'id': pos['id'],
-            'index': pos['index'],
-            'content': content
-        })
-    
-    # 按原始目录顺序重新排序
-    chapters.sort(key=lambda x: x['index'])
-    
-    return chapters
+    return _tu_parse_novel_text_with_catalog(text, catalog)
 
 
 def parse_novel_text(text: str) -> List[Dict]:
     """解析整本小说文本，分离章节（无目录时的降级方案）"""
-    lines = text.splitlines()
-    chapters = []
-    
-    current_chapter = None
-    current_content = []
-    
-    # 匹配常见章节格式
-    chapter_pattern = re.compile(
-        r'^\s*('
-        r'第[0-9一二三四五六七八九十百千]+章'  # 第x章
-        r'|[0-9]+[\.、,，]\s*\S'                # 1、标题 1.标题
-        r')\s*.*',
-        re.UNICODE
-    )
-    
-    for line in lines:
-        match = chapter_pattern.match(line)
-        if match:
-            if current_chapter:
-                current_chapter['content'] = '\n'.join(current_content)
-                chapters.append(current_chapter)
-            
-            title = line.strip()
-            current_chapter = {
-                'title': title,
-                'id': str(len(chapters)),
-                'index': len(chapters)
-            }
-            current_content = []
-        else:
-            if current_chapter:
-                current_content.append(line)
-    
-    if current_chapter:
-        current_chapter['content'] = '\n'.join(current_content)
-        chapters.append(current_chapter)
-    
-    return chapters
+    return _tu_parse_novel_text(text)
 
 
 class APIManagerExt(APIManager):
@@ -1164,10 +1354,6 @@ def get_api_manager():
 
 # ===================== 辅助函数 =====================
 
-# 文件系统非法字符
-ILLEGAL_FILENAME_CHARS = r'\/:*?"<>|'
-
-
 def sanitize_filename(name: str) -> str:
     r"""
     清理文件名中的非法字符
@@ -1178,11 +1364,7 @@ def sanitize_filename(name: str) -> str:
     Returns:
         清理后的文件名，非法字符 (\ / : * ? " < > |) 替换为下划线
     """
-    if not name:
-        return ""
-    # 将非法字符替换为下划线
-    result = re.sub(r'[\\/:*?"<>|]', '_', name)
-    return result
+    return _tu_sanitize_filename(name)
 
 
 def generate_filename(book_name: str, author_name: str, extension: str) -> str:
@@ -1197,89 +1379,32 @@ def generate_filename(book_name: str, author_name: str, extension: str) -> str:
     Returns:
         格式化的文件名: "{书名} 作者：{作者名}.{扩展名}" 或 "{书名}.{扩展名}"
     """
-    # 清理书名和作者名中的非法字符
-    safe_book_name = sanitize_filename(book_name)
-    safe_author_name = sanitize_filename(author_name) if author_name else ""
-    
-    # 确保扩展名不以点开头
-    ext = extension.lstrip('.')
-    
-    # 根据作者名是否为空生成不同格式的文件名
-    if safe_author_name and safe_author_name.strip():
-        return f"{safe_book_name} 作者：{safe_author_name}.{ext}"
-    else:
-        return f"{safe_book_name}.{ext}"
+    return _tu_generate_filename(book_name, author_name, extension)
 
 
 def process_chapter_content(content):
     """处理章节内容"""
-    if not content:
-        return ""
-    
-    # 将br标签和p标签替换为换行符
-    content = re.sub(r'<br\s*/?>\s*', '\n', content)
-    content = re.sub(r'<p[^>]*>\s*', '\n', content)
-    content = re.sub(r'</p>\s*', '\n', content)
-    
-    # 移除其他HTML标签
-    content = re.sub(r'<[^>]+>', '', content)
-    
-    # 清理空白字符
-    content = re.sub(r'[ \t]+', ' ', content)  # 多个空格或制表符替换为单个空格
-    content = re.sub(r'\n[ \t]+', '\n', content)  # 行首空白
-    content = re.sub(r'[ \t]+\n', '\n', content)  # 行尾空白
-    
-    # 将多个连续换行符规范化为双换行（段落分隔）
-    content = re.sub(r'\n{3,}', '\n\n', content)
-    
-    # 处理段落：确保每个非空行都是一个段落
-    lines = content.split('\n')
-    paragraphs = []
-    for line in lines:
-        line = line.strip()
-        if line:  # 非空行
-            paragraphs.append(line)
-    
-    # 用双换行符连接段落
-    content = '\n\n'.join(paragraphs)
-    
-    # 应用水印处理
-    content = apply_watermark_to_chapter(content)
-    
-    return content
+    return _tu_process_chapter_content(content, watermark_func=apply_watermark_to_chapter)
 
 
 def _get_status_file_path(book_id: str) -> str:
     """获取下载状态文件路径（保存在临时目录，不污染小说目录）"""
-    import tempfile
-    # 使用 book_id 的哈希作为文件名，避免冲突
-    status_dir = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader')
-    os.makedirs(status_dir, exist_ok=True)
-    filename = f".download_status_{book_id}.json"
-    return os.path.join(status_dir, filename)
+    return _ss_get_status_file_path(book_id)
 
 
 def _get_content_file_path(book_id: str) -> str:
     """获取已下载内容文件路径"""
-    import tempfile
-    status_dir = os.path.join(tempfile.gettempdir(), 'fanqie_novel_downloader')
-    os.makedirs(status_dir, exist_ok=True)
-    filename = f".download_content_{book_id}.json"
-    return os.path.join(status_dir, filename)
+    return _ss_get_content_file_path(book_id)
+
+
+def _get_status_dir() -> str:
+    """获取下载状态目录（临时目录）。"""
+    return _ss_get_status_dir()
 
 
 def load_status(book_id: str):
     """加载下载状态（从临时目录读取）"""
-    status_file = _get_status_file_path(book_id)
-    if os.path.exists(status_file):
-        try:
-            with open(status_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return set(data)
-        except:
-            pass
-    return set()
+    return _ss_load_status(book_id)
 
 
 def load_saved_content(book_id: str) -> dict:
@@ -1291,25 +1416,13 @@ def load_saved_content(book_id: str) -> dict:
     Returns:
         dict: 已保存的章节内容 {index: {'title': ..., 'content': ...}}
     """
-    content_file = _get_content_file_path(book_id)
-    if os.path.exists(content_file):
-        try:
-            with open(content_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    # 将字符串键转换为整数键
-                    return {int(k): v for k, v in data.items()}
-        except:
-            pass
-    return {}
+    return _ss_load_saved_content(book_id)
 
 
 def save_status(book_id: str, downloaded_ids):
     """保存下载状态（保存到临时目录）"""
-    status_file = _get_status_file_path(book_id)
     try:
-        with open(status_file, 'w', encoding='utf-8') as f:
-            json.dump(list(downloaded_ids), f, ensure_ascii=False, indent=2)
+        _ss_save_status(book_id, downloaded_ids)
     except Exception as e:
         with print_lock:
             print(t("dl_save_status_fail", str(e)))
@@ -1322,10 +1435,8 @@ def save_content(book_id: str, chapter_results: dict):
         book_id: 书籍ID
         chapter_results: 章节内容 {index: {'title': ..., 'content': ...}}
     """
-    content_file = _get_content_file_path(book_id)
     try:
-        with open(content_file, 'w', encoding='utf-8') as f:
-            json.dump(chapter_results, f, ensure_ascii=False, indent=2)
+        _ss_save_content(book_id, chapter_results)
     except Exception as e:
         with print_lock:
             print(f"保存章节内容失败: {str(e)}")
@@ -1333,13 +1444,8 @@ def save_content(book_id: str, chapter_results: dict):
 
 def clear_status(book_id: str):
     """清除下载状态（下载完成后调用）"""
-    status_file = _get_status_file_path(book_id)
-    content_file = _get_content_file_path(book_id)
     try:
-        if os.path.exists(status_file):
-            os.remove(status_file)
-        if os.path.exists(content_file):
-            os.remove(content_file)
+        _ss_clear_status(book_id)
     except:
         pass
 
@@ -1353,9 +1459,7 @@ def has_saved_state(book_id: str) -> bool:
     Returns:
         bool: 是否有已保存的状态
     """
-    status_file = _get_status_file_path(book_id)
-    content_file = _get_content_file_path(book_id)
-    return os.path.exists(status_file) or os.path.exists(content_file)
+    return _ss_has_saved_state(book_id)
 
 
 def analyze_download_completeness(chapter_results: dict, expected_chapters: list = None, log_func=None) -> dict:
