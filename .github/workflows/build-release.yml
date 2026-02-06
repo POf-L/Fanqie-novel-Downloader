@@ -241,15 +241,49 @@ jobs:
           echo "✅ WebView2 Runtime prepared"
         shell: bash
 
+      - name: Generate high-quality Windows icon
+        if: runner.os == 'Windows'
+        run: |
+          # 安装 Pillow 用于处理图标
+          pip install Pillow
+          
+          # 生成高质量的多尺寸 .ico 文件
+          python -c "
+          from PIL import Image
+          import os
+          
+          # 加载高分辨率原图
+          img = Image.open('assets/icons/icon_256.png')
+          
+          # 创建多尺寸图标列表
+          sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+          icons = []
+          
+          for size in sizes:
+              # 调整大小，保持高质量
+              resized = img.resize(size, Image.Resampling.LANCZOS)
+              icons.append(resized)
+          
+          # 保存为 .ico 文件，包含所有尺寸
+          icons[0].save('assets/icons/icon_high_quality.ico', 
+                       format='ICO', 
+                       sizes=[(img.width, img.height) for img in icons],
+                       append_images=icons[1:])
+          
+          print('✅ 生成高质量图标完成')
+          "
+
       - name: Build application (${{ matrix.variant }})
         run: |
           # Determine separator for add-data based on OS
           if [ "${{ runner.os }}" == "Windows" ]; then
             SEP=";"
-            ICON_FLAG="--icon=assets/icons/icon.ico"
+            # 使用生成的高质量 .ico 文件
+            ICON_FLAG="--icon=assets/icons/icon_high_quality.ico"
           else
             SEP=":"
-            ICON_FLAG="--icon=assets/icons/icon.png"
+            # Linux/macOS 使用高分辨率 PNG
+            ICON_FLAG="--icon=assets/icons/icon_256.png"
           fi
 
           python -m PyInstaller --onefile \
@@ -444,7 +478,7 @@ jobs:
             pyinstaller --onefile \
               --name=TomatoNovelDownloader-termux \
               --console \
-              --icon=assets/icons/icon.png \
+              --icon=assets/icons/icon_256.png \
               --add-data "config/fanqie.json:." \
               --hidden-import=requests \
               --hidden-import=aiohttp \
