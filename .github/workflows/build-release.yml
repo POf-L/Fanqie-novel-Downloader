@@ -121,6 +121,7 @@ jobs:
             --console \
             --add-data "assets${{ matrix.sep }}assets" \
             --hidden-import=requests \
+            ${{ matrix.icon_arg }} \
             launcher.py
 
       - name: Upload launcher artifact
