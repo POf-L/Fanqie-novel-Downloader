@@ -527,7 +527,7 @@ jobs:
             
             # 使用 termux-elf-cleaner 修复 ELF 解释器路径和 RPATH
             echo "=== 应用 termux-elf-cleaner ==="
-            termux-elf-cleaner --verbose dist/TomatoNovelDownloader-termux || echo "termux-elf-cleaner warning (non-fatal)"
+            termux-elf-cleaner dist/TomatoNovelDownloader-termux || echo "termux-elf-cleaner warning (non-fatal)"
             
             # 再次验证修复后的二进制文件
             echo "=== 验证修复后的二进制文件 ==="
@@ -539,6 +539,7 @@ jobs:
             
             # 在容器内完成重命名，避免权限问题
             cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
+            chmod +x dist/TomatoNovelDownloader-termux-arm64 || true
             ls -la dist/
 
       - name: Verify Termux build
