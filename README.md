@@ -71,6 +71,13 @@ open http://localhost:5000
 | [🤝 CONTRIBUTING.md](docs/CONTRIBUTING.md) | 贡献指南和开发说明 |
 | [🔧 NODE_MANAGEMENT.md](docs/NODE_MANAGEMENT.md) | 节点管理和故障恢复说明 |
 
+## 🔄 发布版云同步说明
+
+- 仅 GitHub Actions 打包发布版在启动时执行云同步，源码直接运行不触发。
+- 发布流程会自动生成并上传 `runtime-manifest.json`（每文件含 `version`、`sha256`、`url`、`size`）。
+- 同步范围由 `config/cloud_sync_paths.json` 维护，可独立调整，无需改脚本代码。
+- 客户端同步逻辑位于 `utils/cloud_sync.py`，支持更新/新增/删除、缓存回退、备份回滚与路径安全校验。
+
 ## 🎯 使用示例
 
 ### Web 界面快速上手

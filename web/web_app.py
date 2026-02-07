@@ -2401,6 +2401,8 @@ def api_list_directory():
     try:
         data = request.get_json() or {}
         path = data.get('path', '')
+        include_files = data.get('include_files', False)
+        file_extensions = data.get('file_extensions', None)  # 文件扩展名过滤，如 ['.txt']
         
         # 如果没有指定路径，使用默认下载路径
         if not path:
@@ -2425,6 +2427,7 @@ def api_list_directory():
     
         # 获取目录列表
         directories = []
+        files = []
         for item in os.listdir(path):
             item_path = os.path.join(path, item)
             if os.path.isdir(item_path):
@@ -2432,9 +2435,18 @@ def api_list_directory():
                     'name': item,
                     'path': item_path
                 })
+            elif include_files and os.path.isfile(item_path):
+                # 检查文件扩展名
+                if file_extensions is None or any(item.lower().endswith(ext.lower()) for ext in file_extensions):
+                    files.append({
+                        'name': item,
+                        'path': item_path,
+                        'size': os.path.getsize(item_path)
+                    })
         
         # 按名称排序
         directories.sort(key=lambda x: x['name'].lower())
+        files.sort(key=lambda x: x['name'].lower())
         
         # 获取父目录
         parent_path = os.path.dirname(path)
@@ -2499,6 +2511,7 @@ def api_list_directory():
                 'current_path': path,
                 'parent_path': parent_path if not is_root else None,
                 'directories': directories,
+                'files': files if include_files else None,
                 'is_root': is_root,
                 'drives': drives if os.name == 'nt' else None,
                 'quick_paths': quick_paths
@@ -2518,6 +2531,59 @@ def api_list_directory():
             'message': f'加载目录失败: {str(e)}'
         })
 
+
+@app.route('/api/read-file-content', methods=['POST'])
+def api_read_file_content():
+    """读取文件内容"""
+    try:
+        data = request.get_json() or {}
+        file_path = data.get('path', '')
+
+        if not file_path:
+            return jsonify({'success': False, 'message': '未指定文件路径'})
+
+        # 规范化路径
+        file_path = os.path.normpath(os.path.expanduser(file_path))
+
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'message': '文件不存在'})
+
+        # 检查是否是文件
+        if not os.path.isfile(file_path):
+            return jsonify({'success': False, 'message': '路径不是文件'})
+
+        # 读取文件内容
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            # 尝试其他编码
+            try:
+                with open(file_path, 'r', encoding='gbk') as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                return jsonify({'success': False, 'message': '文件编码不支持'})
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'content': content
+            }
+        })
+    except PermissionError:
+        return jsonify({
+            'success': False,
+            'message': '无权限读取该文件'
+        })
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] read-file-content: {e}")
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'读取文件失败: {str(e)}'
+        })
 
 @app.route('/api/select-folder', methods=['POST'])
 def api_select_folder():

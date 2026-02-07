@@ -8,6 +8,10 @@ from typing import Callable, Optional
 
 def get_runtime_base_path() -> str:
     """获取当前运行环境基础路径（开发/打包统一）。"""
+    env_override = os.environ.get("FANQIE_RUNTIME_BASE")
+    if env_override:
+        return env_override
+
     if getattr(sys, 'frozen', False):
         if hasattr(sys, '_MEIPASS'):
             return sys._MEIPASS

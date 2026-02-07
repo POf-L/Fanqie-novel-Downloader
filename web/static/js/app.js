@@ -304,12 +304,21 @@ class QueueManager {
         const tasks = status.tasks || [];
         if (tasks.length === 0) return;
 
+        let needsFullRender = false;
+
         // 更新每个任务的状态显示
         tasks.forEach(task => {
             const taskEl = list.querySelector(`[data-task-id="${task.id}"]`);
+            const nextStatus = task.status || 'pending';
+
+            // 任务完成或失败时，从本地队列中删除
+            if (nextStatus === 'completed' || nextStatus === 'failed' || nextStatus === 'skipped') {
+                AppState.removeFromQueue(task.id);
+                needsFullRender = true;
+            }
+
             if (taskEl) {
                 const statusEl = taskEl.querySelector('.queue-item-status');
-                const nextStatus = task.status || 'pending';
                 if (statusEl) {
                     if (taskEl.dataset.status !== nextStatus) {
                         statusEl.innerHTML = `${this.getStatusIcon(nextStatus)} ${this.getStatusText(nextStatus)}`;
@@ -341,13 +350,13 @@ class QueueManager {
                         retryBtn.dataset.visible = String(shouldShowRetry);
                     }
                 }
-
-                // 任务完成或失败时，从本地队列中删除
-                if (nextStatus === 'completed' || nextStatus === 'failed' || nextStatus === 'skipped') {
-                    AppState.removeFromQueue(task.id);
-                }
             }
         });
+
+        // 如果有任务被移除，需要完全重新渲染
+        if (needsFullRender) {
+            renderQueue();
+        }
 
         // 更新摘要
         const summary = document.getElementById('queueSummary');
@@ -701,6 +710,241 @@ class FolderBrowser {
                         console.error('Save path failed:', e);
                     }
                     close(pathToSelect);
+                }
+            });
+
+            // 初始加载
+            loadDirectory(initialPath);
+        });
+    }
+}
+
+/* ===================== 文件浏览器组件 ===================== */
+
+class FileBrowser {
+    static async show(options = {}) {
+        return new Promise((resolve) => {
+            const {
+                title = '选择文件',
+                initialPath = '',
+                fileExtensions = ['.txt'],  // 默认只显示 .txt 文件
+                acceptMultiple = false
+            } = options;
+
+            const modal = document.createElement('div');
+            modal.className = 'modal file-browser-modal';
+            modal.innerHTML = `
+                <div class="modal-content folder-browser-dialog">
+                    <div class="modal-header">
+                        <h3><iconify-icon icon="line-md:document-file-twotone"></iconify-icon> ${title}</h3>
+                        <button class="modal-close" type="button"><iconify-icon icon="line-md:close"></iconify-icon></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="folder-browser-path">
+                            <input type="text" class="form-input path-input" readonly>
+                        </div>
+                        <div class="folder-browser-toolbar">
+                            <div class="folder-browser-nav">
+                                <button class="btn btn-sm btn-secondary nav-up" type="button" disabled>
+                                    <iconify-icon icon="line-md:chevron-left"></iconify-icon>
+                                </button>
+                            </div>
+                            <div class="folder-browser-quick" style="display: none;"></div>
+                            <div class="folder-browser-drives" style="display: none;"></div>
+                        </div>
+                        <div class="folder-browser-list">
+                            <div class="folder-loading"><iconify-icon icon="line-md:loading-twotone-loop"></iconify-icon></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary cancel-btn" type="button"><iconify-icon icon="line-md:close"></iconify-icon></button>
+                        <button class="btn btn-primary select-btn" type="button" disabled><iconify-icon icon="line-md:confirm"></iconify-icon></button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            modal.style.display = 'flex';
+
+            const pathInput = modal.querySelector('.path-input');
+            const navUp = modal.querySelector('.nav-up');
+            const quickContainer = modal.querySelector('.folder-browser-quick');
+            const drivesContainer = modal.querySelector('.folder-browser-drives');
+            const listContainer = modal.querySelector('.folder-browser-list');
+            const selectBtn = modal.querySelector('.select-btn');
+
+            let currentPath = initialPath;
+            let parentPath = null;
+            let selectedFile = null;  // 当前选中的文件
+
+            const close = (result) => {
+                modal.remove();
+                resolve(result);
+            };
+
+            const updatePathDisplay = () => {
+                // 更新路径显示
+                pathInput.value = currentPath;
+
+                // 更新确认按钮的状态和文本
+                if (selectedFile) {
+                    selectBtn.innerHTML = `<iconify-icon icon="line-md:confirm"></iconify-icon> 选择 "${selectedFile.name}"`;
+                    selectBtn.disabled = false;
+                } else {
+                    selectBtn.innerHTML = `<iconify-icon icon="line-md:confirm"></iconify-icon> 选择文件`;
+                    selectBtn.disabled = true;
+                }
+            };
+
+            const loadDirectory = async (path) => {
+                listContainer.innerHTML = `<div class="folder-loading"><iconify-icon icon="line-md:loading-twotone-loop"></iconify-icon></div>`;
+                selectedFile = null;
+                updatePathDisplay();
+
+                try {
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (AppState.accessToken) {
+                        headers['X-Access-Token'] = AppState.accessToken;
+                    }
+                    const response = await fetch('/api/list-directory', {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify({
+                            path: path || '',
+                            include_files: true,
+                            file_extensions: fileExtensions
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        currentPath = result.data.current_path;
+                        parentPath = result.data.parent_path;
+                        navUp.disabled = result.data.is_root;
+
+                        // 更新路径显示
+                        updatePathDisplay();
+
+                        // 显示快捷路径
+                        if (result.data.quick_paths && result.data.quick_paths.length > 0) {
+                            quickContainer.style.display = 'flex';
+                            quickContainer.innerHTML = result.data.quick_paths.map(q =>
+                                `<button class="btn btn-sm btn-secondary quick-btn" data-path="${q.path}" title="${q.name}">
+                                    <iconify-icon icon="${q.icon}"></iconify-icon>
+                                </button>`
+                            ).join('');
+
+                            quickContainer.querySelectorAll('.quick-btn').forEach(btn => {
+                                btn.addEventListener('click', () => loadDirectory(btn.dataset.path));
+                            });
+                        }
+
+                        // 显示驱动器列表 (Windows)
+                        if (result.data.drives && result.data.drives.length > 0) {
+                            drivesContainer.style.display = 'flex';
+                            drivesContainer.innerHTML = result.data.drives.map(d =>
+                                `<button class="btn btn-sm btn-secondary drive-btn" data-path="${d.path}">${d.name}</button>`
+                            ).join('');
+
+                            drivesContainer.querySelectorAll('.drive-btn').forEach(btn => {
+                                btn.addEventListener('click', () => loadDirectory(btn.dataset.path));
+                            });
+                        } else {
+                            drivesContainer.style.display = 'none';
+                        }
+
+                        // 显示目录和文件列表
+                        const directories = result.data.directories || [];
+                        const files = result.data.files || [];
+
+                        if (directories.length === 0 && files.length === 0) {
+                            listContainer.innerHTML = `<div class="folder-empty"><iconify-icon icon="line-md:file-off-twotone"></iconify-icon></div>`;
+                        } else {
+                            let html = '';
+
+                            // 文件夹
+                            directories.forEach(d => {
+                                html += `
+                                    <div class="folder-item" data-path="${d.path}" data-type="directory">
+                                        <iconify-icon icon="line-md:folder-twotone"></iconify-icon>
+                                        <span>${d.name}</span>
+                                    </div>
+                                `;
+                            });
+
+                            // 文件
+                            files.forEach(f => {
+                                html += `
+                                    <div class="file-item" data-path="${f.path}" data-type="file" data-name="${f.name}">
+                                        <iconify-icon icon="line-md:document-twotone"></iconify-icon>
+                                        <span>${f.name}</span>
+                                    </div>
+                                `;
+                            });
+
+                            listContainer.innerHTML = html;
+
+                            // 文件夹双击进入
+                            listContainer.querySelectorAll('.folder-item').forEach(item => {
+                                item.addEventListener('dblclick', () => loadDirectory(item.dataset.path));
+                            });
+
+                            // 文件单击选中
+                            listContainer.querySelectorAll('.file-item').forEach(item => {
+                                item.addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    // 移除所有选中状态
+                                    listContainer.querySelectorAll('.file-item').forEach(i => i.classList.remove('selected'));
+                                    // 选中当前项
+                                    item.classList.add('selected');
+                                    // 设置选中的文件
+                                    selectedFile = {
+                                        name: item.dataset.name,
+                                        path: item.dataset.path
+                                    };
+                                    // 更新路径显示
+                                    updatePathDisplay();
+                                });
+                            });
+
+                            // 点击空白区域取消选中
+                            listContainer.addEventListener('click', (e) => {
+                                if (e.target === listContainer) {
+                                    // 清除所有选中状态
+                                    listContainer.querySelectorAll('.file-item').forEach(i => i.classList.remove('selected'));
+                                    selectedFile = null;
+                                    updatePathDisplay();
+                                }
+                            });
+                        }
+                    } else {
+                        listContainer.innerHTML = `<div class="folder-error"><iconify-icon icon="line-md:alert"></iconify-icon> ${result.message || 'Error'}</div>`;
+                    }
+                } catch (e) {
+                    console.error('File browser error:', e);
+                    listContainer.innerHTML = `<div class="folder-error"><iconify-icon icon="line-md:alert"></iconify-icon></div>`;
+                }
+            };
+
+            // 事件绑定
+            modal.querySelector('.modal-close').addEventListener('click', () => close(null));
+            modal.querySelector('.cancel-btn').addEventListener('click', () => close(null));
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) close(null);
+            });
+
+            navUp.addEventListener('click', () => {
+                if (parentPath) loadDirectory(parentPath);
+            });
+
+            selectBtn.addEventListener('click', () => {
+                if (selectedFile) {
+                    close(selectedFile);
                 }
             });
 
@@ -1783,42 +2027,64 @@ async function handleClearQueue() {
     logger.logKey('msg_queue_cleared');
 }
 
-async function handleLoadFromFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    // 重置 input 以便可以再次选择同一文件
-    event.target.value = '';
-    
+async function handleLoadFromFile() {
     try {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const headers = {};
-        if (AppState.accessToken) {
-            headers['X-Access-Token'] = AppState.accessToken;
-        }
-        
-        const response = await fetch('/api/upload-book-list', {
-            method: 'POST',
-            headers,
-            body: formData
+        // 使用 FileBrowser 选择文件
+        const selectedFile = await FileBrowser.show({
+            title: '选择书籍列表文件',
+            fileExtensions: ['.txt']
         });
-        
+
+        if (!selectedFile) {
+            return;  // 用户取消了选择
+        }
+
+        // 读取文件内容
+        const response = await fetch('/api/read-file-content', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(AppState.accessToken ? { 'X-Access-Token': AppState.accessToken } : {})
+            },
+            body: JSON.stringify({ file_path: selectedFile.path })
+        });
+
         const result = await response.json();
-        
+
         if (!result.success) {
+            Toast.error('读取文件失败');
+            return;
+        }
+
+        // 上传文件内容
+        const uploadFormData = new FormData();
+        uploadFormData.append('file', new Blob([result.data.content], { type: 'text/plain' }), selectedFile.name);
+
+        const uploadHeaders = {};
+        if (AppState.accessToken) {
+            uploadHeaders['X-Access-Token'] = AppState.accessToken;
+        }
+
+        const uploadResponse = await fetch('/api/upload-book-list', {
+            method: 'POST',
+            headers: uploadHeaders,
+            body: uploadFormData
+        });
+
+        const uploadResult = await uploadResponse.json();
+
+        if (!uploadResult.success) {
             Toast.error('加载文件失败');
             return;
         }
-        
-        const { books, skipped, valid_count, skipped_count } = result.data;
-        
+
+        const { books, skipped, valid_count, skipped_count } = uploadResult.data;
+
         if (valid_count === 0) {
             Toast.warning('文件中没有有效的书籍ID');
             return;
         }
-        
+
         // 添加到队列
         let addedCount = 0;
         for (const book of books) {
@@ -1840,18 +2106,18 @@ async function handleLoadFromFile(event) {
             AppState.addToQueue(task);
             addedCount++;
         }
-        
+
         let message = `已从文件加载 ${addedCount} 本书籍`;
         if (skipped_count > 0) {
             message += ` (跳过 ${skipped_count} 行)`;
         }
-        
+
         Toast.success(message);
         logger.log(message);
-        
+
         // 切换到队列标签
         switchTab('queue');
-        
+
     } catch (e) {
         console.error('Load from file error:', e);
         Toast.error('加载文件失败');
@@ -1918,10 +2184,8 @@ function initializeUI(skipApiSources = false) {
     
     // 从文件加载按钮
     const loadFromFileBtn = document.getElementById('loadFromFileBtn');
-    const bookListFileInput = document.getElementById('bookListFileInput');
-    if (loadFromFileBtn && bookListFileInput) {
-        loadFromFileBtn.addEventListener('click', () => bookListFileInput.click());
-        bookListFileInput.addEventListener('change', handleLoadFromFile);
+    if (loadFromFileBtn) {
+        loadFromFileBtn.addEventListener('click', handleLoadFromFile);
     }
     
     // 版本信息 - 从API获取

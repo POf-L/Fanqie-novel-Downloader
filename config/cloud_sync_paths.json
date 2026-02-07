@@ -1,0 +1,25 @@
+{
+  "include": [
+    "main.py",
+    "utils",
+    "core",
+    "web/static",
+    "web/templates",
+    "config/fanqie.json",
+    "assets"
+  ],
+  "exclude_prefix": [
+    ".git/",
+    ".github/",
+    "cache/",
+    "novels/",
+    "docs/",
+    "test_window_drag/",
+    "__pycache__/"
+  ],
+  "exclude_suffix": [
+    ".pyc",
+    ".pyo",
+    ".log"
+  ]
+}

@@ -280,6 +280,27 @@ def main():
     # 显示版本信息
     from config.config import __version__, __github_repo__, CONFIG
     print(f"版本: {__version__}")
+
+    # 云同步（仅 GitHub Actions 打包发布版）
+    try:
+        from utils.cloud_sync import should_run_cloud_sync, ensure_cloud_runtime_synced
+
+        if should_run_cloud_sync():
+            print("正在执行云同步检查...")
+            sync_result = ensure_cloud_runtime_synced(__github_repo__)
+            status = sync_result.get("status", "unknown")
+            if status == "ok":
+                print(
+                    "云同步完成 "
+                    f"(来源: {sync_result.get('source', '-')}, "
+                    f"更新: {sync_result.get('updated', '0')}, "
+                    f"新增: {sync_result.get('added', '0')}, "
+                    f"删除: {sync_result.get('deleted', '0')})"
+                )
+            else:
+                print(f"云同步状态: {status} - {sync_result.get('message', '')}")
+    except Exception as sync_error:
+        print(f"⚠ 云同步异常（不影响启动）: {sync_error}")
     
     # 显示配置文件路径
     import tempfile

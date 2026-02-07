@@ -1,12 +1,6 @@
 name: Build and Release
 
 on:
-  push:
-    branches: [ main, master ]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -619,6 +613,24 @@ jobs:
           path: dist
           pattern: 'TomatoNovelDownloader-*'
           merge-multiple: true
+
+      - name: Generate runtime manifest
+        run: |
+          python scripts/generate_update_manifest.py \
+            --repo "${{ github.repository }}" \
+            --ref "${{ needs.prepare-release.outputs.tag_name }}" \
+            --release-tag "${{ needs.prepare-release.outputs.tag_name }}" \
+            --output "runtime-manifest.json"
+          ls -la runtime-manifest.json
+        shell: bash
+
+      - name: Upload runtime manifest to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          files: runtime-manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List all artifacts
         run: |
