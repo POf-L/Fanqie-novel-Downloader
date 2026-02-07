@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import traceback
 import zipfile
 from pathlib import Path
@@ -20,6 +21,7 @@ APP_DIR_NAME = "FanqieNovelDownloader"
 STATE_FILE = "launcher_state.json"
 RUNTIME_DIR = "runtime"
 BACKUP_DIR = "runtime_backup"
+MIRROR_PROXIES = ["https://ghproxy.vip"]
 
 
 def _write_error(message: str) -> None:
@@ -101,13 +103,60 @@ def _sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def _format_size(size: float) -> str:
+    units = ["B", "KB", "MB", "GB", "TB"]
+    value = float(size)
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(value)}{unit}"
+            return f"{value:.2f}{unit}"
+        value /= 1024
+
+
+def _render_download_progress(downloaded: int, total: int, start_ts: float) -> None:
+    elapsed = max(time.time() - start_ts, 1e-6)
+    speed = downloaded / elapsed
+
+    if total > 0:
+        ratio = min(downloaded / total, 1.0)
+        bar_width = 30
+        filled = int(ratio * bar_width)
+        bar = "#" * filled + "-" * (bar_width - filled)
+        print(
+            f"\r下载 Runtime: [{bar}] {ratio * 100:6.2f}% "
+            f"({_format_size(downloaded)}/{_format_size(total)}) "
+            f"{_format_size(speed)}/s",
+            end="",
+            flush=True,
+        )
+        return
+
+    print(
+        f"\r下载 Runtime: {_format_size(downloaded)} {_format_size(speed)}/s",
+        end="",
+        flush=True,
+    )
+
+
+def _get_with_mirror(url: str, **kwargs) -> requests.Response:
+    for proxy in MIRROR_PROXIES:
+        try:
+            resp = requests.get(f"{proxy}/{url}", **kwargs)
+            if resp.status_code < 400:
+                return resp
+        except Exception:
+            pass
+    return requests.get(url, **kwargs)
+
+
 def _fetch_latest_release(repo: str) -> Optional[Dict]:
     url = f"https://api.github.com/repos/{repo}/releases/latest"
     headers = {
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": "FanqieLauncher",
     }
-    response = requests.get(url, headers=headers, timeout=(3, 10))
+    response = _get_with_mirror(url, headers=headers, timeout=(3, 10))
     if response.status_code != 200:
         return None
     data = response.json()
@@ -132,7 +181,7 @@ def _load_platform_manifest(repo: str, platform: str) -> Optional[Dict]:
         return None
 
     headers = {"User-Agent": "FanqieLauncher"}
-    response = requests.get(manifest_url, headers=headers, timeout=(3, 10))
+    response = _get_with_mirror(manifest_url, headers=headers, timeout=(3, 10))
     if response.status_code != 200:
         return None
 
@@ -167,11 +216,38 @@ def _is_runtime_up_to_date(local_state: Dict, remote_manifest: Dict) -> bool:
 
 def _download_runtime_archive(url: str, expected_sha256: str) -> bytes:
     headers = {"User-Agent": "FanqieLauncher"}
-    response = requests.get(url, headers=headers, timeout=(5, 30))
-    response.raise_for_status()
-    content = response.content
+    with requests.get(url, headers=headers, timeout=(5, 30), stream=True) as response:
+        response.raise_for_status()
+        total = int(response.headers.get("Content-Length", "0") or "0")
 
-    current_sha = _sha256_bytes(content)
+        start_ts = time.time()
+        last_refresh = 0.0
+        downloaded = 0
+        chunks = []
+        hasher = hashlib.sha256()
+
+        for chunk in response.iter_content(chunk_size=1024 * 256):
+            if not chunk:
+                continue
+
+            chunks.append(chunk)
+            hasher.update(chunk)
+            downloaded += len(chunk)
+
+            now = time.time()
+            if now - last_refresh >= 0.08:
+                _render_download_progress(downloaded, total, start_ts)
+                last_refresh = now
+
+        _render_download_progress(downloaded, total, start_ts)
+        print()
+
+        if total > 0 and downloaded != total:
+            raise RuntimeError("Runtime 下载大小不完整")
+
+        content = b"".join(chunks)
+
+    current_sha = hasher.hexdigest()
     if current_sha != expected_sha256.lower():
         raise ValueError("Runtime 压缩包 sha256 校验失败")
     return content
@@ -241,7 +317,15 @@ def _ensure_runtime(repo: str) -> None:
         raise RuntimeError("远程 Runtime 清单缺少必要字段")
 
     print(f"正在更新 Runtime: {runtime_version}")
-    archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
+    archive_bytes = None
+    for proxy in MIRROR_PROXIES:
+        try:
+            archive_bytes = _download_runtime_archive(f"{proxy}/{runtime_url}", runtime_sha)
+            break
+        except Exception:
+            print(f"\n镜像下载失败，尝试其他下载源...")
+    if archive_bytes is None:
+        archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
     _replace_runtime_archive(archive_bytes)
 
     _write_json(

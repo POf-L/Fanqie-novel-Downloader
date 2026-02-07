@@ -353,13 +353,18 @@ def build_executable(variant="release", executable_name=None, target_platform=No
     import os
     # 获取项目根目录的绝对路径
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    icon_path = os.path.join(project_root, "assets", "icons", "icon_256.png")
+    
+    # 根据平台选择合适的图标格式
+    if current_platform == 'windows':
+        icon_path = os.path.join(project_root, "assets", "icons", "icon.ico")
+    else:
+        icon_path = os.path.join(project_root, "assets", "icons", "icon_256.png")
     
     if os.path.exists(icon_path):
         cmd.extend(["--icon", icon_path])
         print(f"Using icon: {icon_path}")
     else:
-        print("Warning: Icon file not found, building without icon")
+        print(f"Warning: Icon file not found at {icon_path}, building without icon")
     
     # 根据变体选择窗口模式或控制台模式
     if variant == "debug":
