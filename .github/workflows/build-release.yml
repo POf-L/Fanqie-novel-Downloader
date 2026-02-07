@@ -243,12 +243,51 @@ jobs:
       - name: Generate runtime manifest
         shell: bash
         run: |
-          python scripts/generate_runtime_manifest.py \
-            --repo "${{ github.repository }}" \
-            --tag "${{ needs.prepare-release.outputs.tag_name }}" \
-            --platform "${{ matrix.platform }}" \
-            --runtime-file "${{ matrix.runtime_name }}" \
-            --output "runtime-manifest-${{ matrix.platform }}.json"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          runtime_path = Path(os.environ["RUNTIME_FILE"]).resolve()
+          output_path = Path(os.environ["OUTPUT_FILE"]).resolve()
+
+          if not runtime_path.exists():
+              raise FileNotFoundError(f"Runtime file not found: {runtime_path}")
+
+          hasher = hashlib.sha256()
+          with runtime_path.open("rb") as file_obj:
+              while True:
+                  chunk = file_obj.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  hasher.update(chunk)
+
+          manifest = {
+              "manifest_version": "1",
+              "platform": os.environ["PLATFORM"],
+              "runtime_version": os.environ["TAG_NAME"],
+              "runtime_archive_name": runtime_path.name,
+              "runtime_archive_url": f"https://github.com/{os.environ['REPO_NAME']}/releases/download/{os.environ['TAG_NAME']}/{runtime_path.name}",
+              "runtime_archive_sha256": hasher.hexdigest(),
+              "runtime_archive_size": runtime_path.stat().st_size,
+              "min_launcher_version": "1.0.0",
+              "generated_at": datetime.now(timezone.utc).isoformat(),
+          }
+
+          output_path.parent.mkdir(parents=True, exist_ok=True)
+          with output_path.open("w", encoding="utf-8") as file_obj:
+              json.dump(manifest, file_obj, ensure_ascii=False, indent=2)
+
+          print(f"generated: {output_path}")
+          PY
+        env:
+          REPO_NAME: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
+          PLATFORM: ${{ matrix.platform }}
+          RUNTIME_FILE: ${{ matrix.runtime_name }}
+          OUTPUT_FILE: runtime-manifest-${{ matrix.platform }}.json
 
       - name: Upload runtime artifact
         uses: actions/upload-artifact@v4
@@ -341,18 +380,60 @@ jobs:
       - name: Generate termux runtime manifest
         shell: bash
         run: |
-          python scripts/generate_runtime_manifest.py \
-            --repo "${{ github.repository }}" \
-            --tag "${{ needs.prepare-release.outputs.tag_name }}" \
-            --platform "termux-arm64" \
-            --runtime-file "runtime-termux-arm64.zip" \
-            --output "runtime-manifest-termux-arm64.json"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          runtime_path = Path("runtime-termux-arm64.zip").resolve()
+          output_path = Path("runtime-manifest-termux-arm64.json").resolve()
+
+          if not runtime_path.exists():
+              raise FileNotFoundError(f"Runtime file not found: {runtime_path}")
+
+          hasher = hashlib.sha256()
+          with runtime_path.open("rb") as file_obj:
+              while True:
+                  chunk = file_obj.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  hasher.update(chunk)
+
+          manifest = {
+              "manifest_version": "1",
+              "platform": "termux-arm64",
+              "runtime_version": os.environ["TAG_NAME"],
+              "runtime_archive_name": runtime_path.name,
+              "runtime_archive_url": f"https://github.com/{os.environ['REPO_NAME']}/releases/download/{os.environ['TAG_NAME']}/{runtime_path.name}",
+              "runtime_archive_sha256": hasher.hexdigest(),
+              "runtime_archive_size": runtime_path.stat().st_size,
+              "min_launcher_version": "1.0.0",
+              "generated_at": datetime.now(timezone.utc).isoformat(),
+          }
+
+          with output_path.open("w", encoding="utf-8") as file_obj:
+              json.dump(manifest, file_obj, ensure_ascii=False, indent=2)
+
+          print(f"generated: {output_path}")
+          PY
+        env:
+          REPO_NAME: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
+
+      - name: Prepare termux launcher asset
+        shell: bash
+        run: |
+          cp scripts/termux_launcher.sh TomatoNovelDownloader-termux-arm64
+          chmod +x TomatoNovelDownloader-termux-arm64
 
       - name: Upload termux runtime and manifest to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           files: |
+            TomatoNovelDownloader-termux-arm64
             runtime-termux-arm64.zip
             runtime-manifest-termux-arm64.json
         env:
