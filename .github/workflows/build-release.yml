@@ -563,7 +563,7 @@ jobs:
               echo "[OK] ARM64 renamed file exists"
               file dist/TomatoNovelDownloader-termux-arm64
               # 确保重命名的文件也有执行权限
-              chmod +x dist/TomatoNovelDownloader-termux-arm64
+              chmod +x dist/TomatoNovelDownloader-termux-arm64 || true
             else
               echo "[X] ARM64 renamed file missing"
               exit 1
