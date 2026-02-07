@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 生成版本号并创建 Release
+  # çæçæ¬å·å¹¶åå»º Release
   prepare-release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -59,19 +59,19 @@ jobs:
           tag_name: ${{ steps.version.outputs.TAG_NAME }}
           name: "TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}"
           body: |
-            ## 🚀 TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}
+            ## ð TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}
 
-            ### 📋 发布信息
-            | 项目 | 详情 |
+            ### ð åå¸ä¿¡æ¯
+            | é¡¹ç® | è¯¦æ |
             | :--- | :--- |
-            | 🕒 **发布时间** | ${{ steps.version.outputs.BUILD_TIME }} |
-            | 🌿 **分支/Tag** | `${{ github.ref_name }}` |
-            | 🔗 **Commit** | `${{ github.sha }}` |
+            | ð **åå¸æ¶é´** | ${{ steps.version.outputs.BUILD_TIME }} |
+            | ð¿ **åæ¯/Tag** | `${{ github.ref_name }}` |
+            | ð **Commit** | `${{ github.sha }}` |
 
             ---
 
-            ### 📝 更新内容
-            正在整理自上一个 Latest 版本以来的提交记录...
+            ### ð æ´æ°åå®¹
+            æ­£å¨æ´çèªä¸ä¸ä¸ª Latest çæ¬ä»¥æ¥çæäº¤è®°å½...
           draft: false
           prerelease: true
           make_latest: false
@@ -85,7 +85,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows 发布版
+          # Windows åå¸ç
           - os: windows-latest
             variant: release
             executable: TomatoNovelDownloader
@@ -93,7 +93,7 @@ jobs:
             release_name: TomatoNovelDownloader.exe
             artifact_name: TomatoNovelDownloader-windows-x64
             build_flags: '--windowed'
-          # Windows 调试版
+          # Windows è°è¯ç
           - os: windows-latest
             variant: debug
             executable: TomatoNovelDownloader-debug
@@ -101,7 +101,7 @@ jobs:
             release_name: TomatoNovelDownloader-debug.exe
             artifact_name: TomatoNovelDownloader-debug-windows-x64
             build_flags: '--console'
-          # Windows Standalone (内置 WebView2)
+          # Windows Standalone (åç½® WebView2)
           - os: windows-latest
             variant: release-standalone
             executable: TomatoNovelDownloader-Standalone
@@ -109,7 +109,7 @@ jobs:
             release_name: TomatoNovelDownloader-Standalone.exe
             artifact_name: TomatoNovelDownloader-standalone-windows-x64
             build_flags: '--windowed --add-data "WebView2;WebView2"'
-          # Linux 发布版
+          # Linux åå¸ç
           - os: ubuntu-latest
             variant: release
             executable: TomatoNovelDownloader
@@ -117,7 +117,7 @@ jobs:
             release_name: TomatoNovelDownloader-linux
             artifact_name: TomatoNovelDownloader-linux-x64
             build_flags: '--windowed'
-          # Linux 调试版
+          # Linux è°è¯ç
           - os: ubuntu-latest
             variant: debug
             executable: TomatoNovelDownloader-debug
@@ -125,7 +125,7 @@ jobs:
             release_name: TomatoNovelDownloader-debug-linux
             artifact_name: TomatoNovelDownloader-debug-linux-x64
             build_flags: '--console'
-          # macOS 发布版
+          # macOS åå¸ç
           - os: macos-latest
             variant: release
             executable: TomatoNovelDownloader
@@ -133,7 +133,7 @@ jobs:
             release_name: TomatoNovelDownloader-macos
             artifact_name: TomatoNovelDownloader-macos-x64
             build_flags: '--windowed'
-          # macOS 调试版
+          # macOS è°è¯ç
           - os: macos-latest
             variant: debug
             executable: TomatoNovelDownloader-debug
@@ -176,10 +176,10 @@ jobs:
           echo "Using version: $VERSION"
           echo "Using build time: $BUILD_TIME"
           
-          # 完全重写version.py文件，确保__build_channel__正确设置
+          # å®å¨éåversion.pyæä»¶ï¼ç¡®ä¿__build_channel__æ­£ç¡®è®¾ç½®
           echo "# -*- coding: utf-8 -*-" > version.py
           echo '"""' >> version.py
-          echo "版本信息文件 - GitHub Actions自动生成" >> version.py
+          echo "çæ¬ä¿¡æ¯æä»¶ - GitHub Actionsèªå¨çæ" >> version.py
           echo '"""' >> version.py
           echo "" >> version.py
           echo "__version__ = \"$VERSION\"" >> version.py
@@ -189,7 +189,7 @@ jobs:
           echo "__build_time__ = \"$BUILD_TIME\"" >> version.py
           echo "__build_channel__ = \"github-actions\"" >> version.py
           
-          echo "✅ 更新后的version.py:"
+          echo "â æ´æ°åçversion.py:"
           cat version.py
         shell: bash
 
@@ -202,25 +202,25 @@ jobs:
       - name: Download WebView2 Runtime (Standalone only)
         if: matrix.variant == 'release-standalone'
         run: |
-          # 下载 WebView2 Fixed Version Runtime (通过 NuGet 包获取)
+          # ä¸è½½ WebView2 Fixed Version Runtime (éè¿ NuGet åè·å)
           curl -L -o webview2.zip "https://www.nuget.org/api/v2/package/WebView2.Runtime.X64/129.0.2792.52"
           7z x webview2.zip -oWebView2Temp
           
-          # 查找包含 msedgewebview2.exe 的文件夹
+          # æ¥æ¾åå« msedgewebview2.exe çæä»¶å¤¹
           TARGET_DIR=$(find WebView2Temp -name "msedgewebview2.exe" | head -n 1 | xargs dirname)
           
           if [ -z "$TARGET_DIR" ]; then
             echo "Error: Could not find msedgewebview2.exe in package"
-            # 尝试列出文件以供调试
+            # å°è¯ååºæä»¶ä»¥ä¾è°è¯
             find WebView2Temp
             exit 1
           fi
           
           echo "Found runtime at $TARGET_DIR"
-          # 移动到项目根目录的 WebView2 文件夹
+          # ç§»å¨å°é¡¹ç®æ ¹ç®å½ç WebView2 æä»¶å¤¹
           mv "$TARGET_DIR" ./WebView2
           
-          # 清理临时文件
+          # æ¸çä¸´æ¶æä»¶
           rm -rf WebView2Temp webview2.zip
           
           echo "[OK] WebView2 Runtime prepared"
@@ -229,31 +229,31 @@ jobs:
       - name: Generate high-quality Windows icon
         if: runner.os == 'Windows'
         run: |
-          # 安装 Pillow 用于处理图标
+          # å®è£ Pillow ç¨äºå¤çå¾æ 
           pip install Pillow
           
-          # 使用修复后的图标生成高质量的多尺寸 .ico 文件
+          # ä½¿ç¨ä¿®å¤åçå¾æ çæé«è´¨éçå¤å°ºå¯¸ .ico æä»¶
           python -c "
           from PIL import Image
           import os
           
-          # 加载修复后的高分辨率原图（已填充完整）
+          # å è½½ä¿®å¤åçé«åè¾¨çåå¾ï¼å·²å¡«åå®æ´ï¼
           img = Image.open('assets/icons/icon_256.png')
           
-          # 确保图标是正方形且完全填充
+          # ç¡®ä¿å¾æ æ¯æ­£æ¹å½¢ä¸å®å¨å¡«å
           if img.size != (256, 256):
               img = img.resize((256, 256), Image.Resampling.LANCZOS)
           
-          # 创建多尺寸图标列表
+          # åå»ºå¤å°ºå¯¸å¾æ åè¡¨
           sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
           icons = []
           
           for size in sizes:
-              # 调整大小，保持高质量
+              # è°æ´å¤§å°ï¼ä¿æé«è´¨é
               resized = img.resize(size, Image.Resampling.LANCZOS)
               icons.append(resized)
           
-          # 保存为 .ico 文件，包含所有尺寸
+          # ä¿å­ä¸º .ico æä»¶ï¼åå«ææå°ºå¯¸
           icons[0].save('assets/icons/icon_high_quality.ico',
                        format='ICO',
                        sizes=[(img.width, img.height) for img in icons],
@@ -269,11 +269,11 @@ jobs:
           # Determine separator for add-data based on OS
           if [ "${{ runner.os }}" == "Windows" ]; then
             SEP=";"
-            # 使用生成的高质量 .ico 文件
+            # ä½¿ç¨çæçé«è´¨é .ico æä»¶
             ICON_FLAG="--icon=assets/icons/icon_high_quality.ico"
           else
             SEP=":"
-            # Linux/macOS 使用高分辨率 PNG
+            # Linux/macOS ä½¿ç¨é«åè¾¨ç PNG
             ICON_FLAG="--icon=assets/icons/icon_256.png"
           fi
 
@@ -343,7 +343,7 @@ jobs:
           target="dist/${{ matrix.executable }}${{ matrix.ext }}"
             echo "[TEST] Testing executable: $target"
 
-          # 运行基本测试（超时30秒）
+          # è¿è¡åºæ¬æµè¯ï¼è¶æ¶30ç§ï¼
           timeout 30s "$target" --help || echo "Help command test completed"
 
           echo "[OK] Executable test completed"
@@ -376,9 +376,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build completed
-        run: echo "✅ Build and artifact prepared for ${{ matrix.variant }}"
+        run: echo "â Build and artifact prepared for ${{ matrix.variant }}"
 
-  # Termux ARM64 命令行版本构建
+  # Termux ARM64 å½ä»¤è¡çæ¬æå»º
   build-termux:
     needs: [prepare-release]
     if: needs.prepare-release.result == 'success'
@@ -403,7 +403,7 @@ jobs:
           
           echo "# -*- coding: utf-8 -*-" > version.py
           echo '"""' >> version.py
-          echo "版本信息文件 - GitHub Actions自动生成" >> version.py
+          echo "çæ¬ä¿¡æ¯æä»¶ - GitHub Actionsèªå¨çæ" >> version.py
           echo '"""' >> version.py
           echo "" >> version.py
           echo "__version__ = \"$VERSION\"" >> version.py
@@ -428,13 +428,13 @@ jobs:
             apt-get install -y python3 python3-pip python3-venv python3-dev binutils git build-essential patchelf \
               libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev tk-dev tcl-dev \
               libffi-dev libssl-dev libwebp-dev libxml2-dev libxslt-dev wget file
-            # 安装新版 CMake (3.28+) 因为 termux-elf-cleaner 需要 3.25+
+            # å®è£æ°ç CMake (3.28+) å ä¸º termux-elf-cleaner éè¦ 3.25+
             wget -q https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-aarch64.tar.gz
             tar -xzf cmake-3.28.3-linux-aarch64.tar.gz -C /opt
             ln -sf /opt/cmake-3.28.3-linux-aarch64/bin/cmake /usr/local/bin/cmake
             rm cmake-3.28.3-linux-aarch64.tar.gz
             cmake --version
-            # 从源码编译安装 termux-elf-cleaner
+            # ä»æºç ç¼è¯å®è£ termux-elf-cleaner
             git clone https://github.com/termux/termux-elf-cleaner.git /tmp/termux-elf-cleaner
             cd /tmp/termux-elf-cleaner
             mkdir build
@@ -444,12 +444,12 @@ jobs:
             cp termux-elf-cleaner /usr/local/bin/
             cd /
             rm -rf /tmp/termux-elf-cleaner
-            # 验证 termux-elf-cleaner 安装
+            # éªè¯ termux-elf-cleaner å®è£
             termux-elf-cleaner --version || echo "termux-elf-cleaner version check failed"
           run: |
             cd /workspace
             
-            # 设置环境变量以优化 ARM64 编译
+            # è®¾ç½®ç¯å¢åéä»¥ä¼å ARM64 ç¼è¯
             export CFLAGS="-O2"
             export CXXFLAGS="-O2"
             export LDFLAGS="-Wl,--as-needed"
@@ -465,7 +465,7 @@ jobs:
             pip install --default-timeout=3600 --prefer-binary -r config/requirements-termux.txt
             pip install --default-timeout=3600 --prefer-binary pyinstaller
             
-            # 构建命令行版本 (使用 novel_downloader.py 作为入口)
+            # æå»ºå½ä»¤è¡çæ¬ (ä½¿ç¨ novel_downloader.py ä½ä¸ºå¥å£)
             pyinstaller --onefile \
               --name=TomatoNovelDownloader-termux \
               --console \
@@ -507,26 +507,26 @@ jobs:
               --strip \
               core/novel_downloader.py
             
-            # 验证生成的二进制文件
-            echo "=== 检查生成的二进制文件 ==="
+            # éªè¯çæçäºè¿å¶æä»¶
+            echo "=== æ£æ¥çæçäºè¿å¶æä»¶ ==="
             ls -la dist/
             file dist/TomatoNovelDownloader-termux
             ldd dist/TomatoNovelDownloader-termux || echo "ldd failed - checking with readelf"
             readelf -d dist/TomatoNovelDownloader-termux | head -20 || echo "readelf failed"
             
-            # 使用 termux-elf-cleaner 修复 ELF 解释器路径和 RPATH
-            echo "=== 应用 termux-elf-cleaner ==="
+            # ä½¿ç¨ termux-elf-cleaner ä¿®å¤ ELF è§£éå¨è·¯å¾å RPATH
+            echo "=== åºç¨ termux-elf-cleaner ==="
             termux-elf-cleaner dist/TomatoNovelDownloader-termux || echo "termux-elf-cleaner warning (non-fatal)"
             
-            # 再次验证修复后的二进制文件
-            echo "=== 验证修复后的二进制文件 ==="
+            # åæ¬¡éªè¯ä¿®å¤åçäºè¿å¶æä»¶
+            echo "=== éªè¯ä¿®å¤åçäºè¿å¶æä»¶ ==="
             file dist/TomatoNovelDownloader-termux
             ldd dist/TomatoNovelDownloader-termux || echo "ldd still failed after cleaning"
             
-            # 检查可执行权限
+            # æ£æ¥å¯æ§è¡æé
             chmod +x dist/TomatoNovelDownloader-termux
             
-            # 在容器内完成重命名，避免权限问题
+            # å¨å®¹å¨åå®æéå½åï¼é¿åæéé®é¢
             cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
             chmod +x dist/TomatoNovelDownloader-termux-arm64 || true
             ls -la dist/
@@ -539,7 +539,7 @@ jobs:
             file dist/TomatoNovelDownloader-termux
             echo "File size: $(ls -lh dist/TomatoNovelDownloader-termux | awk '{print $5}')"
             
-            # 检查可执行权限
+            # æ£æ¥å¯æ§è¡æé
             if [ -x "dist/TomatoNovelDownloader-termux" ]; then
               echo "[OK] Executable permissions set correctly"
             else
@@ -547,11 +547,11 @@ jobs:
               chmod +x dist/TomatoNovelDownloader-termux
             fi
             
-            # 检查重命名的文件
+            # æ£æ¥éå½åçæä»¶
             if [ -f "dist/TomatoNovelDownloader-termux-arm64" ]; then
               echo "[OK] ARM64 renamed file exists"
               file dist/TomatoNovelDownloader-termux-arm64
-              # 确保重命名的文件也有执行权限
+              # ç¡®ä¿éå½åçæä»¶ä¹ææ§è¡æé
               chmod +x dist/TomatoNovelDownloader-termux-arm64 || true
             else
               echo "[X] ARM64 renamed file missing"
@@ -578,9 +578,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Termux build completed
-        run: echo "✅ Termux ARM64 build completed"
+        run: echo "â Termux ARM64 build completed"
 
-  # 所有构建完成后更新 Release 信息
+  # æææå»ºå®æåæ´æ° Release ä¿¡æ¯
   finalize-release:
     name: Finalize Release
     if: always() && github.event_name != 'pull_request' && needs.prepare-release.result == 'success'
@@ -614,7 +614,7 @@ jobs:
           CHANGELOG=$(git log $RANGE --pretty=format:'- `%h` %s' || true)
 
           if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- 无新的提交记录"
+            CHANGELOG="- æ æ°çæäº¤è®°å½"
           fi
 
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
@@ -658,21 +658,21 @@ jobs:
           echo "Build job result: ${{ needs.build.result }}"
           echo "Termux job result: ${{ needs.build-termux.result }}"
           
-          # 判断是否全部成功
+          # å¤æ­æ¯å¦å¨é¨æå
           ALL_SUCCESS="true"
           BUILD_STATUS=""
           
           if [ "${{ needs.build.result }}" == "success" ]; then
-            BUILD_STATUS="[OK] 主构建完成"
+            BUILD_STATUS="[OK] ä¸»æå»ºå®æ"
           else
-            BUILD_STATUS="[!] 主构建部分失败"
+            BUILD_STATUS="[!] ä¸»æå»ºé¨åå¤±è´¥"
             ALL_SUCCESS="false"
           fi
           
           if [ "${{ needs.build-termux.result }}" == "success" ]; then
-            BUILD_STATUS="$BUILD_STATUS | [OK] Termux 构建完成"
+            BUILD_STATUS="$BUILD_STATUS | [OK] Termux æå»ºå®æ"
           else
-            BUILD_STATUS="$BUILD_STATUS | [!] Termux 构建失败"
+            BUILD_STATUS="$BUILD_STATUS | [!] Termux æå»ºå¤±è´¥"
             ALL_SUCCESS="false"
           fi
           
@@ -686,32 +686,32 @@ jobs:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
           body: |
-            ## 🎉 TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
+            ## ð TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
 
-            ### 📝 更新内容（自上一个 Latest 版本起）
+            ### ð æ´æ°åå®¹ï¼èªä¸ä¸ä¸ª Latest çæ¬èµ·ï¼
 
             ${{ steps.changelog.outputs.content }}
 
             ---
 
-            ### 📥 下载通道
+            ### ð¥ ä¸è½½éé
             
-            | 平台 | 推荐文件 | 说明 |
+            | å¹³å° | æ¨èæä»¶ | è¯´æ |
             | :--- | :--- | :--- |
-            | **🪟 Windows** | `...Standalone.exe` | ✅ **首选** (内置运行库，开箱即用) |
-            | | `TomatoNovelDownloader.exe` | 纯净版 (需自备 WebView2) |
-            | **🐧 Linux** | `...linux` | x64 架构 (需安装 GTK3/WebKit) |
-            | **🍎 macOS** | `...macos` | Intel 芯片 (x64) |
-            | **🤖 Termux** | `...termux-arm64` | Android Termux 命令行版 |
+            | **ðª Windows** | `...Standalone.exe` | â **é¦é** (åç½®è¿è¡åºï¼å¼ç®±å³ç¨) |
+            | | `TomatoNovelDownloader.exe` | çº¯åç (éèªå¤ WebView2) |
+            | **ð§ Linux** | `...linux` | x64 æ¶æ (éå®è£ GTK3/WebKit) |
+            | **ð macOS** | `...macos` | Intel è¯ç (x64) |
+            | **ð¤ Termux** | `...termux-arm64` | Android Termux å½ä»¤è¡ç |
             
             ---
             
-            ### 📋 发布信息
-            | 项目 | 详情 |
+            ### ð åå¸ä¿¡æ¯
+            | é¡¹ç® | è¯¦æ |
             | :--- | :--- |
-            | 🕒 **发布时间** | ${{ needs.prepare-release.outputs.build_time }} |
-            | 🏷️ **对比起点** | `${{ steps.changelog.outputs.latest_tag }}` |
-            | 🔗 **Commit** | `${{ github.sha }}` |
+            | ð **åå¸æ¶é´** | ${{ needs.prepare-release.outputs.build_time }} |
+            | ð·ï¸ **å¯¹æ¯èµ·ç¹** | `${{ steps.changelog.outputs.latest_tag }}` |
+            | ð **Commit** | `${{ github.sha }}` |
           draft: false
           prerelease: false
           make_latest: true
@@ -723,22 +723,22 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          name: "[!] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }} (部分构建)"
+          name: "[!] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }} (é¨åæå»º)"
           body: |
             ## [!] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
             
-            ### 📝 更新内容（自上一个 Latest 版本起）
+            ### ð æ´æ°åå®¹ï¼èªä¸ä¸ä¸ª Latest çæ¬èµ·ï¼
 
             ${{ steps.changelog.outputs.content }}
 
             ---
             
-            ### 📋 发布信息
-            | 项目 | 详情 |
+            ### ð åå¸ä¿¡æ¯
+            | é¡¹ç® | è¯¦æ |
             | :--- | :--- |
-            | 🕒 **发布时间** | ${{ needs.prepare-release.outputs.build_time }} |
-            | 🏷️ **对比起点** | `${{ steps.changelog.outputs.latest_tag }}` |
-            | 🔗 **Commit** | `${{ github.sha }}` |
+            | ð **åå¸æ¶é´** | ${{ needs.prepare-release.outputs.build_time }} |
+            | ð·ï¸ **å¯¹æ¯èµ·ç¹** | `${{ steps.changelog.outputs.latest_tag }}` |
+            | ð **Commit** | `${{ github.sha }}` |
           draft: false
           prerelease: true
           make_latest: false

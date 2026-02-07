@@ -33,9 +33,9 @@
 
 ### 高级用户
 
-1. **深入了解功能** → [� 本地安装使用](LOCAL_INSTALLATION.md#使用方法)
-2. **自定义配置** → [� 本地安装使用](LOCAL_INSTALLATION.md#配置说明)
-3. **命令行使用** → [� 本地安装使用](LOCAL_INSTALLATION.md#cli-命令行使用)
+1. **深入了解功能** → [💻 本地安装使用](LOCAL_INSTALLATION.md#使用方法)
+2. **自定义配置** → [💻 本地安装使用](LOCAL_INSTALLATION.md#配置说明)
+3. **命令行使用** → [💻 本地安装使用](LOCAL_INSTALLATION.md#cli-命令行使用)
 
 ### 开发者
 
@@ -57,10 +57,10 @@
 
 | 功能 | 相关文档 |
 |------|----------|
-| 🔍 搜索功能 | [� 本地安装使用](LOCAL_INSTALLATION.md#gui-界面使用) |
-| ⬇️ 批量下载 | [� 本地安装使用](LOCAL_INSTALLATION.md#cli-命令行使用) |
-| ⚙️ 高级配置 | [� 本地安装使用](LOCAL_INSTALLATION.md#配置说明) |
-| 💻 命令行使用 | [� 本地安装使用](LOCAL_INSTALLATION.md#cli-命令行使用) |
+| 🔍 搜索功能 | [💻 本地安装使用](LOCAL_INSTALLATION.md#gui-界面使用) |
+| ⬇️ 批量下载 | [💻 本地安装使用](LOCAL_INSTALLATION.md#cli-命令行使用) |
+| ⚙️ 高级配置 | [💻 本地安装使用](LOCAL_INSTALLATION.md#配置说明) |
+| 💻 命令行使用 | [💻 本地安装使用](LOCAL_INSTALLATION.md#cli-命令行使用) |
 
 ## 🆕 最新更新
 
