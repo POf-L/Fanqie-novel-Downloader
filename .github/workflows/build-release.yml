@@ -77,7 +77,7 @@ jobs:
             | 🍎 macOS | ⏳ 编译中... |
             | 🤖 Termux ARM64 | ⏳ 编译中... |
             
-            > **💡 提示**: 无需等待全部完成，文件出现在 Assets 即可下载使用。
+            > **[INFO] 提示**: 无需等待全部完成，文件出现在 Assets 即可下载使用。
             
             ---
             
@@ -238,7 +238,7 @@ jobs:
           # 清理临时文件
           rm -rf WebView2Temp webview2.zip
           
-          echo "✅ WebView2 Runtime prepared"
+          echo "[OK] WebView2 Runtime prepared"
         shell: bash
 
       - name: Generate high-quality Windows icon
@@ -270,7 +270,7 @@ jobs:
                        sizes=[(img.width, img.height) for img in icons],
                        append_images=icons[1:])
           
-          print('✅ 生成高质量图标完成')
+          print('[OK] 生成高质量图标完成')
           "
 
       - name: Build application (${{ matrix.variant }})
@@ -338,10 +338,10 @@ jobs:
           ls -la dist/
           target="dist/${{ matrix.executable }}${{ matrix.ext }}"
           if [ -f "$target" ]; then
-            echo "✅ Build successful: $(basename "$target")"
+            echo "[OK] Build successful: $(basename "$target")"
             echo "File size: $(ls -lh "$target" | awk '{print $5}')"
           else
-            echo "❌ Build failed: $(basename "$target") not found"
+            echo "[X] Build failed: $(basename "$target") not found"
             exit 1
           fi
         shell: bash
@@ -350,12 +350,12 @@ jobs:
         if: matrix.variant != 'release' && matrix.variant != 'release-standalone'
         run: |
           target="dist/${{ matrix.executable }}${{ matrix.ext }}"
-          echo "🧪 Testing executable: $target"
+            echo "[TEST] Testing executable: $target"
 
           # 运行基本测试（超时30秒）
           timeout 30s "$target" --help || echo "Help command test completed"
 
-          echo "✅ Executable test completed"
+          echo "[OK] Executable test completed"
         shell: bash
 
       - name: Rename for release
@@ -543,30 +543,30 @@ jobs:
         run: |
           ls -la dist/
           if [ -f "dist/TomatoNovelDownloader-termux" ]; then
-            echo "✅ Termux ARM64 build successful"
+            echo "[OK] Termux ARM64 build successful"
             file dist/TomatoNovelDownloader-termux
             echo "File size: $(ls -lh dist/TomatoNovelDownloader-termux | awk '{print $5}')"
             
             # 检查可执行权限
             if [ -x "dist/TomatoNovelDownloader-termux" ]; then
-              echo "✅ Executable permissions set correctly"
+              echo "[OK] Executable permissions set correctly"
             else
-              echo "❌ Executable permissions missing"
+              echo "[X] Executable permissions missing"
               chmod +x dist/TomatoNovelDownloader-termux
             fi
             
             # 检查重命名的文件
             if [ -f "dist/TomatoNovelDownloader-termux-arm64" ]; then
-              echo "✅ ARM64 renamed file exists"
+              echo "[OK] ARM64 renamed file exists"
               file dist/TomatoNovelDownloader-termux-arm64
               # 确保重命名的文件也有执行权限
               chmod +x dist/TomatoNovelDownloader-termux-arm64
             else
-              echo "❌ ARM64 renamed file missing"
+              echo "[X] ARM64 renamed file missing"
               exit 1
             fi
           else
-            echo "❌ Termux build failed"
+            echo "[X] Termux build failed"
             exit 1
           fi
 
@@ -629,16 +629,16 @@ jobs:
           BUILD_STATUS=""
           
           if [ "${{ needs.build.result }}" == "success" ]; then
-            BUILD_STATUS="✅ 主构建完成"
+            BUILD_STATUS="[OK] 主构建完成"
           else
-            BUILD_STATUS="⚠️ 主构建部分失败"
+            BUILD_STATUS="[!] 主构建部分失败"
             ALL_SUCCESS="false"
           fi
           
           if [ "${{ needs.build-termux.result }}" == "success" ]; then
-            BUILD_STATUS="$BUILD_STATUS | ✅ Termux 构建完成"
+            BUILD_STATUS="$BUILD_STATUS | [OK] Termux 构建完成"
           else
-            BUILD_STATUS="$BUILD_STATUS | ⚠️ Termux 构建失败"
+            BUILD_STATUS="$BUILD_STATUS | [!] Termux 构建失败"
             ALL_SUCCESS="false"
           fi
           
@@ -698,9 +698,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          name: "⚠️ TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }} (部分构建)"
+          name: "[!] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }} (部分构建)"
           body: |
-            ## ⚠️ TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
+            ## [!] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
             
             > **预发布版本** - 部分平台构建失败，但已完成的版本可正常使用。
             
@@ -710,7 +710,7 @@ jobs:
             
             ---
             
-            ### 📥 可用下载
+            ### [DOWNLOAD] 可用下载
             
             请从下方 Assets 中选择已完成编译的版本下载。
             
