@@ -32,7 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Generate version
         id: version
@@ -60,27 +60,18 @@ jobs:
           name: "TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}"
           body: |
             ## 🚀 TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}
-            
-            ### 🔄 构建状态
-            
-            | 平台 | 状态 |
-            | :--- | :--- |
-            | 💻 Windows | ⏳ 编译中... |
-            | 📦 Windows Standalone | ⏳ 编译中... |
-            | 🐧 Linux | ⏳ 编译中... |
-            | 🍎 macOS | ⏳ 编译中... |
-            | 🤖 Termux ARM64 | ⏳ 编译中... |
-            
-            > **[INFO] 提示**: 无需等待全部完成，文件出现在 Assets 即可下载使用。
-            
-            ---
-            
-            ### 📋 构建信息
+
+            ### 📋 发布信息
             | 项目 | 详情 |
             | :--- | :--- |
-            | 🕒 **开始时间** | ${{ steps.version.outputs.BUILD_TIME }} |
+            | 🕒 **发布时间** | ${{ steps.version.outputs.BUILD_TIME }} |
             | 🌿 **分支/Tag** | `${{ github.ref_name }}` |
             | 🔗 **Commit** | `${{ github.sha }}` |
+
+            ---
+
+            ### 📝 更新内容
+            正在整理自上一个 Latest 版本以来的提交记录...
           draft: false
           prerelease: true
           make_latest: false
@@ -599,12 +590,36 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Get commit message
-        id: get_commit_msg
+      - name: Generate changelog since latest release
+        id: changelog
+        shell: bash
         run: |
-          echo "msg<<EOF" >> $GITHUB_OUTPUT
-          git show -s --format='%B' >> $GITHUB_OUTPUT
+          set -e
+
+          LATEST_TAG=$(curl -fsSL \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+            | python -c "import sys, json; data=json.load(sys.stdin); print(data.get('tag_name',''))" || true)
+
+          if [ -n "$LATEST_TAG" ]; then
+            RANGE="$LATEST_TAG..${{ github.sha }}"
+          else
+            RANGE="${{ github.sha }}~50..${{ github.sha }}"
+          fi
+
+          CHANGELOG=$(git log $RANGE --pretty=format:'- `%h` %s' || true)
+
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- 无新的提交记录"
+          fi
+
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
@@ -672,23 +687,13 @@ jobs:
           name: TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
           body: |
             ## 🎉 TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
-            
-            > ${{ steps.get_commit_msg.outputs.msg }}
-            
+
+            ### 📝 更新内容（自上一个 Latest 版本起）
+
+            ${{ steps.changelog.outputs.content }}
+
             ---
-            
-            ### 🔄 构建状态
-            
-            | 平台 | 状态 |
-            | :--- | :--- |
-            | 💻 Windows | ✅ 完成 |
-            | 📦 Windows Standalone | ✅ 完成 |
-            | 🐧 Linux | ✅ 完成 |
-            | 🍎 macOS | ✅ 完成 |
-            | 🤖 Termux ARM64 | ✅ 完成 |
-            
-            ---
-            
+
             ### 📥 下载通道
             
             | 平台 | 推荐文件 | 说明 |
@@ -701,10 +706,11 @@ jobs:
             
             ---
             
-            ### 📋 构建信息
+            ### 📋 发布信息
             | 项目 | 详情 |
             | :--- | :--- |
-            | 🕒 **构建时间** | ${{ needs.prepare-release.outputs.build_time }} |
+            | 🕒 **发布时间** | ${{ needs.prepare-release.outputs.build_time }} |
+            | 🏷️ **对比起点** | `${{ steps.changelog.outputs.latest_tag }}` |
             | 🔗 **Commit** | `${{ github.sha }}` |
           draft: false
           prerelease: false
@@ -721,24 +727,17 @@ jobs:
           body: |
             ## [!] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
             
-            > **预发布版本** - 部分平台构建失败，但已完成的版本可正常使用。
-            
-            ### 🔄 构建状态
-            
-            ${{ steps.check_builds.outputs.status }}
-            
+            ### 📝 更新内容（自上一个 Latest 版本起）
+
+            ${{ steps.changelog.outputs.content }}
+
             ---
             
-            ### [DOWNLOAD] 可用下载
-            
-            请从下方 Assets 中选择已完成编译的版本下载。
-            
-            ---
-            
-            ### 📋 构建信息
+            ### 📋 发布信息
             | 项目 | 详情 |
             | :--- | :--- |
-            | 🕒 **构建时间** | ${{ needs.prepare-release.outputs.build_time }} |
+            | 🕒 **发布时间** | ${{ needs.prepare-release.outputs.build_time }} |
+            | 🏷️ **对比起点** | `${{ steps.changelog.outputs.latest_tag }}` |
             | 🔗 **Commit** | `${{ github.sha }}` |
           draft: false
           prerelease: true
