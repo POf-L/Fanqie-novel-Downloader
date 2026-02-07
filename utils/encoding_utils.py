@@ -29,6 +29,26 @@ def setup_utf8_encoding():
         # 设置环境变量
         os.environ['PYTHONIOENCODING'] = 'utf-8'
 
+        # 尝试重新配置控制台模式（Windows 10+）
+        try:
+            import ctypes
+            import ctypes.wintypes
+            
+            # 启用虚拟终端处理
+            kernel32 = ctypes.windll.kernel32
+            STD_OUTPUT_HANDLE = -11
+            STD_ERROR_HANDLE = -12
+            ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+            
+            for handle_id in [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE]:
+                handle = kernel32.GetStdHandle(handle_id)
+                if handle:
+                    mode = ctypes.wintypes.DWORD()
+                    if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                        kernel32.SetConsoleMode(handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+        except:
+            pass  # 忽略失败，继续其他设置
+
         # 重新包装 stdout 和 stderr 为 UTF-8
         # 注意：在打包环境中需要额外检查 buffer 是否可用
         try:
@@ -54,6 +74,10 @@ def setup_utf8_encoding():
                 )
         except Exception:
             pass  # 打包环境可能没有 buffer，忽略
+    
+    # 非Windows系统也设置环境变量
+    else:
+        os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 
 def safe_str(obj: Any) -> str:
@@ -68,11 +92,32 @@ def safe_str(obj: Any) -> str:
     """
     try:
         if isinstance(obj, str):
+            # 检查并替换Windows控制台不支持的Unicode字符
+            result = obj
+            # 常见的不支持字符替换
+            char_replacements = {
+                '✓': '[OK]',
+                '❌': '[X]',
+                '⚠': '[!]',
+                '💡': '[i]',
+                '✗': '[X]',
+                '🎨': '[ART]',
+                '⚠️': '[!]',
+                '✅': '[OK]',
+                '❎': '[X]'
+            }
+            
+            for unicode_char, ascii_replacement in char_replacements.items():
+                result = result.replace(unicode_char, ascii_replacement)
+            
             # 确保字符串可以安全编码
-            return obj.encode('utf-8', errors='replace').decode('utf-8')
+            return result.encode('utf-8', errors='replace').decode('utf-8')
         else:
             # 转换为字符串后安全处理
             str_obj = str(obj)
+            # 应用同样的字符替换
+            for unicode_char, ascii_replacement in {'✓': '[OK]', '❌': '[X]', '⚠': '[!]', '💡': '[i]', '✗': '[X]', '🎨': '[ART]', '⚠️': '[!]', '✅': '[OK]', '❎': '[X]'}.items():
+                str_obj = str_obj.replace(unicode_char, ascii_replacement)
             return str_obj.encode('utf-8', errors='replace').decode('utf-8')
     except Exception:
         return '<encoding error>'
@@ -90,6 +135,25 @@ def safe_print(*args, **kwargs):
         # 安全处理所有参数
         safe_args = [safe_str(arg) for arg in args]
         _ORIGINAL_PRINT(*safe_args, **kwargs)
+    except UnicodeEncodeError as e:
+        # 专门处理Unicode编码错误
+        try:
+            # 尝试使用ASCII兼容的输出
+            ascii_args = []
+            for arg in args:
+                if isinstance(arg, str):
+                    # 移除或替换所有非ASCII字符
+                    ascii_str = ''.join(char if ord(char) < 128 else '?' for char in str(arg))
+                    ascii_args.append(ascii_str)
+                else:
+                    ascii_args.append(str(arg))
+            _ORIGINAL_PRINT(*ascii_args, **kwargs)
+        except Exception:
+            # 最后的备用方案
+            try:
+                _ORIGINAL_PRINT(f"<UnicodeEncodeError: {e}>", **kwargs)
+            except:
+                pass
     except Exception as e:
         # 如果还是失败，使用最基本的错误处理
         try:

@@ -56,12 +56,41 @@ def apply_encoding_fixes(debug_log: Optional[Callable[[str], None]] = None):
         if debug_log:
             debug_log(f"encoding_utils 执行失败: {exc}")
 
+    # 备用编码设置方案
     if sys.platform == 'win32':
         try:
             os.system('chcp 65001 >nul 2>&1')
             os.environ['PYTHONIOENCODING'] = 'utf-8'
-        except Exception:
-            pass
+            
+            # 尝试直接修复 stdout/stderr
+            import io
+            try:
+                if hasattr(sys.stdout, 'buffer') and sys.stdout.buffer:
+                    sys.stdout = io.TextIOWrapper(
+                        sys.stdout.buffer,
+                        encoding='utf-8',
+                        errors='replace',
+                        line_buffering=True
+                    )
+            except:
+                pass
+                
+            try:
+                if hasattr(sys.stderr, 'buffer') and sys.stderr.buffer:
+                    sys.stderr = io.TextIOWrapper(
+                        sys.stderr.buffer,
+                        encoding='utf-8',
+                        errors='replace',
+                        line_buffering=True
+                    )
+            except:
+                pass
+                
+            if debug_log:
+                debug_log("备用编码设置已应用")
+        except Exception as exc:
+            if debug_log:
+                debug_log(f"备用编码设置失败: {exc}")
     return None
 
 
