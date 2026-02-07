@@ -9,14 +9,9 @@ import os
 import requests
 import re
 import json
-import tempfile
 import time
 from packaging import version as pkg_version
 from typing import Optional, Dict, Tuple, List
-
-# 缓存已禁用，每次启动都检查更新
-# 注意：频繁检查可能触发 GitHub API 速率限制（60 requests/hour）
-
 
 def get_current_platform() -> str:
     """
@@ -50,7 +45,7 @@ def parse_version(ver_str: str) -> Optional[pkg_version.Version]:
         return None
 
 
-def get_latest_release_cached(repo: str, timeout: int = 3) -> Optional[Dict]:
+def get_latest_release(repo: str, timeout: int = 3) -> Optional[Dict]:
     """
     获取GitHub仓库的最新发布版本
 
@@ -100,10 +95,6 @@ def get_latest_release_cached(repo: str, timeout: int = 3) -> Optional[Dict]:
     except Exception:
         return None
 
-# 保持向后兼容
-def get_latest_release(repo: str, timeout: int = 3) -> Optional[Dict]:
-    """向后兼容的函数，调用缓存版本"""
-    return get_latest_release_cached(repo, timeout)
 
 def check_update(current_version: str, repo: str) -> Optional[Tuple[bool, Dict]]:
     """

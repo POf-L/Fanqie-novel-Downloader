@@ -349,6 +349,18 @@ def build_executable(variant="release", executable_name=None, target_platform=No
         f"--name={target_name}",
     ]
     
+    # 添加图标支持
+    import os
+    # 获取项目根目录的绝对路径
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    icon_path = os.path.join(project_root, "assets", "icons", "icon_256.png")
+    
+    if os.path.exists(icon_path):
+        cmd.extend(["--icon", icon_path])
+        print(f"Using icon: {icon_path}")
+    else:
+        print("Warning: Icon file not found, building without icon")
+    
     # 根据变体选择窗口模式或控制台模式
     if variant == "debug":
         cmd.append("--console")

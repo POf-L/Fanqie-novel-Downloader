@@ -247,13 +247,17 @@ jobs:
           # 安装 Pillow 用于处理图标
           pip install Pillow
           
-          # 生成高质量的多尺寸 .ico 文件
+          # 使用修复后的图标生成高质量的多尺寸 .ico 文件
           python -c "
           from PIL import Image
           import os
           
-          # 加载高分辨率原图
+          # 加载修复后的高分辨率原图（已填充完整）
           img = Image.open('assets/icons/icon_256.png')
+          
+          # 确保图标是正方形且完全填充
+          if img.size != (256, 256):
+              img = img.resize((256, 256), Image.Resampling.LANCZOS)
           
           # 创建多尺寸图标列表
           sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
@@ -270,7 +274,7 @@ jobs:
                        sizes=[(img.width, img.height) for img in icons],
                        append_images=icons[1:])
           
-          print('[OK] Icon generation completed')
+          print('[OK] High-quality icon generation completed (filled)')
           "
         env:
           PYTHONIOENCODING: utf-8
