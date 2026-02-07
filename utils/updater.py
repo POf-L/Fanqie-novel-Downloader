@@ -14,9 +14,8 @@ import time
 from packaging import version as pkg_version
 from typing import Optional, Dict, Tuple, List
 
-# 更新检查缓存
-_UPDATE_CACHE = {}
-_CACHE_DURATION = 3600  # 缓存1小时
+# 缓存已禁用，每次启动都检查更新
+# 注意：频繁检查可能触发 GitHub API 速率限制（60 requests/hour）
 
 
 def get_current_platform() -> str:
@@ -50,61 +49,18 @@ def parse_version(ver_str: str) -> Optional[pkg_version.Version]:
     except Exception:
         return None
 
-def _get_cache_file_path() -> str:
-    """获取缓存文件路径"""
-    return os.path.join(tempfile.gettempdir(), 'fanqie_update_cache.json')
-
-def _load_cache() -> Dict:
-    """加载缓存数据"""
-    try:
-        cache_file = _get_cache_file_path()
-        if os.path.exists(cache_file):
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                cache_data = json.load(f)
-                # 检查缓存是否过期
-                if time.time() - cache_data.get('timestamp', 0) < _CACHE_DURATION:
-                    return cache_data.get('data', {})
-    except Exception:
-        pass
-    return {}
-
-def _save_cache(data: Dict):
-    """保存缓存数据"""
-    try:
-        cache_file = _get_cache_file_path()
-        cache_data = {
-            'timestamp': time.time(),
-            'data': data
-        }
-        with open(cache_file, 'w', encoding='utf-8') as f:
-            json.dump(cache_data, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
 
 def get_latest_release_cached(repo: str, timeout: int = 3) -> Optional[Dict]:
     """
-    获取GitHub仓库的最新发布版本 - 带缓存优化版
+    获取GitHub仓库的最新发布版本
 
     Args:
         repo: GitHub仓库名，格式: owner/repo
-        timeout: 请求超时时间(秒) - 进一步减少到3秒
+        timeout: 请求超时时间(秒)
 
     Returns:
         包含版本信息的字典，如果失败返回None
     """
-    # 先检查内存缓存
-    cache_key = f"release_{repo}"
-    if cache_key in _UPDATE_CACHE:
-        cache_time, cache_data = _UPDATE_CACHE[cache_key]
-        if time.time() - cache_time < _CACHE_DURATION:
-            return cache_data
-
-    # 检查文件缓存
-    file_cache = _load_cache()
-    if cache_key in file_cache:
-        _UPDATE_CACHE[cache_key] = (time.time(), file_cache[cache_key])
-        return file_cache[cache_key]
-
     # 网络请求
     try:
         url = f'https://api.github.com/repos/{repo}/releases/latest'
@@ -117,7 +73,7 @@ def get_latest_release_cached(repo: str, timeout: int = 3) -> Optional[Dict]:
         response = requests.get(
             url,
             headers=headers,
-            timeout=(1.5, timeout),  # 进一步减少连接超时
+            timeout=(1.5, timeout),
             allow_redirects=False
         )
 
@@ -131,14 +87,14 @@ def get_latest_release_cached(repo: str, timeout: int = 3) -> Optional[Dict]:
                 'published_at': data.get('published_at', ''),
                 'assets': data.get('assets', [])
             }
-
-            # 更新缓存
-            _UPDATE_CACHE[cache_key] = (time.time(), result)
-            file_cache[cache_key] = result
-            _save_cache(file_cache)
-
             return result
-        return None
+        elif response.status_code == 403:
+            # GitHub API 速率限制
+            print("警告：GitHub API 请求过于频繁，已达到速率限制")
+            print("请稍后再试，或减少程序启动频率")
+            return None
+        else:
+            return None
     except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
         return None
     except Exception:

@@ -110,9 +110,6 @@ pre-commit install
 ### 配置开发环境
 
 ```bash
-# 复制配置文件
-cp config/config.example.json config/config.json
-
 # 设置环境变量
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 export FLASK_ENV=development
@@ -133,6 +130,31 @@ flake8 .
 black .
 mypy .
 ```
+
+### 开发工具配置
+
+#### VS Code 推荐配置
+
+创建 `.vscode/settings.json`：
+
+```json
+{
+  "python.linting.enabled": true,
+  "python.linting.flake8Enabled": true,
+  "python.formatting.provider": "black",
+  "python.linting.mypyEnabled": true,
+  "editor.formatOnSave": true,
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests/"]
+}
+```
+
+#### PyCharm 推荐配置
+
+1. **代码风格**：Settings → Editor → Code Style → Python → Set from → PEP 8
+2. **代码检查**：Settings → Tools → External Tools → 添加 Black/Flake8
+3. **测试框架**：Settings → Tools → Python Integrated Tools → Default test runner → pytest
+4. **类型检查**：Settings → Tools → External Tools → 添加 mypy
 
 ## 📝 代码规范
 
@@ -537,6 +559,26 @@ Closes #(issue number)
 4. **再次审查**: 修改后再次审查
 5. **合并代码**: 审查通过后合并
 
+### 审查标准
+
+#### 代码风格
+- 遵循 PEP 8 规范
+- 使用 Black 格式化
+- 通过 Flake8 检查
+- 通过 mypy 类型检查
+
+#### 测试要求
+- 单元测试覆盖率 > 80%
+- 所有测试必须通过
+- 新功能必须有测试
+- Bug 修复必须有回归测试
+
+#### 性能要求
+- 不降低现有性能
+- 避免内存泄漏
+- 避免不必要的计算
+- 优化热点代码
+
 ## 🚀 发布流程
 
 ### 版本号规范
@@ -594,6 +636,13 @@ Closes #(issue number)
 - [ ] 构建成功
 - [ ] 发布说明已准备
 
+### 发布后工作
+
+1. **发布公告**：在 GitHub Releases 发布公告
+2. **更新文档**：更新相关文档中的版本信息
+3. **通知用户**：通过社区渠道通知用户
+4. **监控问题**：关注新版本的反馈和问题
+
 ## 🏆 贡献者认可
 
 ### 贡献者列表
@@ -612,6 +661,88 @@ Closes #(issue number)
 2. **代码审查**: 参与代码审查
 3. **问题处理**: 帮助解决社区问题
 4. **社区建设**: 帮助建设社区文化
+
+## 📚 开发资源
+
+### 项目架构
+
+```
+Fanqie-novel-Downloader/
+├── core/                   # 核心功能模块
+│   ├── novel_downloader.py # 小说下载核心逻辑
+│   ├── cli.py             # 命令行界面
+│   └── state_store.py     # 状态管理
+├── web/                    # Web 界面
+│   ├── web_app.py         # Flask Web 应用
+│   ├── static/            # 静态资源
+│   └── templates/         # HTML 模板
+├── utils/                  # 工具模块
+│   ├── node_tester.py     # 节点测试和优选
+│   ├── node_manager.py    # 节点状态管理
+│   ├── book_id.py         # 书籍ID处理
+│   └── encoding_utils.py  # 编码处理
+└── config/                 # 配置文件
+```
+
+### 核心模块说明
+
+#### novel_downloader.py
+小说下载核心逻辑，负责：
+- 书籍信息获取
+- 章节内容下载
+- 文件格式转换
+- 封面图片处理
+
+#### node_tester.py
+节点测试和优选模块，负责：
+- 异步测试所有节点
+- 选择最优节点
+- 节点状态缓存
+
+#### node_manager.py
+节点状态管理模块，负责：
+- 节点健康监控
+- 故障检测和恢复
+- 节点状态持久化
+
+### 调试技巧
+
+1. **启用详细日志**
+   ```bash
+   export LOG_LEVEL=DEBUG
+   python main.py
+   ```
+
+2. **使用断点调试**
+   ```python
+   import pdb; pdb.set_trace()
+   ```
+
+3. **性能分析**
+   ```bash
+   python -m cProfile -s time main.py
+   ```
+
+4. **内存分析**
+   ```bash
+   python -m memory_profiler main.py
+   ```
+
+### 测试指南
+
+```bash
+# 运行所有测试
+pytest tests/
+
+# 运行特定测试
+pytest tests/test_downloader.py
+
+# 查看覆盖率
+pytest --cov=core tests/
+
+# 生成覆盖率报告
+pytest --cov=core --cov-report=html tests/
+```
 
 ## 📞 联系方式
 

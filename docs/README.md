@@ -10,65 +10,57 @@
 |------|------|----------|
 | [☁️ GitHub Actions 云端下载](CLOUD_DOWNLOAD.md) | 无需安装，直接在云端下载小说 | **所有用户（推荐）** |
 | [💻 本地安装使用](LOCAL_INSTALLATION.md) | 下载安装包到本地使用 | 希望本地安装的用户 |
-| [🤖 Termux 专用指南](TERMUX_GUIDE.md) | Android/Termux 环境使用指南 | Android 用户 |
 
 ### 📖 详细指南
 
 | 文档 | 描述 | 内容深度 |
 |------|------|----------|
-| [📚 用户使用指南](USER_GUIDE.md) | 详细的功能介绍和使用技巧 | ⭐⭐⭐⭐⭐ |
 | [🤝 贡献指南](CONTRIBUTING.md) | 开发者贡献代码和文档指南 | 开发者 |
 
-### 🔧 开发文档
+### 开发文档
 
 | 文档 | 描述 | 目标读者 |
 |------|------|----------|
-| [🏗️ API 文档](API.md) | API 接口详细说明 | 开发者 |
-| [🔌 插件开发](PLUGIN_DEVELOPMENT.md) | 插件系统开发指南 | 高级开发者 |
-| [🐛 故障排除](TROUBLESHOOTING.md) | 常见问题解决方案 | 所有用户 |
+| [🤝 贡献指南](CONTRIBUTING.md) | 开发者贡献代码和文档指南 | 开发者 |
+| [🔧 节点管理](NODE_MANAGEMENT.md) | 节点管理和故障恢复说明 | 开发者 |
 
-## 🎯 按使用场景选择文档
+## 按使用场景选择文档
 
-### 🆕 新用户
+### 新用户
 
 1. **首次使用** → [☁️ GitHub Actions 云端下载](CLOUD_DOWNLOAD.md)
 2. **本地安装** → [💻 本地安装使用](LOCAL_INSTALLATION.md)
-3. **Android 用户** → [🤖 Termux 专用指南](TERMUX_GUIDE.md)
 
-### 🔧 高级用户
+### 高级用户
 
-1. **深入了解功能** → [📚 用户使用指南](USER_GUIDE.md)
-2. **自定义配置** → [📚 用户使用指南](USER_GUIDE.md#配置管理)
-3. **命令行使用** → [📚 用户使用指南](USER_GUIDE.md#命令行详解)
+1. **深入了解功能** → [� 本地安装使用](LOCAL_INSTALLATION.md#使用方法)
+2. **自定义配置** → [� 本地安装使用](LOCAL_INSTALLATION.md#配置说明)
+3. **命令行使用** → [� 本地安装使用](LOCAL_INSTALLATION.md#cli-命令行使用)
 
-### �‍💻 开发者
+### 开发者
 
 1. **贡献代码** → [🤝 贡献指南](CONTRIBUTING.md)
-2. **API 开发** → [🏗️ API 文档](API.md)
-3. **插件开发** → [🔌 插件开发](PLUGIN_DEVELOPMENT.md)
+2. **节点管理** → [🔧 节点管理](NODE_MANAGEMENT.md)
+3. **故障排除** → [💻 本地安装指南](LOCAL_INSTALLATION.md#故障排除)
 
-## 🔍 快速查找
+## 快速查找
 
 ### 常见问题快速导航
 
 | 问题 | 解决方案文档 |
 |------|-------------|
 | 🤔 如何开始使用？ | [☁️ GitHub Actions 云端下载](CLOUD_DOWNLOAD.md#快速开始) |
-| 🐛 下载失败怎么办？ | [📚 用户使用指南](USER_GUIDE.md#常见问题) |
-| 📱 Android 如何使用？ | [🤖 Termux 专用指南](TERMUX_GUIDE.md) |
-| 💻 本地安装出错？ | [💻 本地安装使用](LOCAL_INSTALLATION.md#故障排除) |
-| 🔧 如何配置代理？ | [📚 用户使用指南](USER_GUIDE.md#配置管理) |
+|  本地安装出错？ | [💻 本地安装使用](LOCAL_INSTALLATION.md#故障排除) |
 | 🤝 如何贡献代码？ | [🤝 贡献指南](CONTRIBUTING.md) |
 
 ### 功能快速导航
 
 | 功能 | 相关文档 |
 |------|----------|
-| 🔍 搜索功能 | [📚 用户使用指南](USER_GUIDE.md#搜索功能) |
-| ⬇️ 批量下载 | [📚 用户使用指南](USER_GUIDE.md#批量操作) |
-| 📄 格式转换 | [📚 用户使用指南](USER_GUIDE.md#格式说明) |
-| ⚙️ 高级配置 | [📚 用户使用指南](USER_GUIDE.md#高级功能) |
-| 💻 命令行使用 | [📚 用户使用指南](USER_GUIDE.md#命令行详解) |
+| 🔍 搜索功能 | [� 本地安装使用](LOCAL_INSTALLATION.md#gui-界面使用) |
+| ⬇️ 批量下载 | [� 本地安装使用](LOCAL_INSTALLATION.md#cli-命令行使用) |
+| ⚙️ 高级配置 | [� 本地安装使用](LOCAL_INSTALLATION.md#配置说明) |
+| 💻 命令行使用 | [� 本地安装使用](LOCAL_INSTALLATION.md#cli-命令行使用) |
 
 ## 🆕 最新更新
 
