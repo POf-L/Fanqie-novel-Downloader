@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """稳定启动器：仅负责拉取并启动远程 Runtime。"""
 
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -11,7 +12,7 @@ import time
 import traceback
 import zipfile
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -21,7 +22,75 @@ APP_DIR_NAME = "FanqieNovelDownloader"
 STATE_FILE = "launcher_state.json"
 RUNTIME_DIR = "runtime"
 BACKUP_DIR = "runtime_backup"
-MIRROR_PROXIES = ["https://ghproxy.vip"]
+
+MIRROR_NODES = [
+    "ghproxy.vip",
+    "gh.llkk.cc",
+    "gitproxy.click",
+    "ghpr.cc",
+    "github.tmby.shop",
+    "cccccccccccccccccccccccccccccccccccccccccccccccccccc.cc",
+    "ghproxy.net",
+    "gh.5050net.cn",
+    "gh.felicity.ac.cn",
+    "github.dpik.top",
+    "gh.monlor.com",
+    "gh-proxy.com",
+    "ghfile.geekertao.top",
+    "gh.sixyin.com",
+    "gh.927223.xyz",
+    "ghp.keleyaa.com",
+    "gh.fhjhy.top",
+    "gh.ddlc.top",
+    "github.chenc.dev",
+    "gh.bugdey.us.kg",
+    "ghproxy.cxkpro.top",
+    "gh-proxy.net",
+    "gh.xxooo.cf",
+    "gh-proxy.top",
+    "fastgit.cc",
+    "gh.chjina.com",
+    "github.xxlab.tech",
+    "j.1win.ggff.net",
+    "cdn.akaere.online",
+    "ghproxy.cn",
+    "gh.inkchills.cn",
+    "github-proxy.memory-echoes.cn",
+    "jiashu.1win.eu.org",
+    "free.cn.eu.org",
+    "gh.jasonzeng.dev",
+    "gh.wsmdn.dpdns.org",
+    "github.tbedu.top",
+    "gitproxy.mrhjx.cn",
+    "gh.dpik.top",
+    "gp.zkitefly.eu.org",
+    "github.ednovas.xyz",
+    "tvv.tw",
+    "github.geekery.cn",
+    "ghpxy.hwinzniej.top",
+    "j.1lin.dpdns.org",
+    "git.669966.xyz",
+    "github-proxy.teach-english.tech",
+    "gitproxy.127731.xyz",
+    "ghproxy.cfd",
+    "gh.catmak.name",
+    "ghm.078465.xyz",
+    "ghproxy.imciel.com",
+    "git.yylx.win",
+    "ghf.xn--eqrr82bzpe.top",
+    "ghfast.top",
+    "cf.ghproxy.cc",
+    "cdn.gh-proxy.com",
+    "proxy.yaoyaoling.net",
+    "gh.b52m.cn",
+    "gh.noki.icu",
+    "ghproxy.monkeyray.net",
+    "gh.idayer.com",
+]
+
+_download_mode = "direct"
+_mirror_domain = None
+_session = requests.Session()
 
 
 def _write_error(message: str) -> None:
@@ -139,15 +208,16 @@ def _render_download_progress(downloaded: int, total: int, start_ts: float) -> N
     )
 
 
-def _get_with_mirror(url: str, **kwargs) -> requests.Response:
-    for proxy in MIRROR_PROXIES:
+def _do_get(url: str, **kwargs) -> requests.Response:
+    if _download_mode == "mirror" and _mirror_domain:
+        mirror_url = f"https://{_mirror_domain}/{url}"
         try:
-            resp = requests.get(f"{proxy}/{url}", **kwargs)
+            resp = _session.get(mirror_url, **kwargs)
             if resp.status_code < 400:
                 return resp
         except Exception:
             pass
-    return requests.get(url, **kwargs)
+    return _session.get(url, **kwargs)
 
 
 def _fetch_latest_release(repo: str) -> Optional[Dict]:
@@ -156,7 +226,7 @@ def _fetch_latest_release(repo: str) -> Optional[Dict]:
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": "FanqieLauncher",
     }
-    response = _get_with_mirror(url, headers=headers, timeout=(3, 10))
+    response = _do_get(url, headers=headers, timeout=(3, 10))
     if response.status_code != 200:
         return None
     data = response.json()
@@ -181,7 +251,7 @@ def _load_platform_manifest(repo: str, platform: str) -> Optional[Dict]:
         return None
 
     headers = {"User-Agent": "FanqieLauncher"}
-    response = _get_with_mirror(manifest_url, headers=headers, timeout=(3, 10))
+    response = _do_get(manifest_url, headers=headers, timeout=(3, 10))
     if response.status_code != 200:
         return None
 
@@ -216,7 +286,7 @@ def _is_runtime_up_to_date(local_state: Dict, remote_manifest: Dict) -> bool:
 
 def _download_runtime_archive(url: str, expected_sha256: str) -> bytes:
     headers = {"User-Agent": "FanqieLauncher"}
-    with requests.get(url, headers=headers, timeout=(5, 30), stream=True) as response:
+    with _session.get(url, headers=headers, timeout=(5, 30), stream=True) as response:
         response.raise_for_status()
         total = int(response.headers.get("Content-Length", "0") or "0")
 
@@ -289,6 +359,78 @@ def _replace_runtime_archive(content: bytes) -> None:
         shutil.rmtree(temp_extract, ignore_errors=True)
 
 
+def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
+    try:
+        start = time.time()
+        requests.head(f"https://{domain}", timeout=3, allow_redirects=True)
+        return (domain, (time.time() - start) * 1000)
+    except Exception:
+        return (domain, None)
+
+
+def _test_all_nodes() -> List[Tuple[str, float]]:
+    print("正在测试镜像节点延迟...")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
+        results = list(executor.map(_test_node_latency, MIRROR_NODES))
+    available = sorted(
+        [(d, l) for d, l in results if l is not None],
+        key=lambda x: x[1],
+    )
+    return available
+
+
+def _select_download_mode() -> None:
+    global _download_mode, _mirror_domain
+
+    print("\n请选择下载方式:")
+    print("  1. 直连 GitHub (不使用代理)")
+    print("  2. 直连 GitHub (使用系统代理)")
+    print("  3. 使用镜像节点")
+
+    try:
+        choice = input("请输入选项 [1/2/3] (默认 3): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        choice = ""
+
+    if choice == "1":
+        _download_mode = "direct"
+        _session.trust_env = False
+        return
+
+    if choice == "2":
+        _download_mode = "proxy"
+        _session.trust_env = True
+        return
+
+    _download_mode = "mirror"
+    _session.trust_env = False
+
+    available = _test_all_nodes()
+    if not available:
+        print("所有镜像节点均不可用，将使用直连")
+        _download_mode = "direct"
+        return
+
+    max_len = max(len(d) for d, _ in available)
+    for i, (domain, latency) in enumerate(available, 1):
+        print(f"  {i:>3}. {domain:<{max_len}}  {latency:>7.0f}ms")
+
+    try:
+        sel = input(f"\n请选择节点编号 [1-{len(available)}] (默认 1): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        sel = ""
+
+    try:
+        idx = int(sel) - 1 if sel else 0
+        if not (0 <= idx < len(available)):
+            idx = 0
+    except ValueError:
+        idx = 0
+
+    _mirror_domain = available[idx][0]
+    print(f"已选择镜像: {_mirror_domain}")
+
+
 def _ensure_runtime(repo: str) -> None:
     platform = _platform_name()
     state_path = _state_path()
@@ -317,14 +459,14 @@ def _ensure_runtime(repo: str) -> None:
         raise RuntimeError("远程 Runtime 清单缺少必要字段")
 
     print(f"正在更新 Runtime: {runtime_version}")
-    archive_bytes = None
-    for proxy in MIRROR_PROXIES:
+    if _download_mode == "mirror" and _mirror_domain:
+        mirror_url = f"https://{_mirror_domain}/{runtime_url}"
         try:
-            archive_bytes = _download_runtime_archive(f"{proxy}/{runtime_url}", runtime_sha)
-            break
+            archive_bytes = _download_runtime_archive(mirror_url, runtime_sha)
         except Exception:
-            print(f"\n镜像下载失败，尝试其他下载源...")
-    if archive_bytes is None:
+            print("\n镜像下载失败，尝试直连...")
+            archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
+    else:
         archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
     _replace_runtime_archive(archive_bytes)
 
@@ -373,6 +515,7 @@ def main() -> None:
 
     repo = os.environ.get("FANQIE_GITHUB_REPO", "POf-L/Fanqie-novel-Downloader")
     try:
+        _select_download_mode()
         _ensure_runtime(repo)
         _launch_runtime()
     except Exception as error:

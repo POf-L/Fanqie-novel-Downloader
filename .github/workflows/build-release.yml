@@ -68,7 +68,7 @@ jobs:
             - 本次 Runtime 资产：在本条 Release 的 Assets 中下载
           draft: false
           prerelease: false
-          make_latest: true
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -83,14 +83,17 @@ jobs:
             platform: windows-x64
             launcher_name: FanqieLauncher-windows-x64.exe
             sep: ';'
+            icon_arg: '--icon=assets/icons/icon.ico'
           - os: ubuntu-latest
             platform: linux-x64
             launcher_name: FanqieLauncher-linux-x64
             sep: ':'
+            icon_arg: ''
           - os: macos-latest
             platform: macos-x64
             launcher_name: FanqieLauncher-macos-x64
             sep: ':'
+            icon_arg: ''
     runs-on: ${{ matrix.os }}
     name: Build Launcher
     steps:
@@ -132,6 +135,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           files: dist/${{ matrix.launcher_name }}
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -310,6 +314,7 @@ jobs:
           files: |
             ${{ matrix.runtime_name }}
             runtime-manifest-${{ matrix.platform }}.json
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -436,6 +441,7 @@ jobs:
             TomatoNovelDownloader-termux-arm64
             runtime-termux-arm64.zip
             runtime-manifest-termux-arm64.json
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -509,6 +515,6 @@ jobs:
             | 🔩 **Commit** | `${{ github.sha }}` |
           draft: false
           prerelease: false
-          make_latest: true
+          make_latest: ${{ github.event_name == 'workflow_dispatch' && inputs.build_launcher == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
