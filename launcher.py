@@ -7,6 +7,7 @@ import json
 import os
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -23,6 +24,7 @@ APP_DIR_NAME = "FanqieNovelDownloader"
 STATE_FILE = "launcher_state.json"
 RUNTIME_DIR = "runtime"
 BACKUP_DIR = "runtime_backup"
+DEPS_STATE_FILE = "deps_state.json"
 
 MIRROR_NODES = [
     "ghproxy.vip",
@@ -97,6 +99,16 @@ NODE_TEST_TIMEOUT_SECONDS = 3.0
 NODE_TEST_CONNECT_TIMEOUT_SECONDS = 0.8
 NODE_TEST_MAX_WORKERS = 120
 
+PIP_INDEX_MIRRORS = [
+    ("清华", "https://pypi.tuna.tsinghua.edu.cn/simple"),
+    ("腾讯", "https://mirrors.cloud.tencent.com/pypi/simple"),
+    ("阿里", "https://mirrors.aliyun.com/pypi/simple"),
+    ("PyPI", "https://pypi.org/simple"),
+]
+
+_selected_pip_mirror_name = "PyPI"
+_selected_pip_index_url = "https://pypi.org/simple"
+
 
 def _write_error(message: str) -> None:
     try:
@@ -152,6 +164,10 @@ def _runtime_root() -> Path:
 
 def _runtime_backup_root() -> Path:
     return _base_dir() / BACKUP_DIR
+
+
+def _deps_state_path() -> Path:
+    return _runtime_root() / DEPS_STATE_FILE
 
 
 def _read_json(path: Path) -> Optional[Dict]:
@@ -370,6 +386,179 @@ def _replace_runtime_archive(content: bytes) -> None:
         shutil.rmtree(temp_extract, ignore_errors=True)
 
 
+def _runtime_venv_python() -> Path:
+    runtime_venv = _runtime_root() / ".venv"
+    if sys.platform == "win32":
+        return runtime_venv / "Scripts" / "python.exe"
+    return runtime_venv / "bin" / "python"
+
+
+def _requirements_file_for_platform() -> Path:
+    runtime_root = _runtime_root()
+    if _platform_name() == "termux-arm64":
+        termux_req = runtime_root / "config" / "requirements-termux.txt"
+        if termux_req.exists():
+            return termux_req
+
+    default_req = runtime_root / "config" / "requirements.txt"
+    if default_req.exists():
+        return default_req
+
+    root_req = runtime_root / "requirements.txt"
+    if root_req.exists():
+        return root_req
+
+    raise FileNotFoundError("未找到 requirements 文件")
+
+
+def _ensure_runtime_venv() -> Path:
+    py_path = _runtime_venv_python()
+    if py_path.exists():
+        return py_path
+
+    print("正在创建 Runtime 虚拟环境...")
+    runtime_root = _runtime_root()
+    subprocess.run(
+        [sys.executable, "-m", "venv", str(runtime_root / ".venv")],
+        check=True,
+        cwd=str(runtime_root),
+    )
+
+    py_path = _runtime_venv_python()
+    if not py_path.exists():
+        raise RuntimeError("虚拟环境创建失败，未找到 Python 可执行文件")
+    return py_path
+
+
+def _test_pip_mirror_latency(mirror: Tuple[str, str]) -> Tuple[str, str, Optional[float]]:
+    mirror_name, index_url = mirror
+    test_url = index_url.rstrip("/") + "/pip/"
+    try:
+        start = time.perf_counter()
+        _session.get(
+            test_url,
+            timeout=(NODE_TEST_CONNECT_TIMEOUT_SECONDS, NODE_TEST_TIMEOUT_SECONDS),
+            allow_redirects=True,
+        )
+        return (mirror_name, index_url, (time.perf_counter() - start) * 1000)
+    except Exception:
+        return (mirror_name, index_url, None)
+
+
+def _test_all_pip_mirrors() -> List[Tuple[str, str, float]]:
+    print("正在测试 pip 镜像源延迟...")
+    max_workers = max(1, min(len(PIP_INDEX_MIRRORS), 8))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(_test_pip_mirror_latency, PIP_INDEX_MIRRORS))
+
+    available = sorted(
+        [(name, url, latency) for name, url, latency in results if latency is not None],
+        key=lambda item: item[2],
+    )
+    return available
+
+
+def _select_pip_mirror() -> None:
+    global _selected_pip_mirror_name, _selected_pip_index_url
+
+    available = _test_all_pip_mirrors()
+    if not available:
+        print("pip 镜像测速失败，将使用官方 PyPI")
+        _selected_pip_mirror_name = "PyPI"
+        _selected_pip_index_url = "https://pypi.org/simple"
+        return
+
+    max_name_len = max(len(name) for name, _, _ in available)
+    for i, (name, url, latency) in enumerate(available, 1):
+        print(f"  {i:>3}. {name:<{max_name_len}}  {latency:>7.0f}ms  {url}")
+
+    try:
+        sel = input(f"\n请选择 pip 镜像编号 [1-{len(available)}] (默认 1): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        sel = ""
+
+    try:
+        idx = int(sel) - 1 if sel else 0
+        if not (0 <= idx < len(available)):
+            idx = 0
+    except ValueError:
+        idx = 0
+
+    _selected_pip_mirror_name, _selected_pip_index_url, _ = available[idx]
+    print(f"已选择 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
+
+
+def _pip_install_with_mirrors(py_path: Path, install_args: List[str]) -> None:
+    print(f"使用 {_selected_pip_mirror_name} 源安装依赖...")
+    try:
+        subprocess.run(
+            [
+                str(py_path),
+                "-m",
+                "pip",
+                "install",
+                "--index-url",
+                _selected_pip_index_url,
+                *install_args,
+            ],
+            check=True,
+        )
+        return
+    except subprocess.CalledProcessError as exc:
+        if _selected_pip_index_url == "https://pypi.org/simple":
+            raise RuntimeError(f"pip 安装失败: {exc}")
+
+        print(f"{_selected_pip_mirror_name} 源安装失败，回退到官方 PyPI...")
+        subprocess.run(
+            [
+                str(py_path),
+                "-m",
+                "pip",
+                "install",
+                "--index-url",
+                "https://pypi.org/simple",
+                *install_args,
+            ],
+            check=True,
+        )
+
+
+def _ensure_runtime_dependencies() -> None:
+    runtime_root = _runtime_root()
+    if not runtime_root.exists():
+        raise RuntimeError("Runtime 不存在，无法安装依赖")
+
+    requirements_path = _requirements_file_for_platform()
+    requirements_bytes = requirements_path.read_bytes()
+    requirements_sha = _sha256_bytes(requirements_bytes)
+
+    deps_state = _read_json(_deps_state_path()) or {}
+    if (
+        deps_state.get("requirements_sha256") == requirements_sha
+        and deps_state.get("requirements_file") == str(requirements_path.relative_to(runtime_root))
+        and _runtime_venv_python().exists()
+    ):
+        print("✓ 依赖已就绪")
+        return
+
+    py_path = _ensure_runtime_venv()
+
+    print("正在安装 Runtime 依赖...")
+    _pip_install_with_mirrors(py_path, ["--upgrade", "pip"])
+    _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
+
+    _write_json(
+        _deps_state_path(),
+        {
+            "requirements_file": str(requirements_path.relative_to(runtime_root)),
+            "requirements_sha256": requirements_sha,
+            "python_version": platform.python_version(),
+            "updated_at": int(time.time()),
+        },
+    )
+    print("✓ Runtime 依赖安装完成")
+
+
 def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
     try:
         start = time.perf_counter()
@@ -532,7 +721,9 @@ def main() -> None:
     repo = os.environ.get("FANQIE_GITHUB_REPO", "POf-L/Fanqie-novel-Downloader")
     try:
         _select_download_mode()
+        _select_pip_mirror()
         _ensure_runtime(repo)
+        _ensure_runtime_dependencies()
         _launch_runtime()
     except Exception as error:
         _write_error(f"启动失败: {error}")
