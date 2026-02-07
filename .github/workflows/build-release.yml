@@ -92,7 +92,7 @@ jobs:
             launcher_name: FanqieLauncher-macos-x64
             sep: ':'
     runs-on: ${{ matrix.os }}
-    name: Build Launcher (${{ matrix.platform }})
+    name: Build Launcher
     steps:
       - name: Checkout
         uses: actions/checkout@v4
