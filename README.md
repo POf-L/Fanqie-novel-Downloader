@@ -92,6 +92,11 @@ open http://localhost:5000
 - 从此以后，常规更新只需发布 Runtime，不必每次重发 Launcher。
 - 启动器下载建议使用固定通道 `launcher-stable`（仅在启动器协议升级时更新）。
 
+## 📱 Termux 用户
+
+- Termux 安装与故障排除请查看：[`docs/TERMUX_GUIDE.md`](docs/TERMUX_GUIDE.md)
+- 若出现 `cannot execute: required file not found`，请重新下载 release 中的 `TomatoNovelDownloader-termux-arm64`（当前为脚本入口）
+
 ## 🎯 使用示例
 
 ### Web 界面快速上手
