@@ -265,13 +265,15 @@ jobs:
               icons.append(resized)
           
           # 保存为 .ico 文件，包含所有尺寸
-          icons[0].save('assets/icons/icon_high_quality.ico', 
-                       format='ICO', 
+          icons[0].save('assets/icons/icon_high_quality.ico',
+                       format='ICO',
                        sizes=[(img.width, img.height) for img in icons],
                        append_images=icons[1:])
           
-          print('[OK] 生成高质量图标完成')
+          print('[OK] Icon generation completed')
           "
+        env:
+          PYTHONIOENCODING: utf-8
 
       - name: Build application (${{ matrix.variant }})
         run: |
