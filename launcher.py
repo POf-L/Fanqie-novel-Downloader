@@ -5,6 +5,7 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import platform
 import shutil
 import sys
 import tempfile
@@ -91,6 +92,10 @@ MIRROR_NODES = [
 _download_mode = "direct"
 _mirror_domain = None
 _session = requests.Session()
+
+NODE_TEST_TIMEOUT_SECONDS = 3.0
+NODE_TEST_CONNECT_TIMEOUT_SECONDS = 0.8
+NODE_TEST_MAX_WORKERS = 120
 
 
 def _write_error(message: str) -> None:
@@ -229,7 +234,10 @@ def _fetch_latest_release(repo: str) -> Optional[Dict]:
     response = _do_get(url, headers=headers, timeout=(3, 10))
     if response.status_code != 200:
         return None
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        return None
     return data if isinstance(data, dict) else None
 
 
@@ -255,7 +263,10 @@ def _load_platform_manifest(repo: str, platform: str) -> Optional[Dict]:
     if response.status_code != 200:
         return None
 
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        return None
     if not isinstance(data, dict):
         return None
     return data
@@ -361,16 +372,21 @@ def _replace_runtime_archive(content: bytes) -> None:
 
 def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
     try:
-        start = time.time()
-        requests.head(f"https://{domain}", timeout=3, allow_redirects=True)
-        return (domain, (time.time() - start) * 1000)
+        start = time.perf_counter()
+        _session.head(
+            f"https://{domain}",
+            timeout=(NODE_TEST_CONNECT_TIMEOUT_SECONDS, NODE_TEST_TIMEOUT_SECONDS),
+            allow_redirects=False,
+        )
+        return (domain, (time.perf_counter() - start) * 1000)
     except Exception:
         return (domain, None)
 
 
 def _test_all_nodes() -> List[Tuple[str, float]]:
     print("正在测试镜像节点延迟...")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
+    max_workers = max(1, min(len(MIRROR_NODES), NODE_TEST_MAX_WORKERS))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         results = list(executor.map(_test_node_latency, MIRROR_NODES))
     available = sorted(
         [(d, l) for d, l in results if l is not None],
