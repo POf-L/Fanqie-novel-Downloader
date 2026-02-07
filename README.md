@@ -78,6 +78,20 @@ open http://localhost:5000
 - 同步范围由 `config/cloud_sync_paths.json` 维护，可独立调整，无需改脚本代码。
 - 客户端同步逻辑位于 `utils/cloud_sync.py`，支持更新/新增/删除、缓存回退、备份回滚与路径安全校验。
 
+## 🚀 Launcher + Runtime（正式架构）
+
+- 发布产物分为两层：
+  - `Launcher`：稳定启动器（跨平台），负责检查/下载/校验/回滚 Runtime
+  - `Runtime`：按平台发布的运行时压缩包，包含业务代码与依赖（`.venv`）
+- 启动流程：
+  1. 启动 Launcher
+  2. 拉取 `runtime-manifest-<platform>.json`
+  3. 比较本地 Runtime 版本与 sha256
+  4. 需要更新则下载 `runtime-<platform>.zip` 并原子替换（失败回滚）
+  5. 启动 Runtime 中的 `main.py`
+- 从此以后，常规更新只需发布 Runtime，不必每次重发 Launcher。
+- 启动器下载建议使用固定通道 `launcher-stable`（仅在启动器协议升级时更新）。
+
 ## 🎯 使用示例
 
 ### Web 界面快速上手

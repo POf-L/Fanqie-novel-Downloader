@@ -1,7 +1,16 @@
 name: Build and Release
 
 on:
+  push:
+    branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      build_launcher:
+        description: "是否重新构建 Launcher（通常为 false）"
+        required: true
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
 permissions:
   contents: write
@@ -11,24 +20,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # çæçæ¬å·å¹¶åå»º Release
   prepare-release:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
       build_time: ${{ steps.version.outputs.BUILD_TIME }}
       tag_name: ${{ steps.version.outputs.TAG_NAME }}
-      release_id: ${{ steps.create_release.outputs.id }}
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      - name: Debug trigger info
-        run: |
-          echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Ref name: ${{ github.ref_name }}"
-          echo "SHA: ${{ github.sha }}"
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -36,384 +35,277 @@ jobs:
 
       - name: Generate version
         id: version
+        shell: bash
         run: |
           VERSION=$(date -u +'%Y.%m.%d.%H%M')+$(echo ${{ github.sha }} | cut -c1-7)
           BUILD_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
-          
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            TAG_NAME="${{ github.ref_name }}"
-          else
-            TAG_NAME="v$VERSION"
-          fi
-          
+          TAG_NAME="v$VERSION"
+
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_OUTPUT
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "Generated version: $VERSION"
-          echo "Tag name: $TAG_NAME"
 
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.TAG_NAME }}
           name: "TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}"
           body: |
-            ## ð TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}
+            ## 🚀 TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}
 
-            ### ð åå¸ä¿¡æ¯
-            | é¡¹ç® | è¯¦æ |
+            ### 📦 发布模式
+            - 稳定 Launcher + 云端 Runtime
+            - Runtime 包含代码与依赖
+
+            ### 📋 发布信息
+            | 项目 | 详情 |
             | :--- | :--- |
-            | ð **åå¸æ¶é´** | ${{ steps.version.outputs.BUILD_TIME }} |
-            | ð¿ **åæ¯/Tag** | `${{ github.ref_name }}` |
-            | ð **Commit** | `${{ github.sha }}` |
+            | 🕒 **发布时间** | ${{ steps.version.outputs.BUILD_TIME }} |
+            | 🔩 **Commit** | `${{ github.sha }}` |
 
-            ---
-
-            ### ð æ´æ°åå®¹
-            æ­£å¨æ´çèªä¸ä¸ä¸ª Latest çæ¬ä»¥æ¥çæäº¤è®°å½...
+            ### 📥 下载入口
+            - 稳定启动器（长期固定）：https://github.com/${{ github.repository }}/releases/tag/launcher-stable
+            - 本次 Runtime 资产：在本条 Release 的 Assets 中下载
           draft: false
-          prerelease: true
-          make_latest: false
+          prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build:
+  build-launcher:
     needs: [prepare-release]
-    if: needs.prepare-release.result == 'success'
+    if: needs.prepare-release.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.build_launcher == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Windows åå¸ç
           - os: windows-latest
-            variant: release
-            executable: TomatoNovelDownloader
-            ext: .exe
-            release_name: TomatoNovelDownloader.exe
-            artifact_name: TomatoNovelDownloader-windows-x64
-            build_flags: '--windowed'
-          # Windows è°è¯ç
-          - os: windows-latest
-            variant: debug
-            executable: TomatoNovelDownloader-debug
-            ext: .exe
-            release_name: TomatoNovelDownloader-debug.exe
-            artifact_name: TomatoNovelDownloader-debug-windows-x64
-            build_flags: '--console'
-          # Windows Standalone (åç½® WebView2)
-          - os: windows-latest
-            variant: release-standalone
-            executable: TomatoNovelDownloader-Standalone
-            ext: .exe
-            release_name: TomatoNovelDownloader-Standalone.exe
-            artifact_name: TomatoNovelDownloader-standalone-windows-x64
-            build_flags: '--windowed --add-data "WebView2;WebView2"'
-          # Linux åå¸ç
+            platform: windows-x64
+            launcher_name: FanqieLauncher-windows-x64.exe
+            sep: ';'
           - os: ubuntu-latest
-            variant: release
-            executable: TomatoNovelDownloader
-            ext: ''
-            release_name: TomatoNovelDownloader-linux
-            artifact_name: TomatoNovelDownloader-linux-x64
-            build_flags: '--windowed'
-          # Linux è°è¯ç
-          - os: ubuntu-latest
-            variant: debug
-            executable: TomatoNovelDownloader-debug
-            ext: ''
-            release_name: TomatoNovelDownloader-debug-linux
-            artifact_name: TomatoNovelDownloader-debug-linux-x64
-            build_flags: '--console'
-          # macOS åå¸ç
+            platform: linux-x64
+            launcher_name: FanqieLauncher-linux-x64
+            sep: ':'
           - os: macos-latest
-            variant: release
-            executable: TomatoNovelDownloader
-            ext: ''
-            release_name: TomatoNovelDownloader-macos
-            artifact_name: TomatoNovelDownloader-macos-x64
-            build_flags: '--windowed'
-          # macOS è°è¯ç
-          - os: macos-latest
-            variant: debug
-            executable: TomatoNovelDownloader-debug
-            ext: ''
-            release_name: TomatoNovelDownloader-debug-macos
-            artifact_name: TomatoNovelDownloader-debug-macos-x64
-            build_flags: '--console'
-
+            platform: macos-x64
+            launcher_name: FanqieLauncher-macos-x64
+            sep: ':'
     runs-on: ${{ matrix.os }}
-    name: ${{ matrix.os }} - ${{ matrix.variant }}
-
+    name: Build Launcher (${{ matrix.platform }})
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
           cache-dependency-path: config/requirements.txt
 
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Install build dependencies
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libheif1 libheif-dev
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller requests
 
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
+      - name: Build launcher executable
+        shell: bash
         run: |
-          brew install libheif || true
+          python -m PyInstaller --onefile \
+            --name="${{ matrix.launcher_name }}" \
+            --console \
+            --add-data "assets${{ matrix.sep }}assets" \
+            --hidden-import=requests \
+            launcher.py
 
-      - name: Update version.py
+      - name: Upload launcher artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ matrix.platform }}
+          path: dist/${{ matrix.launcher_name }}
+          if-no-files-found: error
+
+      - name: Upload launcher to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          files: dist/${{ matrix.launcher_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload launcher to stable channel
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: launcher-stable
+          name: FanqieLauncher Stable
+          body: |
+            ## FanqieLauncher Stable
+
+            固定下载通道：仅在需要升级启动器时手动更新。
+          draft: false
+          prerelease: false
+          make_latest: false
+          files: dist/${{ matrix.launcher_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-runtime:
+    needs: [prepare-release]
+    if: needs.prepare-release.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+            runtime_name: runtime-windows-x64.zip
+          - os: ubuntu-latest
+            platform: linux-x64
+            runtime_name: runtime-linux-x64.zip
+          - os: macos-latest
+            platform: macos-x64
+            runtime_name: runtime-macos-x64.zip
+    runs-on: ${{ matrix.os }}
+    name: Build Runtime (${{ matrix.platform }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: config/requirements.txt
+
+      - name: Install runtime dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --prefer-binary -r config/requirements.txt
+
+      - name: Generate runtime version.py
+        shell: bash
         run: |
           VERSION="${{ needs.prepare-release.outputs.version }}"
           BUILD_TIME="${{ needs.prepare-release.outputs.build_time }}"
-          echo "Using version: $VERSION"
-          echo "Using build time: $BUILD_TIME"
-          
-          # å®å¨éåversion.pyæä»¶ï¼ç¡®ä¿__build_channel__æ­£ç¡®è®¾ç½®
           echo "# -*- coding: utf-8 -*-" > version.py
           echo '"""' >> version.py
-          echo "çæ¬ä¿¡æ¯æä»¶ - GitHub Actionsèªå¨çæ" >> version.py
+          echo "版本信息文件 - GitHub Actions自动生成" >> version.py
           echo '"""' >> version.py
           echo "" >> version.py
           echo "__version__ = \"$VERSION\"" >> version.py
           echo "__author__ = \"Tomato Novel Downloader\"" >> version.py
           echo "__description__ = \"A modern novel downloader with GitHub auto-update support\"" >> version.py
-          echo "__github_repo__ = \"POf-L/Fanqie-novel-Downloader\"" >> version.py
+          echo "__github_repo__ = \"${{ github.repository }}\"" >> version.py
           echo "__build_time__ = \"$BUILD_TIME\"" >> version.py
-          echo "__build_channel__ = \"github-actions\"" >> version.py
-          
-          echo "â æ´æ°åçversion.py:"
-          cat version.py
-        shell: bash
+          echo "__build_channel__ = \"launcher-runtime\"" >> version.py
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --prefer-binary -r config/requirements.txt
-          python -m pip install --prefer-binary pyinstaller
+      - name: Build runtime package
         shell: bash
-
-      - name: Download WebView2 Runtime (Standalone only)
-        if: matrix.variant == 'release-standalone'
         run: |
-          # ä¸è½½ WebView2 Fixed Version Runtime (éè¿ NuGet åè·å)
-          curl -L -o webview2.zip "https://www.nuget.org/api/v2/package/WebView2.Runtime.X64/129.0.2792.52"
-          7z x webview2.zip -oWebView2Temp
-          
-          # æ¥æ¾åå« msedgewebview2.exe çæä»¶å¤¹
-          TARGET_DIR=$(find WebView2Temp -name "msedgewebview2.exe" | head -n 1 | xargs dirname)
-          
-          if [ -z "$TARGET_DIR" ]; then
-            echo "Error: Could not find msedgewebview2.exe in package"
-            # å°è¯ååºæä»¶ä»¥ä¾è°è¯
-            find WebView2Temp
-            exit 1
+          rm -rf runtime
+          mkdir -p runtime
+
+          cp -r assets runtime/
+          cp -r config runtime/
+          cp -r core runtime/
+          cp -r utils runtime/
+          cp -r web runtime/
+          cp main.py runtime/
+          if [ -f version.py ]; then cp version.py runtime/; fi
+
+          python -m venv runtime/.venv
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            runtime/.venv/Scripts/python -m pip install --upgrade pip
+            runtime/.venv/Scripts/python -m pip install --prefer-binary -r config/requirements.txt
+          else
+            runtime/.venv/bin/python -m pip install --upgrade pip
+            runtime/.venv/bin/python -m pip install --prefer-binary -r config/requirements.txt
           fi
-          
-          echo "Found runtime at $TARGET_DIR"
-          # ç§»å¨å°é¡¹ç®æ ¹ç®å½ç WebView2 æä»¶å¤¹
-          mv "$TARGET_DIR" ./WebView2
-          
-          # æ¸çä¸´æ¶æä»¶
-          rm -rf WebView2Temp webview2.zip
-          
-          echo "[OK] WebView2 Runtime prepared"
-        shell: bash
 
-      - name: Generate high-quality Windows icon
-        if: runner.os == 'Windows'
-        run: |
-          # å®è£ Pillow ç¨äºå¤çå¾æ 
-          pip install Pillow
-          
-          # ä½¿ç¨ä¿®å¤åçå¾æ çæé«è´¨éçå¤å°ºå¯¸ .ico æä»¶
-          python -c "
-          from PIL import Image
-          import os
-          
-          # å è½½ä¿®å¤åçé«åè¾¨çåå¾ï¼å·²å¡«åå®æ´ï¼
-          img = Image.open('assets/icons/icon_256.png')
-          
-          # ç¡®ä¿å¾æ æ¯æ­£æ¹å½¢ä¸å®å¨å¡«å
-          if img.size != (256, 256):
-              img = img.resize((256, 256), Image.Resampling.LANCZOS)
-          
-          # åå»ºå¤å°ºå¯¸å¾æ åè¡¨
-          sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
-          icons = []
-          
-          for size in sizes:
-              # è°æ´å¤§å°ï¼ä¿æé«è´¨é
-              resized = img.resize(size, Image.Resampling.LANCZOS)
-              icons.append(resized)
-          
-          # ä¿å­ä¸º .ico æä»¶ï¼åå«ææå°ºå¯¸
-          icons[0].save('assets/icons/icon_high_quality.ico',
-                       format='ICO',
-                       sizes=[(img.width, img.height) for img in icons],
-                       append_images=icons[1:])
-          
-          print('[OK] High-quality icon generation completed (filled)')
-          "
+          cd runtime
+          python - <<'PY'
+          import os, zipfile
+          out_name = os.environ['RUNTIME_NAME']
+          with zipfile.ZipFile(f"../{out_name}", "w", zipfile.ZIP_DEFLATED) as z:
+              for root, _, files in os.walk("."):
+                  for file in files:
+                      full = os.path.join(root, file)
+                      rel = os.path.relpath(full, ".")
+                      z.write(full, rel)
+          PY
         env:
-          PYTHONIOENCODING: utf-8
+          RUNTIME_NAME: ${{ matrix.runtime_name }}
 
-      - name: Build application (${{ matrix.variant }})
-        run: |
-          # Determine separator for add-data based on OS
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            SEP=";"
-            # ä½¿ç¨çæçé«è´¨é .ico æä»¶
-            ICON_FLAG="--icon=assets/icons/icon_high_quality.ico"
-          else
-            SEP=":"
-            # Linux/macOS ä½¿ç¨é«åè¾¨ç PNG
-            ICON_FLAG="--icon=assets/icons/icon_256.png"
-          fi
-
-          python -m PyInstaller --onefile \
-            --name=${{ matrix.executable }} \
-            ${{ matrix.build_flags }} \
-            $ICON_FLAG \
-            --add-data "web/static${SEP}static" \
-            --add-data "web/templates${SEP}templates" \
-            --add-data "config/fanqie.json${SEP}." \
-            --hidden-import=flask \
-            --hidden-import=flask_cors \
-            --hidden-import=webview \
-            --hidden-import=PIL \
-            --hidden-import=requests \
-            --hidden-import=aiohttp \
-            --hidden-import=asyncio \
-            --hidden-import=concurrent.futures \
-            --hidden-import=threading \
-            --hidden-import=bs4 \
-            --hidden-import=ebooklib \
-            --hidden-import=fake_useragent \
-            --hidden-import=config \
-            --hidden-import=config.config \
-            --hidden-import=version \
-            --hidden-import=web \
-            --hidden-import=web.web_app \
-            --hidden-import=utils \
-            --hidden-import=utils.updater \
-            --hidden-import=utils.encoding_utils \
-            --hidden-import=utils.platform_utils \
-            --hidden-import=utils.packaging_fixes \
-            --hidden-import=utils.watermark \
-            --hidden-import=utils.async_logger \
-            --hidden-import=utils.messages \
-            --hidden-import=utils.node_manager \
-            --hidden-import=core \
-            --hidden-import=core.novel_downloader \
-            --hidden-import=core.cli \
-            --hidden-import=packaging \
-            --hidden-import=packaging.version \
-            --hidden-import=tempfile \
-            --hidden-import=json \
-            --hidden-import=time \
-            --collect-data fake_useragent \
-            --collect-submodules aiohttp \
-            --collect-submodules asyncio \
-            main.py
+      - name: Generate runtime manifest
         shell: bash
-
-      - name: Verify build
         run: |
-          ls -la dist/
-          target="dist/${{ matrix.executable }}${{ matrix.ext }}"
-          if [ -f "$target" ]; then
-            echo "[OK] Build successful: $(basename "$target")"
-            echo "File size: $(ls -lh "$target" | awk '{print $5}')"
-          else
-            echo "[X] Build failed: $(basename "$target") not found"
-            exit 1
-          fi
-        shell: bash
+          python scripts/generate_runtime_manifest.py \
+            --repo "${{ github.repository }}" \
+            --tag "${{ needs.prepare-release.outputs.tag_name }}" \
+            --platform "${{ matrix.platform }}" \
+            --runtime-file "${{ matrix.runtime_name }}" \
+            --output "runtime-manifest-${{ matrix.platform }}.json"
 
-      - name: Test executable (non-GUI variants)
-        if: matrix.variant != 'release' && matrix.variant != 'release-standalone'
-        run: |
-          target="dist/${{ matrix.executable }}${{ matrix.ext }}"
-            echo "[TEST] Testing executable: $target"
-
-          # è¿è¡åºæ¬æµè¯ï¼è¶æ¶30ç§ï¼
-          timeout 30s "$target" --help || echo "Help command test completed"
-
-          echo "[OK] Executable test completed"
-        shell: bash
-
-      - name: Rename for release
-        run: |
-          SRC="dist/${{ matrix.executable }}${{ matrix.ext }}"
-          DST="dist/${{ matrix.release_name }}"
-          if [ "$SRC" != "$DST" ]; then
-            cp "$SRC" "$DST"
-          else
-            echo "Source and destination are the same, skipping copy"
-          fi
-        shell: bash
-
-      - name: Upload artifact
+      - name: Upload runtime artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.release_name }}
+          name: runtime-${{ matrix.platform }}
+          path: ${{ matrix.runtime_name }}
           if-no-files-found: error
 
-      - name: Upload to Release
+      - name: Upload runtime manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-manifest-${{ matrix.platform }}
+          path: runtime-manifest-${{ matrix.platform }}.json
+          if-no-files-found: error
+
+      - name: Upload runtime and manifest to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: dist/${{ matrix.release_name }}
+          files: |
+            ${{ matrix.runtime_name }}
+            runtime-manifest-${{ matrix.platform }}.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build completed
-        run: echo "â Build and artifact prepared for ${{ matrix.variant }}"
-
-  # Termux ARM64 å½ä»¤è¡çæ¬æå»º
-  build-termux:
+  build-runtime-termux:
     needs: [prepare-release]
     if: needs.prepare-release.result == 'success'
     runs-on: ubuntu-latest
-    name: Termux ARM64 CLI
-
+    name: Build Runtime (termux-arm64)
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
-      - name: Update version.py
+      - name: Generate termux runtime version.py
+        shell: bash
         run: |
           VERSION="${{ needs.prepare-release.outputs.version }}"
           BUILD_TIME="${{ needs.prepare-release.outputs.build_time }}"
-          
           echo "# -*- coding: utf-8 -*-" > version.py
           echo '"""' >> version.py
-          echo "çæ¬ä¿¡æ¯æä»¶ - GitHub Actionsèªå¨çæ" >> version.py
+          echo "版本信息文件 - GitHub Actions自动生成" >> version.py
           echo '"""' >> version.py
           echo "" >> version.py
           echo "__version__ = \"$VERSION\"" >> version.py
           echo "__author__ = \"Tomato Novel Downloader\"" >> version.py
           echo "__description__ = \"A modern novel downloader with GitHub auto-update support\"" >> version.py
-          echo "__github_repo__ = \"POf-L/Fanqie-novel-Downloader\"" >> version.py
+          echo "__github_repo__ = \"${{ github.repository }}\"" >> version.py
           echo "__build_time__ = \"$BUILD_TIME\"" >> version.py
-          echo "__build_channel__ = \"github-actions-termux\"" >> version.py
+          echo "__build_channel__ = \"launcher-runtime-termux\"" >> version.py
 
-      - name: Build Termux ARM64 binary
+      - name: Build termux runtime package with dependencies
         uses: uraimo/run-on-arch-action@v2
         with:
           arch: aarch64
@@ -424,169 +316,53 @@ jobs:
           install: |
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -q
-            # Install build dependencies for Pillow, cffi, and others
-            apt-get install -y python3 python3-pip python3-venv python3-dev binutils git build-essential patchelf \
-              libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev libtiff-dev tk-dev tcl-dev \
-              libffi-dev libssl-dev libwebp-dev libxml2-dev libxslt-dev wget file
-            # å®è£æ°ç CMake (3.28+) å ä¸º termux-elf-cleaner éè¦ 3.25+
-            wget -q https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-aarch64.tar.gz
-            tar -xzf cmake-3.28.3-linux-aarch64.tar.gz -C /opt
-            ln -sf /opt/cmake-3.28.3-linux-aarch64/bin/cmake /usr/local/bin/cmake
-            rm cmake-3.28.3-linux-aarch64.tar.gz
-            cmake --version
-            # ä»æºç ç¼è¯å®è£ termux-elf-cleaner
-            git clone https://github.com/termux/termux-elf-cleaner.git /tmp/termux-elf-cleaner
-            cd /tmp/termux-elf-cleaner
-            mkdir build
-            cd build
-            cmake ..
-            make
-            cp termux-elf-cleaner /usr/local/bin/
-            cd /
-            rm -rf /tmp/termux-elf-cleaner
-            # éªè¯ termux-elf-cleaner å®è£
-            termux-elf-cleaner --version || echo "termux-elf-cleaner version check failed"
+            apt-get install -y python3 python3-pip python3-venv python3-dev build-essential \
+              libffi-dev libssl-dev libjpeg-dev zlib1g-dev libxml2-dev libxslt-dev zip
           run: |
             cd /workspace
-            
-            # è®¾ç½®ç¯å¢åéä»¥ä¼å ARM64 ç¼è¯
-            export CFLAGS="-O2"
-            export CXXFLAGS="-O2"
-            export LDFLAGS="-Wl,--as-needed"
-            
-            python3 -m venv venv --system-site-packages
-            . venv/bin/activate
-            
-            # Upgrade build tools
-            pip install --upgrade pip setuptools wheel
-            
-            # Install dependencies with extended timeout and binary preference
-            # Try to find manylinux_aarch64 wheels to avoid compilation on QEMU
-            pip install --default-timeout=3600 --prefer-binary -r config/requirements-termux.txt
-            pip install --default-timeout=3600 --prefer-binary pyinstaller
-            
-            # æå»ºå½ä»¤è¡çæ¬ (ä½¿ç¨ novel_downloader.py ä½ä¸ºå¥å£)
-            pyinstaller --onefile \
-              --name=TomatoNovelDownloader-termux \
-              --console \
-              --icon=assets/icons/icon_256.png \
-              --add-data "config/fanqie.json:." \
-              --hidden-import=requests \
-              --hidden-import=aiohttp \
-              --hidden-import=asyncio \
-              --hidden-import=concurrent.futures \
-              --hidden-import=threading \
-              --hidden-import=PIL \
-              --hidden-import=ebooklib \
-              --hidden-import=fake_useragent \
-              --hidden-import=tqdm \
-              --hidden-import=bs4 \
-              --hidden-import=config \
-              --hidden-import=config.config \
-              --hidden-import=version \
-              --hidden-import=utils \
-              --hidden-import=utils.encoding_utils \
-              --hidden-import=utils.packaging_fixes \
-              --hidden-import=utils.updater \
-              --hidden-import=utils.watermark \
-              --hidden-import=utils.async_logger \
-              --hidden-import=utils.messages \
-              --hidden-import=utils.runtime_bootstrap \
-              --hidden-import=utils.node_manager \
-              --hidden-import=core \
-              --hidden-import=core.novel_downloader \
-              --hidden-import=packaging \
-              --hidden-import=packaging.version \
-              --hidden-import=tempfile \
-              --hidden-import=json \
-              --hidden-import=time \
-              --collect-data fake_useragent \
-              --collect-submodules PIL \
-              --collect-submodules aiohttp \
-              --collect-submodules asyncio \
-              --strip \
-              core/novel_downloader.py
-            
-            # éªè¯çæçäºè¿å¶æä»¶
-            echo "=== æ£æ¥çæçäºè¿å¶æä»¶ ==="
-            ls -la dist/
-            file dist/TomatoNovelDownloader-termux
-            ldd dist/TomatoNovelDownloader-termux || echo "ldd failed - checking with readelf"
-            readelf -d dist/TomatoNovelDownloader-termux | head -20 || echo "readelf failed"
-            
-            # ä½¿ç¨ termux-elf-cleaner ä¿®å¤ ELF è§£éå¨è·¯å¾å RPATH
-            echo "=== åºç¨ termux-elf-cleaner ==="
-            termux-elf-cleaner dist/TomatoNovelDownloader-termux || echo "termux-elf-cleaner warning (non-fatal)"
-            
-            # åæ¬¡éªè¯ä¿®å¤åçäºè¿å¶æä»¶
-            echo "=== éªè¯ä¿®å¤åçäºè¿å¶æä»¶ ==="
-            file dist/TomatoNovelDownloader-termux
-            ldd dist/TomatoNovelDownloader-termux || echo "ldd still failed after cleaning"
-            
-            # æ£æ¥å¯æ§è¡æé
-            chmod +x dist/TomatoNovelDownloader-termux
-            
-            # å¨å®¹å¨åå®æéå½åï¼é¿åæéé®é¢
-            cp dist/TomatoNovelDownloader-termux dist/TomatoNovelDownloader-termux-arm64
-            chmod +x dist/TomatoNovelDownloader-termux-arm64 || true
-            ls -la dist/
+            rm -rf runtime-termux
+            mkdir -p runtime-termux
 
-      - name: Verify Termux build
+            cp -r assets runtime-termux/
+            cp -r config runtime-termux/
+            cp -r core runtime-termux/
+            cp -r utils runtime-termux/
+            cp -r web runtime-termux/
+            cp main.py runtime-termux/
+            if [ -f version.py ]; then cp version.py runtime-termux/; fi
+
+            python3 -m venv runtime-termux/.venv
+            runtime-termux/.venv/bin/python -m pip install --upgrade pip
+            runtime-termux/.venv/bin/python -m pip install --default-timeout=3600 --prefer-binary -r config/requirements-termux.txt
+
+            cd runtime-termux
+            zip -r ../runtime-termux-arm64.zip .
+
+      - name: Generate termux runtime manifest
+        shell: bash
         run: |
-          ls -la dist/
-          if [ -f "dist/TomatoNovelDownloader-termux" ]; then
-            echo "[OK] Termux ARM64 build successful"
-            file dist/TomatoNovelDownloader-termux
-            echo "File size: $(ls -lh dist/TomatoNovelDownloader-termux | awk '{print $5}')"
-            
-            # æ£æ¥å¯æ§è¡æé
-            if [ -x "dist/TomatoNovelDownloader-termux" ]; then
-              echo "[OK] Executable permissions set correctly"
-            else
-              echo "[X] Executable permissions missing"
-              chmod +x dist/TomatoNovelDownloader-termux
-            fi
-            
-            # æ£æ¥éå½åçæä»¶
-            if [ -f "dist/TomatoNovelDownloader-termux-arm64" ]; then
-              echo "[OK] ARM64 renamed file exists"
-              file dist/TomatoNovelDownloader-termux-arm64
-              # ç¡®ä¿éå½åçæä»¶ä¹ææ§è¡æé
-              chmod +x dist/TomatoNovelDownloader-termux-arm64 || true
-            else
-              echo "[X] ARM64 renamed file missing"
-              exit 1
-            fi
-          else
-            echo "[X] Termux build failed"
-            exit 1
-          fi
+          python scripts/generate_runtime_manifest.py \
+            --repo "${{ github.repository }}" \
+            --tag "${{ needs.prepare-release.outputs.tag_name }}" \
+            --platform "termux-arm64" \
+            --runtime-file "runtime-termux-arm64.zip" \
+            --output "runtime-manifest-termux-arm64.json"
 
-      - name: Upload Termux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: TomatoNovelDownloader-termux-arm64
-          path: dist/TomatoNovelDownloader-termux-arm64
-          if-no-files-found: error
-
-      - name: Upload to Release
+      - name: Upload termux runtime and manifest to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: dist/TomatoNovelDownloader-termux-arm64
+          files: |
+            runtime-termux-arm64.zip
+            runtime-manifest-termux-arm64.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Termux build completed
-        run: echo "â Termux ARM64 build completed"
-
-  # æææå»ºå®æåæ´æ° Release ä¿¡æ¯
   finalize-release:
     name: Finalize Release
-    if: always() && github.event_name != 'pull_request' && needs.prepare-release.result == 'success'
-    needs: [prepare-release, build, build-termux]
+    if: always() && needs.prepare-release.result == 'success'
+    needs: [prepare-release, build-runtime, build-runtime-termux, build-launcher]
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -612,9 +388,8 @@ jobs:
           fi
 
           CHANGELOG=$(git log $RANGE --pretty=format:'- `%h` %s' || true)
-
           if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="- æ æ°çæäº¤è®°å½"
+            CHANGELOG="- 无新的提交记录"
           fi
 
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
@@ -622,125 +397,37 @@ jobs:
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          pattern: 'TomatoNovelDownloader-*'
-          merge-multiple: true
-
-      - name: Generate runtime manifest
-        run: |
-          python scripts/generate_update_manifest.py \
-            --repo "${{ github.repository }}" \
-            --ref "${{ needs.prepare-release.outputs.tag_name }}" \
-            --release-tag "${{ needs.prepare-release.outputs.tag_name }}" \
-            --output "runtime-manifest.json"
-          ls -la runtime-manifest.json
-        shell: bash
-
-      - name: Upload runtime manifest to release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: runtime-manifest.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: List all artifacts
-        run: |
-          ls -laR dist/
-          echo "Total size: $(du -sh dist/)"
-
-      - name: Check build results
-        id: check_builds
-        run: |
-          echo "Build job result: ${{ needs.build.result }}"
-          echo "Termux job result: ${{ needs.build-termux.result }}"
-          
-          # å¤æ­æ¯å¦å¨é¨æå
-          ALL_SUCCESS="true"
-          BUILD_STATUS=""
-          
-          if [ "${{ needs.build.result }}" == "success" ]; then
-            BUILD_STATUS="[OK] ä¸»æå»ºå®æ"
-          else
-            BUILD_STATUS="[!] ä¸»æå»ºé¨åå¤±è´¥"
-            ALL_SUCCESS="false"
-          fi
-          
-          if [ "${{ needs.build-termux.result }}" == "success" ]; then
-            BUILD_STATUS="$BUILD_STATUS | [OK] Termux æå»ºå®æ"
-          else
-            BUILD_STATUS="$BUILD_STATUS | [!] Termux æå»ºå¤±è´¥"
-            ALL_SUCCESS="false"
-          fi
-          
-          echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
-          echo "all_success=$ALL_SUCCESS" >> $GITHUB_OUTPUT
-
-      - name: Update Release (all builds successful)
-        if: steps.check_builds.outputs.all_success == 'true'
+      - name: Update final release note
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
           body: |
-            ## ð TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
+            ## ✅ TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
 
-            ### ð æ´æ°åå®¹ï¼èªä¸ä¸ä¸ª Latest çæ¬èµ·ï¼
+            ### 🧭 架构
+            - 稳定 Launcher（长期不变）
+            - 云端 Runtime（代码+依赖）
 
+            ### 📝 更新内容（自上一个 Latest 版本起）
             ${{ steps.changelog.outputs.content }}
 
             ---
 
-            ### ð¥ ä¸è½½éé
-            
-            | å¹³å° | æ¨èæä»¶ | è¯´æ |
-            | :--- | :--- | :--- |
-            | **ðª Windows** | `...Standalone.exe` | â **é¦é** (åç½®è¿è¡åºï¼å¼ç®±å³ç¨) |
-            | | `TomatoNovelDownloader.exe` | çº¯åç (éèªå¤ WebView2) |
-            | **ð§ Linux** | `...linux` | x64 æ¶æ (éå®è£ GTK3/WebKit) |
-            | **ð macOS** | `...macos` | Intel è¯ç (x64) |
-            | **ð¤ Termux** | `...termux-arm64` | Android Termux å½ä»¤è¡ç |
-            
-            ---
-            
-            ### ð åå¸ä¿¡æ¯
-            | é¡¹ç® | è¯¦æ |
+            ### 📥 下载说明
+            - 稳定启动器下载（推荐）：https://github.com/${{ github.repository }}/releases/tag/launcher-stable
+            - 用户首次下载 Launcher（对应平台）
+            - 后续启动由 Launcher 自动拉取最新 Runtime
+            - 本次 Runtime 资产：https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare-release.outputs.tag_name }}
+
+            ### 📋 发布信息
+            | 项目 | 详情 |
             | :--- | :--- |
-            | ð **åå¸æ¶é´** | ${{ needs.prepare-release.outputs.build_time }} |
-            | ð·ï¸ **å¯¹æ¯èµ·ç¹** | `${{ steps.changelog.outputs.latest_tag }}` |
-            | ð **Commit** | `${{ github.sha }}` |
+            | 🕒 **发布时间** | ${{ needs.prepare-release.outputs.build_time }} |
+            | 🔗 **比较起点** | `${{ steps.changelog.outputs.latest_tag }}` |
+            | 🔩 **Commit** | `${{ github.sha }}` |
           draft: false
           prerelease: false
           make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update Release (some builds failed)
-        if: steps.check_builds.outputs.all_success != 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          name: "[!] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }} (é¨åæå»º)"
-          body: |
-            ## [!] TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
-            
-            ### ð æ´æ°åå®¹ï¼èªä¸ä¸ä¸ª Latest çæ¬èµ·ï¼
-
-            ${{ steps.changelog.outputs.content }}
-
-            ---
-            
-            ### ð åå¸ä¿¡æ¯
-            | é¡¹ç® | è¯¦æ |
-            | :--- | :--- |
-            | ð **åå¸æ¶é´** | ${{ needs.prepare-release.outputs.build_time }} |
-            | ð·ï¸ **å¯¹æ¯èµ·ç¹** | `${{ steps.changelog.outputs.latest_tag }}` |
-            | ð **Commit** | `${{ github.sha }}` |
-          draft: false
-          prerelease: true
-          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
