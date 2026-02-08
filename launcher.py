@@ -1578,6 +1578,11 @@ def _launch_runtime() -> None:
         )
 
     os.environ["FANQIE_RUNTIME_BASE"] = str(runtime_root)
+
+    for mod_name in list(sys.modules.keys()):
+        if mod_name == 'utils' or mod_name.startswith('utils.'):
+            del sys.modules[mod_name]
+
     sys.path.insert(0, str(runtime_root))
 
     runtime_venv = runtime_root / ".venv"
@@ -1698,8 +1703,8 @@ def main() -> None:
                     _write_error("按回车键退出...")
                     input()
                 except Exception:
-                    pass
-        raise
+                    time.sleep(30)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
