@@ -612,7 +612,7 @@ except Exception as e:
             
             **注意：这是Runtime更新包，仅供Launcher自动更新使用。**
             
-            ### � 如何使用
+            ### 🚀 如何使用
             1. 首次使用请下载 [Launcher Stable](https://github.com/${{ github.repository }}/releases/tag/launcher-stable)
             2. 运行Launcher会自动下载此Runtime
             3. 无需手动下载Runtime文件
