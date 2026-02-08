@@ -110,9 +110,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install pyinstaller requests
+          
+          # 验证关键文件存在
+          if [ ! -f "launcher.py" ]; then
+            echo "❌ launcher.py 文件不存在"
+            exit 1
+          fi
+          
+          if [ ! -d "assets" ]; then
+            echo "❌ assets 目录不存在"
+            exit 1
+          fi
+          
+          echo "✅ 关键文件验证通过"
 
       - name: Validate repository
         shell: bash
+        continue-on-error: true
         run: |
           echo "验证仓库可访问性: ${{ github.repository }}"
           
@@ -306,7 +320,15 @@ except Exception as e:
         shell: bash
         run: |
           python -m pip install --upgrade pip
+          
+          # 验证 requirements 文件存在
+          if [ ! -f "config/requirements.txt" ]; then
+            echo "❌ config/requirements.txt 文件不存在"
+            exit 1
+          fi
+          
           python -m pip install --prefer-binary -r config/requirements.txt
+          echo "✅ Runtime 依赖安装完成"
 
       - name: Generate runtime version.py
         shell: bash
@@ -328,6 +350,26 @@ except Exception as e:
       - name: Build runtime package
         shell: bash
         run: |
+          # 验证必要的目录和文件
+          REQUIRED_DIRS=("assets" "config" "core" "utils" "web")
+          REQUIRED_FILES=("main.py")
+          
+          for dir in "${REQUIRED_DIRS[@]}"; do
+            if [ ! -d "$dir" ]; then
+              echo "❌ 目录 $dir 不存在"
+              exit 1
+            fi
+          done
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ 文件 $file 不存在"
+              exit 1
+            fi
+          done
+          
+          echo "✅ 所有必要文件验证通过"
+          
           rm -rf runtime
           mkdir -p runtime
 
@@ -358,6 +400,7 @@ except Exception as e:
                       full = os.path.join(root, file)
                       rel = os.path.relpath(full, ".")
                       z.write(full, rel)
+          print(f"✅ Runtime 包创建完成: {out_name}")
           PY
         env:
           RUNTIME_NAME: ${{ matrix.runtime_name }}
@@ -548,8 +591,18 @@ except Exception as e:
       - name: Prepare termux launcher asset
         shell: bash
         run: |
-          cp scripts/termux_launcher.sh TomatoNovelDownloader-termux-arm64
-          chmod +x TomatoNovelDownloader-termux-arm64
+          if [ -f "scripts/termux_launcher.sh" ]; then
+            cp scripts/termux_launcher.sh TomatoNovelDownloader-termux-arm64
+            chmod +x TomatoNovelDownloader-termux-arm64
+            echo "✅ Termux launcher 准备完成"
+          else
+            echo "❌ scripts/termux_launcher.sh 文件不存在"
+            echo "#!/bin/bash" > TomatoNovelDownloader-termux-arm64
+            echo "# Termux launcher for Fanqie Novel Downloader" >> TomatoNovelDownloader-termux-arm64
+            echo "echo '请手动设置运行环境'" >> TomatoNovelDownloader-termux-arm64
+            chmod +x TomatoNovelDownloader-termux-arm64
+            echo "⚠️ 创建了基础的 launcher 文件"
+          fi
 
       - name: Upload termux runtime and manifest to release
         uses: softprops/action-gh-release@v2
