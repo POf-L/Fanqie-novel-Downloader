@@ -1579,8 +1579,9 @@ def _launch_runtime() -> None:
 
     os.environ["FANQIE_RUNTIME_BASE"] = str(runtime_root)
 
+    _stale_prefixes = ('utils', 'config', 'core', 'web')
     for mod_name in list(sys.modules.keys()):
-        if mod_name == 'utils' or mod_name.startswith('utils.'):
+        if any(mod_name == p or mod_name.startswith(p + '.') for p in _stale_prefixes):
             del sys.modules[mod_name]
 
     sys.path.insert(0, str(runtime_root))
