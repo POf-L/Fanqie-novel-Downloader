@@ -111,10 +111,110 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pyinstaller requests
 
+      - name: Validate repository
+        shell: bash
+        run: |
+          echo "验证仓库可访问性: ${{ github.repository }}"
+          
+          # 设置默认仓库
+          DEFAULT_REPO="POf-L/Fanqie-novel-Downloader"
+          TARGET_REPO="${{ github.repository }}"
+          
+          # 验证仓库可访问性，带重试机制
+          echo "正在验证仓库可访问性..."
+          REPO_VALID=false
+
+          # 创建临时文件目录，确保清理时可以安全删除
+          TEMP_DIR=$(mktemp -d -t "repo_check_XXXXXX") || {
+            echo "❌ 无法创建临时目录"
+            exit 1
+          }
+
+          # 使用 trap 确保临时文件清理（包括异常退出）
+          cleanup_temp_files() {
+            if [ -d "${TEMP_DIR}" ]; then
+              echo "清理临时文件: ${TEMP_DIR}"
+              rm -rf "${TEMP_DIR}" 2>/dev/null || true
+            fi
+          }
+
+          # 设置多个退出信号处理，确保清理
+          trap cleanup_temp_files EXIT
+          trap cleanup_temp_files INT
+          trap cleanup_temp_files TERM
+
+          for i in {1..3}; do
+            echo "尝试 $i/3: 验证仓库 ${TARGET_REPO}"
+
+            # 使用 mktemp 创建安全的临时文件，确保在临时目录中
+            ERROR_FILE="${TEMP_DIR}/repo_check_error_${i}.txt"
+
+            # 验证仓库
+            if curl -fsSL --max-time 10 --connect-timeout 5 \
+               "https://api.github.com/repos/${TARGET_REPO}" 2>"${ERROR_FILE}"; then
+              echo "✅ 仓库验证成功: ${TARGET_REPO}"
+              REPO_VALID=true
+              break
+            else
+              echo "❌ 尝试 $i 失败"
+              if [ -f "${ERROR_FILE}" ]; then
+                echo "错误详情: $(cat "${ERROR_FILE}" 2>/dev/null || echo '无法读取错误信息')"
+              fi
+
+              if [ $i -lt 3 ]; then
+                echo "等待 2 秒后重试..."
+                sleep 2
+              fi
+            fi
+          done
+
+          # trap 会自动清理临时文件，但这里也显式调用一次确保清理
+          cleanup_temp_files
+          
+          # 如果验证失败，使用默认仓库
+          if [ "${REPO_VALID}" = "false" ]; then
+            echo "⚠️ 仓库 ${TARGET_REPO} 验证失败，使用默认仓库: ${DEFAULT_REPO}"
+            TARGET_REPO="${DEFAULT_REPO}"
+          fi
+          
+          # 将验证后的仓库名称写入环境变量供后续步骤使用
+          echo "TARGET_REPO=${TARGET_REPO}" >> $GITHUB_ENV
+          echo "最终使用仓库: ${TARGET_REPO}"
+
       - name: Set default repo in launcher
         shell: bash
         run: |
-          sed -i 's|POf-L/Fanqie-novel-Downloader|${{ github.repository }}|g' launcher.py
+          echo "更新 launcher.py 中的仓库配置为: ${TARGET_REPO}"
+          
+          # 使用 Python 替代 sed 确保跨平台兼容性
+          python -c "
+import re
+import sys
+import os
+
+default_repo = 'POf-L/Fanqie-novel-Downloader'
+target_repo = os.environ.get('TARGET_REPO', default_repo)
+
+try:
+    with open('launcher.py', 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # 替换默认仓库引用
+    content = re.sub(
+        r'POf-L/Fanqie-novel-Downloader', 
+        target_repo, 
+        content
+    )
+    
+    with open('launcher.py', 'w', encoding='utf-8') as f:
+        f.write(content)
+    
+    print(f'✅ 成功更新仓库配置: {default_repo} -> {target_repo}')
+    
+except Exception as e:
+    print(f'❌ 更新仓库配置失败: {e}')
+    sys.exit(1)
+"
 
       - name: Build launcher executable
         shell: bash

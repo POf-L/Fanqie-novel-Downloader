@@ -13,6 +13,16 @@ import tempfile
 import time
 import traceback
 import zipfile
+
+# 导入仓库配置管理模块（带异常处理）
+try:
+    from utils.repo_config import get_effective_repo
+    REPO_CONFIG_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ 仓库配置模块不可用: {e}，使用默认配置")
+    REPO_CONFIG_AVAILABLE = False
+    def get_effective_repo():
+        return "POf-L/Fanqie-novel-Downloader", "默认值"
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -987,11 +997,14 @@ def main() -> None:
             _write_error(f"[DEBUG] {key}: {value}")
         _write_error("[DEBUG] ======================================")
 
-    repo = os.environ.get("FANQIE_GITHUB_REPO", "POf-L/Fanqie-novel-Downloader")
+    # 获取仓库配置，使用统一的管理模块
+    repo, repo_source = get_effective_repo()
+    
     if tui:
-        tui.show_debug_info({"使用仓库": repo})
+        tui.show_debug_info({"使用仓库": repo, "仓库来源": repo_source})
     else:
         _write_error(f"[DEBUG] 使用仓库: {repo}")
+        _write_error(f"[DEBUG] 仓库来源: {repo_source}")
     
     try:
         # 使用TUI增强的各个步骤
