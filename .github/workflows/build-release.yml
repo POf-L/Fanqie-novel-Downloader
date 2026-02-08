@@ -201,34 +201,33 @@ jobs:
           echo "更新 launcher.py 中的仓库配置为: ${TARGET_REPO}"
           
           # 使用 Python 替代 sed 确保跨平台兼容性
-          python -c "
-import re
-import sys
-import os
+          python - <<'PY'
+          import os
+          import re
+          import sys
 
-default_repo = 'POf-L/Fanqie-novel-Downloader'
-target_repo = os.environ.get('TARGET_REPO', default_repo)
+          default_repo = 'POf-L/Fanqie-novel-Downloader'
+          target_repo = os.environ.get('TARGET_REPO', default_repo)
 
-try:
-    with open('launcher.py', 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # 替换默认仓库引用
-    content = re.sub(
-        r'POf-L/Fanqie-novel-Downloader', 
-        target_repo, 
-        content
-    )
-    
-    with open('launcher.py', 'w', encoding='utf-8') as f:
-        f.write(content)
-    
-    print(f'✅ 成功更新仓库配置: {default_repo} -> {target_repo}')
-    
-except Exception as e:
-    print(f'❌ 更新仓库配置失败: {e}')
-    sys.exit(1)
-"
+          try:
+              with open('launcher.py', 'r', encoding='utf-8') as file_obj:
+                  content = file_obj.read()
+
+              content = re.sub(
+                  r'POf-L/Fanqie-novel-Downloader',
+                  target_repo,
+                  content,
+              )
+
+              with open('launcher.py', 'w', encoding='utf-8') as file_obj:
+                  file_obj.write(content)
+
+              print(f'✅ 成功更新仓库配置: {default_repo} -> {target_repo}')
+
+          except Exception as exc:
+              print(f'❌ 更新仓库配置失败: {exc}')
+              sys.exit(1)
+          PY
 
       - name: Build launcher executable
         shell: bash
