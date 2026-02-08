@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """稳定启动器：仅负责拉取并启动远程 Runtime。"""
 
+import asyncio
+import aiohttp
 import concurrent.futures
 import hashlib
 import json
@@ -710,9 +712,9 @@ _download_mode = "direct"
 _mirror_domain = None
 _session = requests.Session()
 
-NODE_TEST_TIMEOUT_SECONDS = 10.0
-NODE_TEST_CONNECT_TIMEOUT_SECONDS = 2.0
-NODE_TEST_MAX_WORKERS = 120
+NODE_TEST_TIMEOUT_SECONDS = 5.0
+NODE_TEST_CONNECT_TIMEOUT_SECONDS = 1.0
+NODE_TEST_MAX_WORKERS = 500  # 超级高并发
 
 PIP_INDEX_MIRRORS = [
     ("清华", "https://pypi.tuna.tsinghua.edu.cn/simple"),
@@ -1330,7 +1332,26 @@ def _ensure_runtime_dependencies() -> None:
         print("✓ Runtime 依赖安装完成")
 
 
+async def _test_node_latency_async(domain: str, session: aiohttp.ClientSession) -> Tuple[str, Optional[float]]:
+    """异步测试单个节点延迟 - 超级高并发版本"""
+    try:
+        start = time.perf_counter()
+        timeout = aiohttp.ClientTimeout(total=NODE_TEST_TIMEOUT_SECONDS, connect=NODE_TEST_CONNECT_TIMEOUT_SECONDS)
+        async with session.head(
+            f"https://{domain}",
+            timeout=timeout,
+            allow_redirects=False,
+            ssl=False  # 跳过 SSL 验证以提升速度
+        ) as response:
+            if response.status < 500:
+                return (domain, (time.perf_counter() - start) * 1000)
+            return (domain, None)
+    except Exception:
+        return (domain, None)
+
+
 def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
+    """同步测试单个节点延迟 - 兼容性保留"""
     try:
         start = time.perf_counter()
         _session.head(
@@ -1343,8 +1364,45 @@ def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
         return (domain, None)
 
 
+async def _test_all_nodes_async() -> List[Tuple[str, float]]:
+    """异步测试所有镜像节点延迟 - 超级高并发版本"""
+    print(f"正在异步测试 {len(MIRROR_NODES)} 个镜像节点延迟 (超级高并发模式)...")
+    
+    # 配置 aiohttp 连接器以支持超级高并发
+    connector = aiohttp.TCPConnector(
+        limit=1000,  # 总连接池大小
+        limit_per_host=50,  # 每个主机的连接数
+        ttl_dns_cache=300,  # DNS 缓存时间
+        use_dns_cache=True,
+        ssl=False,  # 跳过 SSL 验证提升速度
+        enable_cleanup_closed=True
+    )
+    
+    timeout = aiohttp.ClientTimeout(total=NODE_TEST_TIMEOUT_SECONDS, connect=NODE_TEST_CONNECT_TIMEOUT_SECONDS)
+    
+    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        # 创建所有任务
+        tasks = [_test_node_latency_async(domain, session) for domain in MIRROR_NODES]
+        
+        # 并发执行所有任务
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 处理结果
+        available = []
+        for result in results:
+            if isinstance(result, tuple) and len(result) == 2:
+                domain, latency = result
+                if latency is not None:
+                    available.append((domain, latency))
+        
+        available.sort(key=lambda x: x[1])
+        print(f"异步测速完成，可用节点: {len(available)}/{len(MIRROR_NODES)}")
+        return available
+
+
 def _test_all_nodes() -> List[Tuple[str, float]]:
-    print("正在测试镜像节点延迟...")
+    """同步测试所有镜像节点延迟 - 兼容性保留"""
+    print("正在同步测试镜像节点延迟...")
     max_workers = max(1, min(len(MIRROR_NODES), NODE_TEST_MAX_WORKERS))
     deadline = time.perf_counter() + NODE_TEST_TIMEOUT_SECONDS + 2.0
     available: List[Tuple[str, float]] = []
@@ -1405,16 +1463,26 @@ def _select_download_mode() -> None:
     _download_mode = "mirror"
     _session.trust_env = False
 
-    # 测试镜像节点
-    if tui and tui.use_tui:
-        available = tui.show_progress_test(
-            "正在测试镜像节点延迟",
-            MIRROR_NODES,
-            _test_node_latency,
-            timeout=NODE_TEST_TIMEOUT_SECONDS
-        )
-    else:
-        available = _test_all_nodes()
+    # 测试镜像节点 - 使用超级高并发异步测速
+    try:
+        if hasattr(asyncio, 'run'):
+            # Python 3.7+ 支持 asyncio.run
+            available = asyncio.run(_test_all_nodes_async())
+        else:
+            # 兼容旧版本 Python
+            loop = asyncio.get_event_loop()
+            available = loop.run_until_complete(_test_all_nodes_async())
+    except Exception as e:
+        print(f"异步测速失败，回退到同步模式: {e}")
+        if tui and tui.use_tui:
+            available = tui.show_progress_test(
+                "正在测试镜像节点延迟",
+                MIRROR_NODES,
+                _test_node_latency,
+                timeout=NODE_TEST_TIMEOUT_SECONDS
+            )
+        else:
+            available = _test_all_nodes()
 
     if not available:
         if tui:

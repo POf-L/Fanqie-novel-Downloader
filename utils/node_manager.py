@@ -10,11 +10,19 @@ import time
 import os
 import threading
 import asyncio
-import requests
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.async_logger import safe_print
+
+# 尝试导入 aiohttp，如果不可用则使用 requests
+try:
+    import aiohttp
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    aiohttp = None
+    AIOHTTP_AVAILABLE = False
+    import requests
 
 
 class NodeTester:
@@ -29,8 +37,94 @@ class NodeTester:
         self._optimal_node = None
         self._test_lock = threading.Lock()
         
+    async def _test_node_async(self, base_url: str, supports_full_download: bool = True, session: aiohttp.ClientSession = None) -> Dict:
+        """异步测试单个节点 - 超级高并发版本"""
+        base_url = base_url.strip().rstrip('/')
+        
+        # 如果没有传入 session，创建一个临时的
+        should_close_session = False
+        if session is None:
+            connector = aiohttp.TCPConnector(
+                limit=1000,
+                limit_per_host=50,
+                ttl_dns_cache=300,
+                use_dns_cache=True,
+                ssl=False,
+                enable_cleanup_closed=True
+            )
+            timeout = aiohttp.ClientTimeout(total=5, connect=1)
+            session = aiohttp.ClientSession(connector=connector, timeout=timeout)
+            should_close_session = True
+        
+        test_result = {
+            'base_url': base_url,
+            'supports_full_download': supports_full_download,
+            'available': False,
+            'latency_ms': None,
+            'error': None,
+            'batch_support_verified': False
+        }
+        
+        try:
+            # 测试搜索接口
+            search_url = f"{base_url}/api/search"
+            start_time = time.time()
+            
+            async with session.get(
+                search_url,
+                params={"key": "test", "tab_type": "3"},
+                ssl=False
+            ) as response:
+                latency_ms = int((time.time() - start_time) * 1000)
+                
+                if response.status < 500:
+                    try:
+                        data = await response.json()
+                        if isinstance(data, dict) and 'code' in data:
+                            test_result['available'] = True
+                            test_result['latency_ms'] = latency_ms
+                            
+                            # 如果声明支持批量下载，验证一下
+                            if supports_full_download:
+                                try:
+                                    directory_url = f"{base_url}/api/directory"
+                                    async with session.get(
+                                        directory_url,
+                                        params={"fq_id": "test"},
+                                        ssl=False
+                                    ) as dir_response:
+                                        try:
+                                            dir_data = await dir_response.json()
+                                            if isinstance(dir_data, dict) and 'code' in dir_data:
+                                                test_result['batch_support_verified'] = True
+                                            else:
+                                                test_result['batch_support_verified'] = False
+                                        except Exception:
+                                            test_result['batch_support_verified'] = False
+                                except Exception:
+                                    test_result['batch_support_verified'] = False
+                            else:
+                                test_result['batch_support_verified'] = False
+                        else:
+                            test_result['error'] = "响应格式错误"
+                    except Exception:
+                        test_result['error'] = "响应非JSON格式"
+                else:
+                    test_result['error'] = f"HTTP {response.status}"
+                    
+        except asyncio.TimeoutError:
+            test_result['error'] = "超时"
+        except aiohttp.ClientError:
+            test_result['error'] = "连接失败"
+        except Exception as e:
+            test_result['error'] = str(e)[:50]
+        finally:
+            if should_close_session:
+                await session.close()
+        
+        return test_result
+    
     def _test_node_sync(self, base_url: str, supports_full_download: bool = True) -> Dict:
-        """同步测试单个节点"""
         base_url = base_url.strip().rstrip('/')
 
         # 使用搜索接口测试节点可用性（所有节点都应该有这个接口）
@@ -109,10 +203,10 @@ class NodeTester:
         return test_result
     
     def test_all_nodes_sync(self) -> List[Dict]:
-        """同步测试所有节点（用于CLI工具）"""
+        """同步测试所有节点 - 兼容性保留"""
         results = []
         
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=50) as executor:  # 增加并发数
             futures = []
             
             for source in self.api_sources:
@@ -137,11 +231,28 @@ class NodeTester:
         return results
     
     async def test_all_nodes_async(self) -> List[Dict]:
-        """异步测试所有节点（用于启动时）"""
-        loop = asyncio.get_running_loop()
+        """异步测试所有节点 - 超级高并发版本"""
+        safe_print(f"开始异步测试 {len(self.api_sources)} 个 API 节点 (超级高并发模式)...")
         
-        # 使用线程池执行同步的网络请求
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        # 检查 aiohttp 是否可用
+        if not AIOHTTP_AVAILABLE:
+            safe_print("警告: aiohttp 不可用，回退到同步模式")
+            return self.test_all_nodes_sync()
+        
+        # 配置 aiohttp 连接器以支持超级高并发
+        connector = aiohttp.TCPConnector(
+            limit=1000,  # 总连接池大小
+            limit_per_host=50,  # 每个主机的连接数
+            ttl_dns_cache=300,  # DNS 缓存时间
+            use_dns_cache=True,
+            ssl=False,  # 跳过 SSL 验证提升速度
+            enable_cleanup_closed=True
+        )
+        
+        timeout = aiohttp.ClientTimeout(total=5, connect=1)
+        
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+            # 创建所有任务
             tasks = []
             
             for source in self.api_sources:
@@ -151,16 +262,12 @@ class NodeTester:
                 else:
                     base_url = str(source)
                     supports_full = True
-                    
+                
                 if base_url:
-                    task = loop.run_in_executor(
-                        executor, 
-                        self._test_node_sync, 
-                        base_url, 
-                        supports_full
-                    )
+                    task = self._test_node_async(base_url, supports_full, session)
                     tasks.append(task)
             
+            # 并发执行所有任务
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
             # 过滤异常结果
@@ -171,6 +278,7 @@ class NodeTester:
                 else:
                     safe_print(f"节点测试异常: {result}")
             
+            safe_print(f"异步测速完成，可用节点: {sum(1 for r in valid_results if r.get('available'))}/{len(valid_results)}")
             return valid_results
     
     def _select_optimal_node(self, results: List[Dict]) -> Optional[str]:
