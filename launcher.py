@@ -112,8 +112,10 @@ _selected_pip_index_url = "https://pypi.org/simple"
 
 def _write_error(message: str) -> None:
     try:
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        formatted_message = f"[{timestamp}] {message}"
         stderr = sys.__stderr__ if hasattr(sys, "__stderr__") and sys.__stderr__ else sys.stderr
-        stderr.write(message + "\n")
+        stderr.write(formatted_message + "\n")
         stderr.flush()
     except Exception:
         pass
@@ -412,21 +414,79 @@ def _requirements_file_for_platform() -> Path:
 
 
 def _ensure_runtime_venv() -> Path:
+    runtime_root = _runtime_root()
     py_path = _runtime_venv_python()
+    
+    _write_error(f"[DEBUG] 检查虚拟环境: {py_path}")
+    
     if py_path.exists():
-        return py_path
+        # 验证虚拟环境是否可用
+        try:
+            result = subprocess.run(
+                [str(py_path), "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                _write_error(f"[DEBUG] 虚拟环境可用: {result.stdout.strip()}")
+                return py_path
+            else:
+                _write_error(f"[DEBUG] 虚拟环境不可用: {result.stderr}")
+                _write_error("[DEBUG] 将重新创建虚拟环境")
+        except Exception as e:
+            _write_error(f"[DEBUG] 虚拟环境测试失败: {e}")
+            _write_error("[DEBUG] 将重新创建虚拟环境")
+        
+        # 删除损坏的虚拟环境
+        try:
+            venv_path = runtime_root / ".venv"
+            if venv_path.exists():
+                shutil.rmtree(venv_path)
+                _write_error("[DEBUG] 已删除损坏的虚拟环境")
+        except Exception as e:
+            _write_error(f"[DEBUG] 删除虚拟环境失败: {e}")
 
     print("正在创建 Runtime 虚拟环境...")
-    runtime_root = _runtime_root()
-    subprocess.run(
-        [sys.executable, "-m", "venv", str(runtime_root / ".venv")],
-        check=True,
-        cwd=str(runtime_root),
-    )
+    _write_error(f"[DEBUG] 使用系统Python: {sys.executable}")
+    _write_error(f"[DEBUG] 目标路径: {runtime_root / '.venv'}")
+    
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "venv", str(runtime_root / ".venv")],
+            check=True,
+            cwd=str(runtime_root),
+            capture_output=True,
+            text=True
+        )
+        _write_error(f"[DEBUG] 虚拟环境创建成功")
+    except subprocess.CalledProcessError as e:
+        _write_error(f"[DEBUG] 虚拟环境创建失败: {e}")
+        _write_error(f"[DEBUG] stdout: {e.stdout}")
+        _write_error(f"[DEBUG] stderr: {e.stderr}")
+        raise RuntimeError(f"虚拟环境创建失败: {e}")
 
     py_path = _runtime_venv_python()
     if not py_path.exists():
         raise RuntimeError("虚拟环境创建失败，未找到 Python 可执行文件")
+    
+    # 验证新创建的虚拟环境
+    try:
+        result = subprocess.run(
+            [str(py_path), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            _write_error(f"[DEBUG] 新虚拟环境验证成功: {result.stdout.strip()}")
+        else:
+            _write_error(f"[DEBUG] 新虚拟环境验证失败: {result.stderr}")
+            raise RuntimeError("新虚拟环境不可用")
+    except Exception as e:
+        _write_error(f"[DEBUG] 新虚拟环境验证异常: {e}")
+        raise RuntimeError(f"新虚拟环境验证失败: {e}")
+    
     return py_path
 
 
@@ -490,27 +550,50 @@ def _select_pip_mirror() -> None:
 
 def _pip_install_with_mirrors(py_path: Path, install_args: List[str]) -> None:
     print(f"使用 {_selected_pip_mirror_name} 源安装依赖...")
+    _write_error(f"[DEBUG] pip安装参数: {install_args}")
+    _write_error(f"[DEBUG] 使用Python路径: {py_path}")
+    
     try:
-        subprocess.run(
-            [
-                str(py_path),
-                "-m",
-                "pip",
-                "install",
-                "--index-url",
-                _selected_pip_index_url,
-                *install_args,
-            ],
+        cmd = [
+            str(py_path),
+            "-m",
+            "pip",
+            "install",
+            "--index-url",
+            _selected_pip_index_url,
+            *install_args,
+        ]
+        _write_error(f"[DEBUG] 执行命令: {' '.join(cmd)}")
+        
+        result = subprocess.run(
+            cmd,
             check=True,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5分钟超时
         )
+        
+        _write_error(f"[DEBUG] pip安装成功")
+        if result.stdout:
+            _write_error(f"[DEBUG] pip stdout: {result.stdout[-500:]}")  # 只显示最后500字符
         return
+        
     except subprocess.CalledProcessError as exc:
+        _write_error(f"[DEBUG] {_selected_pip_mirror_name} 源安装失败")
+        _write_error(f"[DEBUG] 返回码: {exc.returncode}")
+        if exc.stdout:
+            _write_error(f"[DEBUG] stdout: {exc.stdout}")
+        if exc.stderr:
+            _write_error(f"[DEBUG] stderr: {exc.stderr}")
+        
         if _selected_pip_index_url == "https://pypi.org/simple":
             raise RuntimeError(f"pip 安装失败: {exc}")
 
         print(f"{_selected_pip_mirror_name} 源安装失败，回退到官方 PyPI...")
-        subprocess.run(
-            [
+        _write_error("[DEBUG] 尝试使用官方PyPI...")
+        
+        try:
+            fallback_cmd = [
                 str(py_path),
                 "-m",
                 "pip",
@@ -518,9 +601,36 @@ def _pip_install_with_mirrors(py_path: Path, install_args: List[str]) -> None:
                 "--index-url",
                 "https://pypi.org/simple",
                 *install_args,
-            ],
-            check=True,
-        )
+            ]
+            _write_error(f"[DEBUG] 回退命令: {' '.join(fallback_cmd)}")
+            
+            result = subprocess.run(
+                fallback_cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            
+            _write_error(f"[DEBUG] PyPI回退安装成功")
+            if result.stdout:
+                _write_error(f"[DEBUG] PyPI stdout: {result.stdout[-500:]}")
+                
+        except subprocess.CalledProcessError as exc2:
+            _write_error(f"[DEBUG] PyPI回退也失败")
+            _write_error(f"[DEBUG] 返回码: {exc2.returncode}")
+            if exc2.stdout:
+                _write_error(f"[DEBUG] stdout: {exc2.stdout}")
+            if exc2.stderr:
+                _write_error(f"[DEBUG] stderr: {exc2.stderr}")
+            raise RuntimeError(f"pip 安装失败（包括PyPI回退）: {exc2}")
+            
+    except subprocess.TimeoutExpired as exc:
+        _write_error(f"[DEBUG] pip安装超时: {exc}")
+        raise RuntimeError(f"pip 安装超时: {exc}")
+    except Exception as exc:
+        _write_error(f"[DEBUG] pip安装异常: {exc}")
+        raise RuntimeError(f"pip 安装异常: {exc}")
 
 
 def _ensure_runtime_dependencies() -> None:
@@ -717,8 +827,28 @@ def main() -> None:
     print("=" * 50)
     print("番茄小说下载器 启动器")
     print("=" * 50)
+    
+    # 添加环境信息debug
+    _write_error("[DEBUG] ========== 启动环境信息 ==========")
+    _write_error(f"[DEBUG] Python版本: {sys.version}")
+    _write_error(f"[DEBUG] Python路径: {sys.executable}")
+    _write_error(f"[DEBUG] 平台: {sys.platform}")
+    _write_error(f"[DEBUG] 是否打包: {getattr(sys, 'frozen', False)}")
+    _write_error(f"[DEBUG] 工作目录: {os.getcwd()}")
+    
+    if getattr(sys, 'frozen', False):
+        if hasattr(sys, '_MEIPASS'):
+            _write_error(f"[DEBUG] _MEIPASS: {sys._MEIPASS}")
+        _write_error(f"[DEBUG] sys.executable: {sys.executable}")
+    
+    _write_error(f"[DEBUG] 基础目录: {_base_dir()}")
+    _write_error(f"[DEBUG] 运行时目录: {_runtime_root()}")
+    _write_error(f"[DEBUG] 状态文件: {_state_path()}")
+    _write_error("[DEBUG] ======================================")
 
     repo = os.environ.get("FANQIE_GITHUB_REPO", "POf-L/Fanqie-novel-Downloader")
+    _write_error(f"[DEBUG] 使用仓库: {repo}")
+    
     try:
         _select_download_mode()
         _select_pip_mirror()
@@ -727,6 +857,18 @@ def main() -> None:
         _launch_runtime()
     except Exception as error:
         _write_error(f"启动失败: {error}")
+        _write_error(f"[DEBUG] 异常类型: {type(error).__name__}")
+        
+        # 添加更详细的异常信息
+        import traceback
+        exc_type, exc_value, exc_tb = sys.exc_info()
+        if exc_type and exc_value and exc_tb:
+            _write_error("[DEBUG] ========== 详细异常信息 ==========")
+            tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+            for line in tb_lines:
+                _write_error(f"[DEBUG] {line.rstrip()}")
+            _write_error("[DEBUG] ======================================")
+        
         if getattr(sys, "frozen", False):
             try:
                 _write_error("按回车键退出...")
