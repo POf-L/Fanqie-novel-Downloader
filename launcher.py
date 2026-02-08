@@ -2,7 +2,6 @@
 """稳定启动器：仅负责拉取并启动远程 Runtime。"""
 
 import asyncio
-import aiohttp
 import concurrent.futures
 import hashlib
 import json
@@ -31,6 +30,13 @@ except ImportError as e:
 from pathlib import Path
 
 import requests
+
+try:
+    import aiohttp
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    aiohttp = None
+    AIOHTTP_AVAILABLE = False
 
 # TUI组件导入
 try:
@@ -1332,7 +1338,7 @@ def _ensure_runtime_dependencies() -> None:
         print("✓ Runtime 依赖安装完成")
 
 
-async def _test_node_latency_async(domain: str, session: aiohttp.ClientSession) -> Tuple[str, Optional[float]]:
+async def _test_node_latency_async(domain: str, session: Any) -> Tuple[str, Optional[float]]:
     """异步测试单个节点延迟 - 超级高并发版本"""
     try:
         start = time.perf_counter()
@@ -1366,6 +1372,9 @@ def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
 
 async def _test_all_nodes_async() -> List[Tuple[str, float]]:
     """异步测试所有镜像节点延迟 - 超级高并发版本"""
+    if not AIOHTTP_AVAILABLE:
+        return []
+
     print(f"正在异步测试 {len(MIRROR_NODES)} 个镜像节点延迟 (超级高并发模式)...")
     
     # 配置 aiohttp 连接器以支持超级高并发
@@ -1465,15 +1474,18 @@ def _select_download_mode() -> None:
 
     # 测试镜像节点 - 使用超级高并发异步测速
     try:
-        if hasattr(asyncio, 'run'):
-            # Python 3.7+ 支持 asyncio.run
-            available = asyncio.run(_test_all_nodes_async())
+        if AIOHTTP_AVAILABLE:
+            if hasattr(asyncio, 'run'):
+                # Python 3.7+ 支持 asyncio.run
+                available = asyncio.run(_test_all_nodes_async())
+            else:
+                # 兼容旧版本 Python
+                loop = asyncio.get_event_loop()
+                available = loop.run_until_complete(_test_all_nodes_async())
         else:
-            # 兼容旧版本 Python
-            loop = asyncio.get_event_loop()
-            available = loop.run_until_complete(_test_all_nodes_async())
+            raise RuntimeError("aiohttp 未安装")
     except Exception as e:
-        print(f"异步测速失败，回退到同步模式: {e}")
+        print(f"异步测速不可用，回退到同步模式: {e}")
         if tui and tui.use_tui:
             available = tui.show_progress_test(
                 "正在测试镜像节点延迟",
