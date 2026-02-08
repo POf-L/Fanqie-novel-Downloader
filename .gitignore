@@ -189,3 +189,7 @@ Desktop.ini
 *.local.*
 
 # Note: fanqie.json is now tracked as local config file
+
+# Auto-generated requirements files (GitHub Actions)
+config/requirements-auto.txt
+config/requirements-final.txt

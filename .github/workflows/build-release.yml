@@ -109,7 +109,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller requests
+          python -m pip install pipreqs pyinstaller requests rich InquirerPy
           
           # 验证关键文件存在
           if [ ! -f "launcher.py" ]; then
@@ -240,6 +240,10 @@ jobs:
             --console \
             --add-data "assets${{ matrix.sep }}assets" \
             --hidden-import=requests \
+            --hidden-import=rich \
+            --hidden-import=InquirerPy \
+            --collect-all=rich \
+            --collect-all=InquirerPy \
             ${{ matrix.icon_arg }} \
             launcher.py
 
@@ -326,13 +330,68 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           
-          # 验证 requirements 文件存在
-          if [ ! -f "config/requirements.txt" ]; then
-            echo "❌ config/requirements.txt 文件不存在"
+          # 自动生成依赖文件
+          echo "🔍 正在扫描代码依赖..."
+          python -m pipreqs . --force --ignore .git --savepath config/requirements-auto.txt
+          
+          # 验证生成的依赖文件
+          if [ ! -f "config/requirements-auto.txt" ]; then
+            echo "❌ 自动生成依赖文件失败"
             exit 1
           fi
           
-          python -m pip install --prefer-binary -r config/requirements.txt
+          echo "📋 自动生成的依赖:"
+          cat config/requirements-auto.txt
+          echo ""
+          
+          # 如果存在原始 requirements.txt，合并版本信息
+          if [ -f "config/requirements.txt" ]; then
+            echo "🔄 合并版本信息..."
+            python - <<'PY'
+            import re
+            
+            # 读取自动生成的依赖
+            with open('config/requirements-auto.txt', 'r') as f:
+                auto_deps = set(line.strip().split('>=')[0].split('==')[0] for line in f if line.strip() and not line.startswith('#'))
+            
+            # 读取原始依赖及版本
+            version_map = {}
+            if auto_deps:
+                try:
+                    with open('config/requirements.txt', 'r') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith('#'):
+                                # 解析包名和版本
+                                match = re.match(r'^([a-zA-Z0-9_-]+)', line)
+                                if match:
+                                    pkg_name = match.group(1)
+                                    version_map[pkg_name] = line
+                except FileNotFoundError:
+                    pass
+            
+            # 生成合并后的依赖文件
+            with open('config/requirements-final.txt', 'w') as f:
+                f.write("# 自动生成的依赖文件 - GitHub Actions\n")
+                f.write(f"# 生成时间: $(date)\n\n")
+                
+                for dep in sorted(auto_deps):
+                    if dep in version_map:
+                        f.write(f"{version_map[dep]}\n")
+                    else:
+                        f.write(f"{dep}\n")
+            
+            print(f"✅ 合并完成，生成 config/requirements-final.txt")
+            PY
+            
+            # 使用合并后的依赖文件
+            REQUIREMENTS_FILE="config/requirements-final.txt"
+          else
+            REQUIREMENTS_FILE="config/requirements-auto.txt"
+          fi
+          
+          echo "📦 最终使用依赖文件: $REQUIREMENTS_FILE"
+          python -m pip install --prefer-binary -r "$REQUIREMENTS_FILE"
           echo "✅ Runtime 依赖安装完成"
 
       - name: Generate runtime version.py
@@ -387,12 +446,21 @@ jobs:
           if [ -f version.py ]; then cp version.py runtime/; fi
 
           python -m venv runtime/.venv
+          # 使用自动生成的依赖文件
+          if [ -f "config/requirements-final.txt" ]; then
+            REQUIREMENTS_FILE="config/requirements-final.txt"
+          elif [ -f "config/requirements-auto.txt" ]; then
+            REQUIREMENTS_FILE="config/requirements-auto.txt"
+          else
+            REQUIREMENTS_FILE="config/requirements.txt"
+          fi
+          
           if [ "${{ runner.os }}" = "Windows" ]; then
             runtime/.venv/Scripts/python -m pip install --upgrade pip
-            runtime/.venv/Scripts/python -m pip install --prefer-binary -r config/requirements.txt
+            runtime/.venv/Scripts/python -m pip install --prefer-binary -r "$REQUIREMENTS_FILE"
           else
             runtime/.venv/bin/python -m pip install --upgrade pip
-            runtime/.venv/bin/python -m pip install --prefer-binary -r config/requirements.txt
+            runtime/.venv/bin/python -m pip install --prefer-binary -r "$REQUIREMENTS_FILE"
           fi
 
           cd runtime
@@ -544,6 +612,12 @@ jobs:
             python3 -m venv runtime-termux/.venv
             runtime-termux/.venv/bin/python -m pip install --upgrade pip
             runtime-termux/.venv/bin/python -m pip install --default-timeout=3600 --prefer-binary -r config/requirements-termux.txt
+            
+            # 如果存在自动生成的依赖，也安装
+            if [ -f "config/requirements-auto.txt" ]; then
+              echo "📦 安装自动检测到的额外依赖..."
+              runtime-termux/.venv/bin/python -m pip install --default-timeout=3600 --prefer-binary -r config/requirements-auto.txt
+            fi
 
             cd runtime-termux
             zip -r ../runtime-termux-arm64.zip .

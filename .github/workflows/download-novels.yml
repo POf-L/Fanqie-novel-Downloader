@@ -55,7 +55,64 @@ jobs:
       - name: 安装 Python 依赖
         run: |
           python -m pip install --upgrade pip
-          pip install --prefer-binary -r config/requirements.txt
+          
+          # 自动生成依赖文件
+          echo "🔍 正在扫描代码依赖..."
+          python -m pip install pipreqs
+          python -m pipreqs . --force --ignore .git --savepath config/requirements-auto.txt
+          
+          # 验证生成的依赖文件
+          if [ ! -f "config/requirements-auto.txt" ]; then
+            echo "❌ 自动生成依赖文件失败，使用原始文件"
+            pip install --prefer-binary -r config/requirements.txt
+          else
+            echo "📋 自动生成的依赖:"
+            cat config/requirements-auto.txt
+            echo ""
+            
+            # 如果存在原始 requirements.txt，合并版本信息
+            if [ -f "config/requirements.txt" ]; then
+              echo "🔄 合并版本信息..."
+              python - <<'PY'
+              import re
+              
+              # 读取自动生成的依赖
+              with open('config/requirements-auto.txt', 'r') as f:
+                  auto_deps = set(line.strip().split('>=')[0].split('==')[0] for line in f if line.strip() and not line.startswith('#'))
+              
+              # 读取原始依赖及版本
+              version_map = {}
+              try:
+                  with open('config/requirements.txt', 'r') as f:
+                      for line in f:
+                          line = line.strip()
+                          if line and not line.startswith('#'):
+                              match = re.match(r'^([a-zA-Z0-9_-]+)', line)
+                              if match:
+                                  pkg_name = match.group(1)
+                                  version_map[pkg_name] = line
+              except FileNotFoundError:
+                  pass
+              
+              # 生成合并后的依赖文件
+              with open('config/requirements-final.txt', 'w') as f:
+                  f.write("# 自动生成的依赖文件 - GitHub Actions\n")
+                  f.write("# 生成时间: $(date)\n\n")
+                  
+                  for dep in sorted(auto_deps):
+                      if dep in version_map:
+                          f.write(f"{version_map[dep]}\n")
+                      else:
+                          f.write(f"{dep}\n")
+              
+              print("✅ 合并完成，使用 config/requirements-final.txt")
+              PY
+              
+              pip install --prefer-binary -r config/requirements-final.txt
+            else
+              pip install --prefer-binary -r config/requirements-auto.txt
+            fi
+          fi
 
       - name: 解析书籍 ID 列表
         id: parse_ids

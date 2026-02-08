@@ -13,6 +13,9 @@ import tempfile
 import time
 import traceback
 import zipfile
+from typing import Dict, List, Optional, Tuple, Any, Callable
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 导入仓库配置管理模块（带异常处理）
 try:
@@ -24,16 +27,612 @@ except ImportError as e:
     def get_effective_repo():
         return "POf-L/Fanqie-novel-Downloader", "默认值"
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import requests
 
-# 导入TUI组件
+# TUI组件导入
 try:
-    from utils.launcher_tui import get_tui, DownloadOption, MirrorInfo
-    TUI_AVAILABLE = True
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TimeRemainingColumn
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.live import Live
+    from rich.prompt import Prompt, Confirm
+    from rich.align import Align
+    RICH_AVAILABLE = True
 except ImportError:
-    TUI_AVAILABLE = False
+    RICH_AVAILABLE = False
+
+try:
+    from InquirerPy import inquirer
+    INQUIRER_AVAILABLE = True
+except ImportError:
+    INQUIRER_AVAILABLE = False
+
+
+@dataclass
+class DownloadOption:
+    id: str
+    name: str
+    description: str
+
+
+@dataclass
+class MirrorInfo:
+    name: str
+    url: str
+    latency: Optional[float] = None
+
+
+class LauncherTUI:
+
+    def __init__(self):
+        self.console = Console() if RICH_AVAILABLE else None
+        self.use_tui = RICH_AVAILABLE and self._is_tui_available()
+
+    def _is_tui_available(self) -> bool:
+        if not sys.stdout.isatty():
+            return False
+        return True
+
+    def print(self, *args, **kwargs):
+        if self.use_tui and self.console:
+            self.console.print(*args, **kwargs)
+        else:
+            print(*args, **kwargs)
+
+    def show_header(self):
+        if self.use_tui:
+            header_text = Text("番茄小说下载器 启动器", style="bold blue")
+            panel = Panel(
+                Align.center(header_text),
+                border_style="blue",
+                padding=(1, 2)
+            )
+            self.console.print(panel)
+        else:
+            print("=" * 50)
+            print("番茄小说下载器 启动器")
+            print("=" * 50)
+
+    def show_debug_info(self, debug_info: dict):
+        if self.use_tui:
+            table = Table(title="环境信息", show_header=False, box=None)
+            table.add_column("Key", style="cyan")
+            table.add_column("Value", style="white")
+            for key, value in debug_info.items():
+                table.add_row(key, str(value))
+            panel = Panel(table, title="DEBUG", border_style="dim")
+            self.console.print(panel)
+        else:
+            self.print("[DEBUG] ========== 启动环境信息 ==========")
+            for key, value in debug_info.items():
+                self.print(f"[DEBUG] {key}: {value}")
+            self.print("[DEBUG] ======================================")
+
+    def _inquirer_select(self, message: str, choices: List[dict], default: Any = None) -> Any:
+        if INQUIRER_AVAILABLE:
+            try:
+                return inquirer.select(
+                    message=message,
+                    choices=choices,
+                    default=default,
+                    pointer="▸",
+                    instruction="(↑/↓ 移动, Enter 确认)",
+                ).execute()
+            except Exception:
+                pass
+        return None
+
+    def _arrow_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        """使用方向键选择选项"""
+        if not self.use_tui or not self.console:
+            # 回退到数字输入
+            for i, opt in enumerate(options, 1):
+                print(f"  {i}. {opt.name} - {opt.description}")
+            try:
+                choice = input(f"请输入选项 [1-{len(options)}] (默认 {default}): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                choice = default
+            if choice.isdigit() and 1 <= int(choice) <= len(options):
+                return options[int(choice) - 1].id
+            return default
+
+        # Windows系统检查
+        if sys.platform == "win32":
+            return self._windows_arrow_select(message, options, default)
+        else:
+            return self._unix_arrow_select(message, options, default)
+
+    def _windows_arrow_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        """Windows系统的方向键选择"""
+        import msvcrt
+        
+        console = Console()
+        
+        # 找到默认选项的索引
+        default_index = 0
+        for i, opt in enumerate(options):
+            if opt.id == default:
+                default_index = i
+                break
+        
+        current_index = default_index
+        
+        def display_options():
+            console.clear()
+            console.print(f"\n[bold cyan]{message}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            for i, opt in enumerate(options):
+                if i == current_index:
+                    console.print(f"▸ [bold green]{opt.name}[/bold green] - [dim]{opt.description}[/dim]")
+                else:
+                    console.print(f"  {opt.name} - [dim]{opt.description}[/dim]")
+        
+        display_options()
+        
+        try:
+            while True:
+                try:
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch()
+                        
+                        if key == b'\xe0':  # Special key prefix
+                            key = msvcrt.getch()
+                            if key == b'H':  # Up arrow
+                                current_index = (current_index - 1) % len(options)
+                                display_options()
+                            elif key == b'P':  # Down arrow
+                                current_index = (current_index + 1) % len(options)
+                                display_options()
+                        elif key == b'\r':  # Enter
+                            return options[current_index].id
+                        elif key == b'\x03':  # Ctrl+C
+                            raise KeyboardInterrupt()
+                            
+                except (KeyboardInterrupt, EOFError):
+                    return default
+                    
+        except Exception:
+            # 如果方向键支持失败，回退到rich prompt
+            return self._fallback_rich_select(message, options, default)
+
+    def _unix_arrow_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        """Unix/Linux系统的方向键选择"""
+        from rich.prompt import Prompt
+        from rich.console import Console
+        
+        console = Console()
+        
+        # 找到默认选项的索引
+        default_index = 0
+        for i, opt in enumerate(options):
+            if opt.id == default:
+                default_index = i
+                break
+        
+        current_index = default_index
+        
+        def display_options():
+            console.clear()
+            console.print(f"\n[bold cyan]{message}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            for i, opt in enumerate(options):
+                if i == current_index:
+                    console.print(f"▸ [bold green]{opt.name}[/bold green] - [dim]{opt.description}[/dim]")
+                else:
+                    console.print(f"  {opt.name} - [dim]{opt.description}[/dim]")
+        
+        display_options()
+        
+        import sys
+        import tty
+        import termios
+        
+        def get_key():
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':  # ESC sequence
+                    ch += sys.stdin.read(2)
+                return ch
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+        try:
+            while True:
+                try:
+                    key = get_key()
+                    
+                    if key == '\x1b[A':  # Up arrow
+                        current_index = (current_index - 1) % len(options)
+                        display_options()
+                    elif key == '\x1b[B':  # Down arrow
+                        current_index = (current_index + 1) % len(options)
+                        display_options()
+                    elif key == '\r' or key == '\n':  # Enter
+                        return options[current_index].id
+                    elif key == '\x03':  # Ctrl+C
+                        raise KeyboardInterrupt()
+                        
+                except (KeyboardInterrupt, EOFError):
+                    return default
+                    
+        except Exception:
+            # 如果方向键支持失败，回退到rich prompt
+            return self._fallback_rich_select(message, options, default)
+
+    def _fallback_rich_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        """Rich prompt回退方案"""
+        from rich.prompt import Prompt
+        
+        self.print(f"\n[bold cyan]{message}[/bold cyan]")
+        choice_map = {}
+        for i, opt in enumerate(options):
+            choice_map[str(i + 1)] = opt.id
+            self.print(f"  [yellow]{i + 1}[/yellow]. {opt.name} - [dim]{opt.description}[/dim]")
+        
+        try:
+            choice = Prompt.ask(
+                f"请输入选项 [1-{len(options)}]",
+                default=default,
+                choices=list(choice_map.keys())
+            )
+            return choice_map[choice]
+        except (EOFError, KeyboardInterrupt):
+            return default
+
+    def select_download_mode(self, options: List[DownloadOption], default: str = "3") -> str:
+        if INQUIRER_AVAILABLE:
+            choices = [
+                {"name": f"{opt.name} - {opt.description}", "value": opt.id}
+                for opt in options
+            ]
+            result = self._inquirer_select("选择下载方式:", choices, default=default)
+            if result is not None:
+                return result
+
+        # 使用自定义方向键选择器
+        return self._arrow_select("选择下载方式:", options, default)
+
+    def show_progress_test(self, title: str, items: List[Any], test_func: Callable, timeout: float = 3.0) -> List[Any]:
+        deadline = time.perf_counter() + timeout + 2.0
+        results = []
+
+        if self.use_tui:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                transient=True,
+                console=self.console
+            ) as progress:
+                task = progress.add_task(f"{title}...", total=len(items))
+
+                def test_with_progress(item):
+                    result = test_func(item)
+                    progress.advance(task)
+                    return result
+
+                with ThreadPoolExecutor(max_workers=8) as executor:
+                    futures = {executor.submit(test_with_progress, item): item for item in items}
+                    for future in as_completed(futures):
+                        if time.perf_counter() > deadline:
+                            break
+                        try:
+                            result = future.result(timeout=0.1)
+                            if result:
+                                results.append(result)
+                        except Exception:
+                            pass
+                    for f in futures:
+                        f.cancel()
+        else:
+            self.print(f"{title}...")
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                futures = {executor.submit(test_func, item): item for item in items}
+                for future in as_completed(futures):
+                    if time.perf_counter() > deadline:
+                        break
+                    try:
+                        result = future.result(timeout=0.1)
+                        if result:
+                            results.append(result)
+                    except Exception:
+                        pass
+                for f in futures:
+                    f.cancel()
+
+        return results
+
+    def _arrow_select_mirror(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        """使用方向键选择镜像"""
+        if not self.use_tui or not self.console:
+            # 回退到数字输入
+            max_name_len = max(len(m.name) for m in mirrors) if mirrors else 10
+            for i, mirror in enumerate(mirrors, 1):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                self.print(f"  {i:>3}. {mirror.name:<{max_name_len}}  {latency_str:>7}")
+            try:
+                sel = input(f"\n请选择编号 [1-{len(mirrors)}] (默认 {default_index + 1}): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                sel = str(default_index + 1)
+            try:
+                idx = int(sel) - 1 if sel else default_index
+                if not (0 <= idx < len(mirrors)):
+                    idx = default_index
+            except ValueError:
+                idx = default_index
+            return idx
+
+        # Windows系统检查
+        if sys.platform == "win32":
+            return self._windows_arrow_select_mirror(mirrors, title, default_index)
+        else:
+            return self._unix_arrow_select_mirror(mirrors, title, default_index)
+
+    def _windows_arrow_select_mirror(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        """Windows系统的镜像方向键选择"""
+        import msvcrt
+        
+        console = Console()
+        current_index = default_index
+        
+        def display_mirrors():
+            console.clear()
+            console.print(f"\n[bold cyan]{title}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            # 显示表头
+            console.print("  编号  镜像名称                        延迟")
+            console.print("  ----  ----------------------------  ----")
+            
+            for i, mirror in enumerate(mirrors):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                if i == current_index:
+                    console.print(f"▸ {i+1:>4}  [bold green]{mirror.name:<28}[/bold green]  {latency_str:>7}")
+                else:
+                    console.print(f"  {i+1:>4}  {mirror.name:<28}  {latency_str:>7}")
+        
+        display_mirrors()
+        
+        try:
+            while True:
+                try:
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch()
+                        
+                        if key == b'\xe0':  # Special key prefix
+                            key = msvcrt.getch()
+                            if key == b'H':  # Up arrow
+                                current_index = (current_index - 1) % len(mirrors)
+                                display_mirrors()
+                            elif key == b'P':  # Down arrow
+                                current_index = (current_index + 1) % len(mirrors)
+                                display_mirrors()
+                        elif key == b'\r':  # Enter
+                            return current_index
+                        elif key == b'\x03':  # Ctrl+C
+                            raise KeyboardInterrupt()
+                            
+                except (KeyboardInterrupt, EOFError):
+                    return default_index
+                    
+        except Exception:
+            # 如果方向键支持失败，回退到rich prompt
+            return self._fallback_rich_mirror_select(mirrors, title, default_index)
+
+    def _unix_arrow_select_mirror(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        """Unix/Linux系统的镜像方向键选择"""
+        console = Console()
+        current_index = default_index
+        
+        def display_mirrors():
+            console.clear()
+            console.print(f"\n[bold cyan]{title}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            # 显示表头
+            console.print("  编号  镜像名称                        延迟")
+            console.print("  ----  ----------------------------  ----")
+            
+            for i, mirror in enumerate(mirrors):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                if i == current_index:
+                    console.print(f"▸ {i+1:>4}  [bold green]{mirror.name:<28}[/bold green]  {latency_str:>7}")
+                else:
+                    console.print(f"  {i+1:>4}  {mirror.name:<28}  {latency_str:>7}")
+        
+        display_mirrors()
+        
+        import sys
+        import tty
+        import termios
+        
+        def get_key():
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':  # ESC sequence
+                    ch += sys.stdin.read(2)
+                return ch
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+        try:
+            while True:
+                try:
+                    key = get_key()
+                    
+                    if key == '\x1b[A':  # Up arrow
+                        current_index = (current_index - 1) % len(mirrors)
+                        display_mirrors()
+                    elif key == '\x1b[B':  # Down arrow
+                        current_index = (current_index + 1) % len(mirrors)
+                        display_mirrors()
+                    elif key == '\r' or key == '\n':  # Enter
+                        return current_index
+                    elif key == '\x03':  # Ctrl+C
+                        raise KeyboardInterrupt()
+                        
+                except (KeyboardInterrupt, EOFError):
+                    return default_index
+                    
+        except Exception:
+            # 如果方向键支持失败，回退到rich prompt
+            return self._fallback_rich_mirror_select(mirrors, title, default_index)
+
+    def _fallback_rich_mirror_select(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        """Rich prompt镜像选择回退方案"""
+        from rich.prompt import Prompt
+        
+        table = Table(title=title, show_header=True, header_style="bold magenta")
+        table.add_column("编号", style="cyan", width=6)
+        table.add_column("镜像名称", style="white")
+        table.add_column("延迟", style="green", justify="right")
+        for i, mirror in enumerate(mirrors, 1):
+            latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+            table.add_row(str(i), mirror.name, latency_str)
+        self.console.print(table)
+        
+        try:
+            choice = Prompt.ask(
+                f"请选择镜像编号 [1-{len(mirrors)}]",
+                default=str(default_index + 1)
+            )
+            idx = int(choice) - 1
+            if 0 <= idx < len(mirrors):
+                return idx
+            self.print("[red]无效的选择，请重新输入[/red]")
+            return default_index
+        except (EOFError, KeyboardInterrupt, ValueError):
+            return default_index
+
+    def show_mirror_table(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        if INQUIRER_AVAILABLE:
+            choices = []
+            for i, mirror in enumerate(mirrors):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                choices.append({"name": f"{mirror.name}  ({latency_str})", "value": i})
+            result = self._inquirer_select(title, choices, default=default_index)
+            if result is not None:
+                return result
+
+        # 使用自定义方向键选择器
+        return self._arrow_select_mirror(mirrors, title, default_index)
+
+    def show_download_progress(self, description: str, download_func: Callable, *args, **kwargs) -> Any:
+        if not self.use_tui:
+            self.print(f"{description}...")
+            return download_func(*args, **kwargs)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=self.console
+        ) as progress:
+            def download_with_progress():
+                task = progress.add_task(description, total=100)
+                progress_callback = lambda downloaded, total, start: self._update_download_progress(
+                    progress, task, downloaded, total, start
+                )
+                original_render = _render_download_progress
+                _render_download_progress = progress_callback
+                try:
+                    result = download_func(*args, **kwargs)
+                finally:
+                    _render_download_progress = original_render
+                progress.update(task, completed=100)
+                return result
+            return download_with_progress()
+
+    def _update_download_progress(self, progress_obj, task_id, downloaded, total, start_ts):
+        if total > 0:
+            progress_obj.update(task_id, completed=int(downloaded * 100 / total))
+
+    def show_installation_progress(self, title: str, install_func: Callable, *args, **kwargs) -> bool:
+        if not self.use_tui:
+            self.print(f"{title}...")
+            try:
+                install_func(*args, **kwargs)
+                return True
+            except Exception as e:
+                self.print(f"安装失败: {e}")
+                return False
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True,
+            console=self.console
+        ) as progress:
+            task = progress.add_task(title, total=None)
+            try:
+                install_func(*args, **kwargs)
+                progress.update(task, description=f"[green]{title} 完成[/green]")
+                return True
+            except Exception as e:
+                progress.update(task, description=f"[red]{title} 失败: {e}[/red]")
+                return False
+
+    def show_status(self, message: str, status_type: str = "info"):
+        if not self.use_tui:
+            self.print(message)
+            return
+        style_map = {
+            "info": "blue",
+            "success": "green",
+            "warning": "yellow",
+            "error": "red"
+        }
+        style = style_map.get(status_type, "white")
+        self.print(f"[{style}]{message}[/{style}]")
+
+    def show_error(self, message: str, pause: bool = False):
+        if self.use_tui:
+            self.print(f"[red bold]错误: {message}[/red bold]")
+        else:
+            self.print(f"错误: {message}")
+        if pause and getattr(sys, "frozen", False):
+            try:
+                input("按回车键退出...")
+            except Exception:
+                pass
+
+    def confirm_action(self, message: str, default: bool = True) -> bool:
+        if INQUIRER_AVAILABLE:
+            try:
+                return inquirer.confirm(message=message, default=default).execute()
+            except Exception:
+                pass
+        if not self.use_tui:
+            try:
+                response = input(f"{message} ({'Y/n' if default else 'y/N'}): ").strip().lower()
+                if not response:
+                    return default
+                return response in ['y', 'yes']
+            except (EOFError, KeyboardInterrupt):
+                return default
+        return Confirm.ask(message, default=default)
+
+
+_tui_instance = None
+
+def get_tui() -> LauncherTUI:
+    global _tui_instance
+    if _tui_instance is None:
+        _tui_instance = LauncherTUI()
+    return _tui_instance
 
 LAUNCHER_VERSION = "1.0.0"
 APP_DIR_NAME = "FanqieNovelDownloader"
@@ -524,13 +1123,22 @@ def _test_pip_mirror_latency(mirror: Tuple[str, str]) -> Tuple[str, str, Optiona
 def _test_all_pip_mirrors() -> List[Tuple[str, str, float]]:
     print("正在测试 pip 镜像源延迟...")
     max_workers = max(1, min(len(PIP_INDEX_MIRRORS), 8))
+    deadline = time.perf_counter() + NODE_TEST_TIMEOUT_SECONDS + 2.0
+    available: List[Tuple[str, str, float]] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(_test_pip_mirror_latency, PIP_INDEX_MIRRORS))
-
-    available = sorted(
-        [(name, url, latency) for name, url, latency in results if latency is not None],
-        key=lambda item: item[2],
-    )
+        futures = {executor.submit(_test_pip_mirror_latency, m): m for m in PIP_INDEX_MIRRORS}
+        for future in concurrent.futures.as_completed(futures):
+            if time.perf_counter() > deadline:
+                break
+            try:
+                name, url, latency = future.result(timeout=0.1)
+                if latency is not None:
+                    available.append((name, url, latency))
+            except Exception:
+                pass
+        for f in futures:
+            f.cancel()
+    available.sort(key=lambda item: item[2])
     return available
 
 
@@ -538,7 +1146,7 @@ def _select_pip_mirror() -> None:
     global _selected_pip_mirror_name, _selected_pip_index_url
 
     # 获取TUI实例
-    tui = get_tui() if TUI_AVAILABLE else None
+    tui = get_tui() if RICH_AVAILABLE else None
 
     # 测试pip镜像
     if tui and tui.use_tui:
@@ -678,6 +1286,8 @@ def _ensure_runtime_dependencies() -> None:
     if not runtime_root.exists():
         raise RuntimeError("Runtime 不存在，无法安装依赖")
 
+    tui = get_tui() if RICH_AVAILABLE else None
+
     requirements_path = _requirements_file_for_platform()
     requirements_bytes = requirements_path.read_bytes()
     requirements_sha = _sha256_bytes(requirements_bytes)
@@ -688,9 +1298,6 @@ def _ensure_runtime_dependencies() -> None:
         and deps_state.get("requirements_file") == str(requirements_path.relative_to(runtime_root))
         and _runtime_venv_python().exists()
     ):
-        # 获取TUI实例
-        tui = get_tui() if TUI_AVAILABLE else None
-        
         if tui:
             tui.show_status("依赖已就绪", "success")
         else:
@@ -739,12 +1346,22 @@ def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
 def _test_all_nodes() -> List[Tuple[str, float]]:
     print("正在测试镜像节点延迟...")
     max_workers = max(1, min(len(MIRROR_NODES), NODE_TEST_MAX_WORKERS))
+    deadline = time.perf_counter() + NODE_TEST_TIMEOUT_SECONDS + 2.0
+    available: List[Tuple[str, float]] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(_test_node_latency, MIRROR_NODES))
-    available = sorted(
-        [(d, l) for d, l in results if l is not None],
-        key=lambda x: x[1],
-    )
+        futures = {executor.submit(_test_node_latency, d): d for d in MIRROR_NODES}
+        for future in concurrent.futures.as_completed(futures):
+            if time.perf_counter() > deadline:
+                break
+            try:
+                domain, latency = future.result(timeout=0.1)
+                if latency is not None:
+                    available.append((domain, latency))
+            except Exception:
+                pass
+        for f in futures:
+            f.cancel()
+    available.sort(key=lambda x: x[1])
     return available
 
 
@@ -752,7 +1369,7 @@ def _select_download_mode() -> None:
     global _download_mode, _mirror_domain
 
     # 获取TUI实例
-    tui = get_tui() if TUI_AVAILABLE else None
+    tui = get_tui() if RICH_AVAILABLE else None
 
     # 定义下载选项
     options = [
@@ -841,7 +1458,7 @@ def _ensure_runtime(repo: str) -> None:
     local_state = _read_json(state_path) or {}
     
     # 获取TUI实例
-    tui = get_tui() if TUI_AVAILABLE else None
+    tui = get_tui() if RICH_AVAILABLE else None
 
     remote_manifest = _load_platform_manifest(repo, platform)
     if not remote_manifest:
@@ -981,7 +1598,7 @@ def _launch_runtime() -> None:
 
 def main() -> None:
     # 获取TUI实例
-    tui = get_tui() if TUI_AVAILABLE else None
+    tui = get_tui() if RICH_AVAILABLE else None
     
     # 显示启动器头部
     if tui:
