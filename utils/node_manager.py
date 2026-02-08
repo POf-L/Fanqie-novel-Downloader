@@ -84,16 +84,16 @@ class NodeTester:
                                         test_result['batch_support_verified'] = True
                                     else:
                                         test_result['batch_support_verified'] = False
-                                except:
+                                except Exception:
                                     test_result['batch_support_verified'] = False
-                            except:
+                            except Exception:
                                 test_result['batch_support_verified'] = False
                         else:
                             test_result['batch_support_verified'] = False
                     else:
                         # 响应不是预期的 JSON 格式
                         test_result['error'] = "响应格式错误"
-                except:
+                except Exception:
                     # 响应不是 JSON，可能是防护页面
                     test_result['error'] = "响应非JSON格式"
             else:
@@ -138,7 +138,7 @@ class NodeTester:
     
     async def test_all_nodes_async(self) -> List[Dict]:
         """异步测试所有节点（用于启动时）"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         
         # 使用线程池执行同步的网络请求
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -343,7 +343,7 @@ class NodeStatusCache:
                     if (last_updated > cutoff_time and 
                         status.get('available', False)):
                         available.append(node_url)
-                except:
+                except Exception:
                     continue
             
             return available
@@ -374,7 +374,7 @@ class NodeStatusCache:
                     last_updated = datetime.fromisoformat(status.get('last_updated', ''))
                     if last_updated < cutoff_time:
                         expired_keys.append(node_url)
-                except:
+                except Exception:
                     expired_keys.append(node_url)
             
             for key in expired_keys:

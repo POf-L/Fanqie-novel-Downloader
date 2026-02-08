@@ -23,7 +23,7 @@ def setup_utf8_encoding():
         try:
             # 设置控制台代码页为 UTF-8
             os.system('chcp 65001 >nul 2>&1')
-        except:
+        except Exception:
             pass
 
         # 设置环境变量
@@ -46,7 +46,7 @@ def setup_utf8_encoding():
                     mode = ctypes.wintypes.DWORD()
                     if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
                         kernel32.SetConsoleMode(handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
-        except:
+        except Exception:
             pass  # 忽略失败，继续其他设置
 
         # 重新包装 stdout 和 stderr 为 UTF-8
@@ -152,13 +152,13 @@ def safe_print(*args, **kwargs):
             # 最后的备用方案
             try:
                 _ORIGINAL_PRINT(f"<UnicodeEncodeError: {e}>", **kwargs)
-            except:
+            except Exception:
                 pass
     except Exception as e:
         # 如果还是失败，使用最基本的错误处理
         try:
             _ORIGINAL_PRINT(f"<print error: {e}>", **kwargs)
-        except:
+        except Exception:
             pass
 
 

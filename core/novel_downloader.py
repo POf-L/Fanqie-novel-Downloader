@@ -61,7 +61,6 @@ from core.state_store import (
 )
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-requests.packages.urllib3.disable_warnings()
 
 # ===================== 官方API管理器 =====================
 
@@ -194,7 +193,7 @@ class APIManager:
                     health_monitor = get_health_monitor()
                     if health_monitor:
                         failed_nodes.update(health_monitor.get_failed_nodes())
-                except:
+                except Exception:
                     pass
 
                 # 过滤掉故障节点
@@ -1446,7 +1445,7 @@ def clear_status(book_id: str):
     """清除下载状态（下载完成后调用）"""
     try:
         _ss_clear_status(book_id)
-    except:
+    except Exception:
         pass
 
 
@@ -2035,7 +2034,7 @@ def Run(book_id, save_path, file_format='txt', start_chapter=None, end_chapter=N
             # 清理异步会话
             try:
                 await api.close_async()
-            except:
+            except Exception:
                 pass
 
     # 运行异步下载流程 - 打包环境兼容版

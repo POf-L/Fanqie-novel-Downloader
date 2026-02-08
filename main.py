@@ -19,7 +19,7 @@ def _write_error(msg):
         elif hasattr(sys, 'stderr') and sys.stderr:
             sys.stderr.write(msg + '\n')
             sys.stderr.flush()
-    except:
+    except Exception:
         pass
 
 # 全局异常处理 - 确保打包后能看到错误
@@ -39,7 +39,7 @@ def _global_exception_handler(exc_type, exc_value, exc_tb):
         try:
             _write_error("\n按回车键退出...")
             input()
-        except:
+        except Exception:
             import time
             time.sleep(10)
 
@@ -337,7 +337,7 @@ def main():
             if response.status_code == 200:
                 print("服务已启动")
                 break
-        except:
+        except Exception:
             if i < max_retries - 1:
                 time.sleep(0.5)
             else:

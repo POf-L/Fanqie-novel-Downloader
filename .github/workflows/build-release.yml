@@ -197,6 +197,9 @@ jobs:
 
       - name: Set default repo in launcher
         shell: bash
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
         run: |
           echo "更新 launcher.py 中的仓库配置为: ${TARGET_REPO}"
           
@@ -222,10 +225,10 @@ jobs:
               with open('launcher.py', 'w', encoding='utf-8') as file_obj:
                   file_obj.write(content)
 
-              print(f'✅ 成功更新仓库配置: {default_repo} -> {target_repo}')
+              print(f'Updated launcher repo: {default_repo} -> {target_repo}')
 
           except Exception as exc:
-              print(f'❌ 更新仓库配置失败: {exc}')
+              print(f'Failed to update launcher repo: {exc}')
               sys.exit(1)
           PY
 

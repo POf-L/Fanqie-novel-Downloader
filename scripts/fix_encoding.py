@@ -91,7 +91,7 @@ def fix_file_encoding(file_path: str, backup: bool = True) -> bool:
                 has_mojibake = True
                 break
         
-        if not has_mojibake and encoding.lower() == 'utf-8':
+        if not has_mojibake and encoding and encoding.lower() == 'utf-8':
             print(f"  文件已经是正确的UTF-8编码，无需修复")
             return True
         
