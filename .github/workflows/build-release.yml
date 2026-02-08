@@ -111,6 +111,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pyinstaller requests
 
+      - name: Set default repo in launcher
+        shell: bash
+        run: |
+          sed -i 's|POf-L/Fanqie-novel-Downloader|${{ github.repository }}|g' launcher.py
+
       - name: Build launcher executable
         shell: bash
         run: |
@@ -145,11 +150,25 @@ jobs:
           name: FanqieLauncher Stable
           body: |
             ## FanqieLauncher Stable
-
-            固定下载通道：仅在需要升级启动器时手动更新。
+            
+            ### 🚀 快速开始
+            1. 下载对应平台的Launcher（无需安装Python）
+            2. 运行Launcher，自动下载最新Runtime
+            3. 享受完整的小说下载功能
+            
+            ### 📦 下载说明
+            - **Windows**: `FanqieLauncher-windows-x64.exe`
+            - **Linux**: `FanqieLauncher-linux-x64`
+            - **macOS**: `FanqieLauncher-macos-x64`
+            
+            ### 💡 特性
+            - 无需安装Python环境
+            - 自动更新和依赖管理
+            - 跨平台支持
+            - 美观的TUI界面
           draft: false
           prerelease: false
-          make_latest: false
+          make_latest: true
           files: dist/${{ matrix.launcher_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -487,33 +506,35 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          name: TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
+          name: TomatoNovelDownloader Runtime ${{ needs.prepare-release.outputs.tag_name }}
           body: |
-            ## ✅ TomatoNovelDownloader ${{ needs.prepare-release.outputs.tag_name }}
-
-            ### 🧭 架构
-            - 稳定 Launcher（长期不变）
-            - 云端 Runtime（代码+依赖）
-
-            ### 📝 更新内容（自上一个 Latest 版本起）
+            ## 📦 Runtime 更新包
+            
+            **注意：这是Runtime更新包，仅供Launcher自动更新使用。**
+            
+            ### � 如何使用
+            1. 首次使用请下载 [Launcher Stable](https://github.com/${{ github.repository }}/releases/tag/launcher-stable)
+            2. 运行Launcher会自动下载此Runtime
+            3. 无需手动下载Runtime文件
+            
+            ### 📝 更新内容（自上一个版本起）
             ${{ steps.changelog.outputs.content }}
-
+            
             ---
-
-            ### 📥 下载说明
-            - 稳定启动器下载（推荐）：https://github.com/${{ github.repository }}/releases/tag/launcher-stable
-            - 用户首次下载 Launcher（对应平台）
-            - 后续启动由 Launcher 自动拉取最新 Runtime
-            - 本次 Runtime 资产：https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare-release.outputs.tag_name }}
-
+            
             ### 📋 发布信息
             | 项目 | 详情 |
             | :--- | :--- |
             | 🕒 **发布时间** | ${{ needs.prepare-release.outputs.build_time }} |
             | 🔗 **比较起点** | `${{ steps.changelog.outputs.latest_tag }}` |
             | 🔩 **Commit** | `${{ github.sha }}` |
+            
+            ### 🛠️ 技术细节
+            - Runtime版本: `${{ needs.prepare-release.outputs.tag_name }}`
+            - 包含完整的Python环境和依赖
+            - 支持跨平台自动更新
           draft: false
           prerelease: false
-          make_latest: ${{ github.event_name == 'workflow_dispatch' && inputs.build_launcher == 'true' }}
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

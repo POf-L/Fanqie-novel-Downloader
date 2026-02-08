@@ -18,6 +18,12 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+# 导入TUI组件
+try:
+    from utils.launcher_tui import get_tui, DownloadOption, MirrorInfo
+    TUI_AVAILABLE = True
+except ImportError:
+    TUI_AVAILABLE = False
 
 LAUNCHER_VERSION = "1.0.0"
 APP_DIR_NAME = "FanqieNovelDownloader"
@@ -521,31 +527,55 @@ def _test_all_pip_mirrors() -> List[Tuple[str, str, float]]:
 def _select_pip_mirror() -> None:
     global _selected_pip_mirror_name, _selected_pip_index_url
 
-    available = _test_all_pip_mirrors()
+    # 获取TUI实例
+    tui = get_tui() if TUI_AVAILABLE else None
+
+    # 测试pip镜像
+    if tui and tui.use_tui:
+        available = tui.show_progress_test(
+            "正在测试 pip 镜像源延迟",
+            PIP_INDEX_MIRRORS,
+            _test_pip_mirror_latency,
+            timeout=NODE_TEST_TIMEOUT_SECONDS
+        )
+    else:
+        available = _test_all_pip_mirrors()
+
     if not available:
-        print("pip 镜像测速失败，将使用官方 PyPI")
+        if tui:
+            tui.show_status("pip 镜像测速失败，将使用官方 PyPI", "warning")
+        else:
+            print("pip 镜像测速失败，将使用官方 PyPI")
         _selected_pip_mirror_name = "PyPI"
         _selected_pip_index_url = "https://pypi.org/simple"
         return
 
-    max_name_len = max(len(name) for name, _, _ in available)
-    for i, (name, url, latency) in enumerate(available, 1):
-        print(f"  {i:>3}. {name:<{max_name_len}}  {latency:>7.0f}ms  {url}")
+    # 选择pip镜像
+    if tui and tui.use_tui:
+        mirror_infos = [MirrorInfo(name, url, latency) for name, url, latency in available]
+        idx = tui.show_mirror_table(mirror_infos, "选择pip镜像源", default_index=0)
+    else:
+        max_name_len = max(len(name) for name, _, _ in available)
+        for i, (name, url, latency) in enumerate(available, 1):
+            print(f"  {i:>3}. {name:<{max_name_len}}  {latency:>7.0f}ms  {url}")
 
-    try:
-        sel = input(f"\n请选择 pip 镜像编号 [1-{len(available)}] (默认 1): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        sel = ""
+        try:
+            sel = input(f"\n请选择 pip 镜像编号 [1-{len(available)}] (默认 1): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            sel = ""
 
-    try:
-        idx = int(sel) - 1 if sel else 0
-        if not (0 <= idx < len(available)):
+        try:
+            idx = int(sel) - 1 if sel else 0
+            if not (0 <= idx < len(available)):
+                idx = 0
+        except ValueError:
             idx = 0
-    except ValueError:
-        idx = 0
 
     _selected_pip_mirror_name, _selected_pip_index_url, _ = available[idx]
-    print(f"已选择 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
+    if tui:
+        tui.show_status(f"已选择 pip 镜像: {_selected_pip_mirror_name}", "success")
+    else:
+        print(f"已选择 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
 
 
 def _pip_install_with_mirrors(py_path: Path, install_args: List[str]) -> None:
@@ -648,12 +678,22 @@ def _ensure_runtime_dependencies() -> None:
         and deps_state.get("requirements_file") == str(requirements_path.relative_to(runtime_root))
         and _runtime_venv_python().exists()
     ):
-        print("✓ 依赖已就绪")
+        # 获取TUI实例
+        tui = get_tui() if TUI_AVAILABLE else None
+        
+        if tui:
+            tui.show_status("依赖已就绪", "success")
+        else:
+            print("✓ 依赖已就绪")
         return
 
     py_path = _ensure_runtime_venv()
 
-    print("正在安装 Runtime 依赖...")
+    if tui:
+        tui.show_status("正在安装 Runtime 依赖...", "info")
+    else:
+        print("正在安装 Runtime 依赖...")
+    
     _pip_install_with_mirrors(py_path, ["--upgrade", "pip"])
     _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
 
@@ -666,7 +706,11 @@ def _ensure_runtime_dependencies() -> None:
             "updated_at": int(time.time()),
         },
     )
-    print("✓ Runtime 依赖安装完成")
+    
+    if tui:
+        tui.show_status("Runtime 依赖安装完成", "success")
+    else:
+        print("✓ Runtime 依赖安装完成")
 
 
 def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
@@ -697,15 +741,29 @@ def _test_all_nodes() -> List[Tuple[str, float]]:
 def _select_download_mode() -> None:
     global _download_mode, _mirror_domain
 
-    print("\n请选择下载方式:")
-    print("  1. 直连 GitHub (不使用代理)")
-    print("  2. 直连 GitHub (使用系统代理)")
-    print("  3. 使用镜像节点")
+    # 获取TUI实例
+    tui = get_tui() if TUI_AVAILABLE else None
 
-    try:
-        choice = input("请输入选项 [1/2/3] (默认 3): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        choice = ""
+    # 定义下载选项
+    options = [
+        DownloadOption("1", "直连 GitHub", "不使用代理，直接连接GitHub"),
+        DownloadOption("2", "直连 GitHub", "使用系统代理"),
+        DownloadOption("3", "使用镜像节点", "通过GitHub镜像节点下载")
+    ]
+
+    if tui and tui.use_tui:
+        # TUI模式
+        choice = tui.select_download_mode(options, default="3")
+    else:
+        # 传统命令行模式
+        print("\n请选择下载方式:")
+        for i, opt in enumerate(options, 1):
+            print(f"  {i}. {opt.name} - {opt.description}")
+
+        try:
+            choice = input("请输入选项 [1/2/3] (默认 3): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            choice = "3"
 
     if choice == "1":
         _download_mode = "direct"
@@ -720,46 +778,76 @@ def _select_download_mode() -> None:
     _download_mode = "mirror"
     _session.trust_env = False
 
-    available = _test_all_nodes()
+    # 测试镜像节点
+    if tui and tui.use_tui:
+        available = tui.show_progress_test(
+            "正在测试镜像节点延迟",
+            MIRROR_NODES,
+            _test_node_latency,
+            timeout=NODE_TEST_TIMEOUT_SECONDS
+        )
+    else:
+        available = _test_all_nodes()
+
     if not available:
-        print("所有镜像节点均不可用，将使用直连")
+        if tui:
+            tui.show_status("所有镜像节点均不可用，将使用直连", "warning")
+        else:
+            print("所有镜像节点均不可用，将使用直连")
         _download_mode = "direct"
         return
 
-    max_len = max(len(d) for d, _ in available)
-    for i, (domain, latency) in enumerate(available, 1):
-        print(f"  {i:>3}. {domain:<{max_len}}  {latency:>7.0f}ms")
+    # 选择镜像节点
+    if tui and tui.use_tui:
+        mirror_infos = [MirrorInfo(domain, f"https://{domain}", latency) for domain, latency in available]
+        idx = tui.show_mirror_table(mirror_infos, "选择镜像节点", default_index=0)
+    else:
+        max_len = max(len(d) for d, _ in available)
+        for i, (domain, latency) in enumerate(available, 1):
+            print(f"  {i:>3}. {domain:<{max_len}}  {latency:>7.0f}ms")
 
-    try:
-        sel = input(f"\n请选择节点编号 [1-{len(available)}] (默认 1): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        sel = ""
+        try:
+            sel = input(f"\n请选择节点编号 [1-{len(available)}] (默认 1): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            sel = "1"
 
-    try:
-        idx = int(sel) - 1 if sel else 0
-        if not (0 <= idx < len(available)):
+        try:
+            idx = int(sel) - 1 if sel else 0
+            if not (0 <= idx < len(available)):
+                idx = 0
+        except ValueError:
             idx = 0
-    except ValueError:
-        idx = 0
 
     _mirror_domain = available[idx][0]
-    print(f"已选择镜像: {_mirror_domain}")
+    if tui:
+        tui.show_status(f"已选择镜像: {_mirror_domain}", "info")
+    else:
+        print(f"已选择镜像: {_mirror_domain}")
 
 
 def _ensure_runtime(repo: str) -> None:
     platform = _platform_name()
     state_path = _state_path()
     local_state = _read_json(state_path) or {}
+    
+    # 获取TUI实例
+    tui = get_tui() if TUI_AVAILABLE else None
 
     remote_manifest = _load_platform_manifest(repo, platform)
     if not remote_manifest:
         if (_runtime_root() / "main.py").exists():
-            print("⚠ 无法获取远程 Runtime 清单，使用本地 Runtime")
+            if tui:
+                tui.show_status("无法获取远程 Runtime 清单，使用本地 Runtime", "warning")
+            else:
+                print("⚠ 无法获取远程 Runtime 清单，使用本地 Runtime")
             return
         raise RuntimeError("无法获取远程 Runtime 清单，且本地 Runtime 不可用")
 
     if _is_runtime_up_to_date(local_state, remote_manifest):
-        print("✓ Runtime 已是最新")
+        if tui:
+            tui.show_status("Runtime 已是最新", "success")
+        else:
+            print("✓ Runtime 已是最新")
         return
 
     if _is_launcher_update_required(remote_manifest):
@@ -773,16 +861,46 @@ def _ensure_runtime(repo: str) -> None:
     if not runtime_url or len(runtime_sha) != 64:
         raise RuntimeError("远程 Runtime 清单缺少必要字段")
 
-    print(f"正在更新 Runtime: {runtime_version}")
+    if tui:
+        tui.show_status(f"正在更新 Runtime: {runtime_version}", "info")
+    else:
+        print(f"正在更新 Runtime: {runtime_version}")
+    
+    # 下载Runtime
     if _download_mode == "mirror" and _mirror_domain:
         mirror_url = f"https://{_mirror_domain}/{runtime_url}"
         try:
-            archive_bytes = _download_runtime_archive(mirror_url, runtime_sha)
+            if tui and tui.use_tui:
+                archive_bytes = tui.show_download_progress(
+                    f"下载 Runtime ({runtime_version})",
+                    _download_runtime_archive,
+                    mirror_url, runtime_sha
+                )
+            else:
+                archive_bytes = _download_runtime_archive(mirror_url, runtime_sha)
         except Exception:
-            print("\n镜像下载失败，尝试直连...")
-            archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
+            if tui:
+                tui.show_status("镜像下载失败，尝试直连...", "warning")
+            else:
+                print("\n镜像下载失败，尝试直连...")
+            if tui and tui.use_tui:
+                archive_bytes = tui.show_download_progress(
+                    f"下载 Runtime ({runtime_version})",
+                    _download_runtime_archive,
+                    runtime_url, runtime_sha
+                )
+            else:
+                archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
     else:
-        archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
+        if tui and tui.use_tui:
+            archive_bytes = tui.show_download_progress(
+                f"下载 Runtime ({runtime_version})",
+                _download_runtime_archive,
+                runtime_url, runtime_sha
+            )
+        else:
+            archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
+    
     _replace_runtime_archive(archive_bytes)
 
     _write_json(
@@ -795,7 +913,11 @@ def _ensure_runtime(repo: str) -> None:
             "runtime_updated_at": int(__import__("time").time()),
         },
     )
-    print("✓ Runtime 更新完成")
+    
+    if tui:
+        tui.show_status("Runtime 更新完成", "success")
+    else:
+        print("✓ Runtime 更新完成")
 
 
 def _launch_runtime() -> None:
@@ -824,57 +946,105 @@ def _launch_runtime() -> None:
 
 
 def main() -> None:
-    print("=" * 50)
-    print("番茄小说下载器 启动器")
-    print("=" * 50)
+    # 获取TUI实例
+    tui = get_tui() if TUI_AVAILABLE else None
     
-    # 添加环境信息debug
-    _write_error("[DEBUG] ========== 启动环境信息 ==========")
-    _write_error(f"[DEBUG] Python版本: {sys.version}")
-    _write_error(f"[DEBUG] Python路径: {sys.executable}")
-    _write_error(f"[DEBUG] 平台: {sys.platform}")
-    _write_error(f"[DEBUG] 是否打包: {getattr(sys, 'frozen', False)}")
-    _write_error(f"[DEBUG] 工作目录: {os.getcwd()}")
+    # 显示启动器头部
+    if tui:
+        tui.show_header()
+    else:
+        print("=" * 50)
+        print("番茄小说下载器 启动器")
+        print("=" * 50)
+    
+    # 准备调试信息
+    debug_info = {
+        "Python版本": sys.version,
+        "Python路径": sys.executable,
+        "平台": sys.platform,
+        "是否打包": getattr(sys, 'frozen', False),
+        "工作目录": os.getcwd(),
+        "TUI状态": "启用" if (tui and tui.use_tui) else "禁用"
+    }
     
     if getattr(sys, 'frozen', False):
         if hasattr(sys, '_MEIPASS'):
-            _write_error(f"[DEBUG] _MEIPASS: {sys._MEIPASS}")
-        _write_error(f"[DEBUG] sys.executable: {sys.executable}")
+            debug_info["_MEIPASS"] = sys._MEIPASS
+        debug_info["sys.executable"] = sys.executable
     
-    _write_error(f"[DEBUG] 基础目录: {_base_dir()}")
-    _write_error(f"[DEBUG] 运行时目录: {_runtime_root()}")
-    _write_error(f"[DEBUG] 状态文件: {_state_path()}")
-    _write_error("[DEBUG] ======================================")
+    debug_info.update({
+        "基础目录": str(_base_dir()),
+        "运行时目录": str(_runtime_root()),
+        "状态文件": str(_state_path())
+    })
+    
+    # 显示调试信息
+    if tui:
+        tui.show_debug_info(debug_info)
+    else:
+        _write_error("[DEBUG] ========== 启动环境信息 ==========")
+        for key, value in debug_info.items():
+            _write_error(f"[DEBUG] {key}: {value}")
+        _write_error("[DEBUG] ======================================")
 
     repo = os.environ.get("FANQIE_GITHUB_REPO", "POf-L/Fanqie-novel-Downloader")
-    _write_error(f"[DEBUG] 使用仓库: {repo}")
+    if tui:
+        tui.show_debug_info({"使用仓库": repo})
+    else:
+        _write_error(f"[DEBUG] 使用仓库: {repo}")
     
     try:
+        # 使用TUI增强的各个步骤
+        if tui:
+            tui.show_status("开始初始化启动器...", "info")
+        
         _select_download_mode()
         _select_pip_mirror()
+        
+        # Runtime检查和更新
+        if tui:
+            tui.show_status("检查Runtime更新...", "info")
         _ensure_runtime(repo)
-        _ensure_runtime_dependencies()
+        
+        # 依赖安装
+        if tui:
+            success = tui.show_installation_progress(
+                "安装Runtime依赖",
+                _ensure_runtime_dependencies
+            )
+            if not success:
+                tui.show_status("依赖安装失败，但继续尝试启动...", "warning")
+        else:
+            _ensure_runtime_dependencies()
+        
+        # 启动Runtime
+        if tui:
+            tui.show_status("启动应用程序...", "info")
         _launch_runtime()
+        
     except Exception as error:
-        _write_error(f"启动失败: {error}")
-        _write_error(f"[DEBUG] 异常类型: {type(error).__name__}")
-        
-        # 添加更详细的异常信息
-        import traceback
-        exc_type, exc_value, exc_tb = sys.exc_info()
-        if exc_type and exc_value and exc_tb:
-            _write_error("[DEBUG] ========== 详细异常信息 ==========")
-            tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
-            for line in tb_lines:
-                _write_error(f"[DEBUG] {line.rstrip()}")
-            _write_error("[DEBUG] ======================================")
-        
-        if getattr(sys, "frozen", False):
-            try:
-                _write_error("按回车键退出...")
-                input()
-            except Exception:
-                pass
+        if tui:
+            tui.show_error(f"启动失败: {error}", pause=True)
+        else:
+            _write_error(f"启动失败: {error}")
+            _write_error(f"[DEBUG] 异常类型: {type(error).__name__}")
+            
+            # 添加更详细的异常信息
+            import traceback
+            exc_type, exc_value, exc_tb = sys.exc_info()
+            if exc_type and exc_value and exc_tb:
+                _write_error("[DEBUG] ========== 详细异常信息 ==========")
+                tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+                for line in tb_lines:
+                    _write_error(f"[DEBUG] {line.rstrip()}")
+                _write_error("[DEBUG] ======================================")
+            
+            if getattr(sys, "frozen", False):
+                try:
+                    _write_error("按回车键退出...")
+                    input()
+                except Exception:
+                    pass
         raise
 
 
