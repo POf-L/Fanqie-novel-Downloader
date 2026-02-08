@@ -7,7 +7,14 @@
 import sys
 import os
 import traceback
+from pathlib import Path
 from utils.runtime_bootstrap import ensure_runtime_path, apply_packaging_fixes, apply_encoding_fixes
+
+try:
+    from utils.dependency_manager import auto_manage_dependencies
+    DEP_MANAGER_AVAILABLE = True
+except Exception:
+    DEP_MANAGER_AVAILABLE = False
 
 # 使用最底层的方式写入错误信息（不依赖print）
 def _write_error(msg):
@@ -51,6 +58,37 @@ if getattr(sys, 'frozen', False):
     _write_error(f"[DEBUG] 打包环境路径: {_base}")
     _write_error(f"[DEBUG] sys.path: {sys.path[:3]}...")
 
+
+def _ensure_source_dependencies() -> None:
+    """源码运行模式下自动补齐缺失依赖。"""
+    if getattr(sys, 'frozen', False):
+        return
+    if not DEP_MANAGER_AVAILABLE:
+        return
+
+    root = Path(_base)
+    targets = ["main.py", "core", "utils", "web", "config"]
+    print("正在检查并自动管理依赖（含 requirements 同步）...")
+    result = auto_manage_dependencies(
+        project_root=root,
+        targets=targets,
+        python_executable=sys.executable,
+        requirements_file=root / "config" / "requirements.txt",
+        state_file=root / ".deps_state.json",
+        extra_packages=["requests", "rich", "InquirerPy", "aiohttp"],
+        install_missing=True,
+        sync_requirements=True,
+        pin_versions=True,
+        skip_if_unchanged=True,
+    )
+
+    installed = result.get("installed_packages", [])
+    if installed:
+        print(f"已安装依赖: {', '.join(installed)}")
+
+
+_ensure_source_dependencies()
+
 # 打包兼容性修复
 apply_packaging_fixes(lambda msg: _write_error(f"[DEBUG] {msg}"))
 
@@ -69,7 +107,6 @@ import threading
 import requests
 import secrets
 import socket
-from pathlib import Path
 from utils.platform_utils import (
     detect_platform,
     get_window_config,

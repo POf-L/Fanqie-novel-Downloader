@@ -102,42 +102,171 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: config/requirements.txt
+          cache-dependency-path: |
+            config/requirements.txt
+            config/requirements-termux.txt
 
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller requests rich InquirerPy
+          python -m pip install pyinstaller
 
-      - name: Patch launcher repo config
+      - name: Auto manage dependencies
+        shell: python
+        run: |
+          import subprocess
+          import sys
+
+          subprocess.check_call([
+              sys.executable,
+              "-m",
+              "utils.dependency_manager",
+              "--project-root",
+              ".",
+              "--targets",
+              "launcher.py",
+              "main.py",
+              "core",
+              "utils",
+              "web",
+              "config",
+              "--state-file",
+              ".deps_state_ci_launcher.json",
+              "--extra-package",
+              "pyinstaller",
+              "--extra-package",
+              "requests",
+              "--extra-package",
+              "rich",
+              "--extra-package",
+              "InquirerPy",
+              "--extra-package",
+              "aiohttp",
+              "--no-skip-if-unchanged",
+              "--json",
+          ])
+
+      - name: Generate version.py
         shell: python
         env:
-          TARGET_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+          BUILD_TIME: ${{ needs.prepare-release.outputs.build_time }}
+          GITHUB_REPO: ${{ github.repository }}
         run: |
-          import os, re, sys
-          target = os.environ["TARGET_REPO"]
-          path = "launcher.py"
-          with open(path, "r", encoding="utf-8") as f:
-              content = f.read()
-          content = re.sub(r"POf-L/Fanqie-novel-Downloader", target, content)
-          with open(path, "w", encoding="utf-8") as f:
-              f.write(content)
-          print(f"Patched launcher repo -> {target}")
+          import os
+          import textwrap
 
-      - name: Build launcher executable
-        shell: bash
+          content = f'''# -*- coding: utf-8 -*-
+          """版本信息文件 - GitHub Actions 自动生成"""
+
+          __version__ = "{os.environ['VERSION']}"
+          __author__ = "Tomato Novel Downloader"
+          __description__ = "A modern novel downloader with GitHub auto-update support"
+          __github_repo__ = "{os.environ['GITHUB_REPO']}"
+          __build_time__ = "{os.environ['BUILD_TIME']}"
+          __build_channel__ = "launcher-stable"
+          '''
+
+          with open("version.py", "w", encoding="utf-8") as f:
+              f.write(textwrap.dedent(content))
+          print("Generated version.py for launcher build")
+
+      - name: Build launcher executable (auto dependency discovery)
+        shell: python
+        env:
+          LAUNCHER_NAME: ${{ matrix.launcher_name }}
+          SEP: ${{ matrix.sep }}
+          ICON_ARG: ${{ matrix.icon_arg }}
         run: |
-          python -m PyInstaller --onefile \
-            --name="${{ matrix.launcher_name }}" \
-            --console \
-            --add-data "assets${{ matrix.sep }}assets" \
-            --hidden-import=requests \
-            --hidden-import=rich \
-            --hidden-import=InquirerPy \
-            --collect-all=rich \
-            --collect-all=InquirerPy \
-            ${{ matrix.icon_arg }} \
-            launcher.py
+          import ast
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+          import importlib.metadata as metadata
+
+          project_roots = [Path("."), Path("core"), Path("utils"), Path("config")]
+          imported_modules = set()
+
+          def collect_imports(py_file: Path):
+              try:
+                  tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+              except Exception:
+                  return
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Import):
+                      for alias in node.names:
+                          root = alias.name.split(".", 1)[0]
+                          if root:
+                              imported_modules.add(root)
+                  elif isinstance(node, ast.ImportFrom) and node.module:
+                      root = node.module.split(".", 1)[0]
+                      if root:
+                          imported_modules.add(root)
+
+          for root in project_roots:
+              if root.is_file() and root.suffix == ".py":
+                  collect_imports(root)
+              elif root.is_dir():
+                  for py in root.rglob("*.py"):
+                      collect_imports(py)
+
+          import_to_distribution = {}
+          for dist in metadata.distributions():
+              dist_name = dist.metadata.get("Name")
+              if not dist_name:
+                  continue
+
+              top_level = dist.read_text("top_level.txt") or ""
+              for item in top_level.splitlines():
+                  item = item.strip()
+                  if item:
+                      import_to_distribution[item] = dist_name
+
+              normalized = dist_name.replace("-", "_")
+              import_to_distribution.setdefault(normalized, dist_name)
+
+          required_imports = set()
+          for module in imported_modules:
+              if module in import_to_distribution:
+                  required_imports.add(module)
+
+          # 补充动态导入/构建期生成模块
+          required_imports.update({"version", "rich", "InquirerPy", "aiohttp", "requests"})
+
+          ignore_collect = {
+              "os", "sys", "re", "json", "time", "pathlib", "typing", "hashlib", "subprocess",
+              "platform", "tempfile", "traceback", "zipfile", "concurrent", "asyncio", "dataclasses",
+          }
+
+          cmd = [
+              sys.executable,
+              "-m",
+              "PyInstaller",
+              "--onefile",
+              f"--name={os.environ['LAUNCHER_NAME']}",
+              "--console",
+              "--add-data",
+              f"assets{os.environ['SEP']}assets",
+          ]
+
+          icon_arg = os.environ.get("ICON_ARG", "").strip()
+          if icon_arg:
+              cmd.append(icon_arg)
+
+          for mod in sorted(required_imports):
+              cmd.extend(["--hidden-import", mod])
+              if mod not in ignore_collect and mod != "version":
+                  cmd.extend(["--collect-all", mod])
+
+          cmd.append("launcher.py")
+
+          print("Detected third-party imports:")
+          for mod in sorted(required_imports):
+              print(f"- {mod}")
+
+          print("Running:", " ".join(cmd))
+          subprocess.check_call(cmd)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -202,12 +331,45 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: config/requirements.txt
+          cache-dependency-path: |
+            config/requirements.txt
+            config/requirements-termux.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --prefer-binary -r config/requirements.txt
+
+      - name: Auto manage dependencies
+        shell: python
+        run: |
+          import subprocess
+          import sys
+
+          subprocess.check_call([
+              sys.executable,
+              "-m",
+              "utils.dependency_manager",
+              "--project-root",
+              ".",
+              "--targets",
+              "main.py",
+              "core",
+              "utils",
+              "web",
+              "config",
+              "--state-file",
+              ".deps_state_ci_runtime.json",
+              "--extra-package",
+              "requests",
+              "--extra-package",
+              "rich",
+              "--extra-package",
+              "InquirerPy",
+              "--extra-package",
+              "aiohttp",
+              "--no-skip-if-unchanged",
+              "--json",
+          ])
 
       - name: Generate version.py
         shell: python
@@ -273,10 +435,37 @@ jobs:
               venv_python = str(runtime / ".venv" / "bin" / "python")
 
           subprocess.check_call([venv_python, "-m", "pip", "install", "--upgrade", "pip"])
+
+          dep_script = r'''
+          import subprocess
+          import sys
+
           subprocess.check_call([
-              venv_python, "-m", "pip", "install",
-              "--prefer-binary", "-r", "config/requirements.txt"
+              sys.executable,
+              "-m",
+              "utils.dependency_manager",
+              "--project-root",
+              ".",
+              "--targets",
+              "main.py",
+              "core",
+              "utils",
+              "web",
+              "config",
+              "--state-file",
+              ".deps_state_runtime_venv.json",
+              "--extra-package",
+              "requests",
+              "--extra-package",
+              "rich",
+              "--extra-package",
+              "InquirerPy",
+              "--extra-package",
+              "aiohttp",
+              "--no-skip-if-unchanged",
           ])
+          '''
+          subprocess.check_call([venv_python, "-c", dep_script])
 
           archive_name = os.environ["RUNTIME_NAME"]
           with zipfile.ZipFile(archive_name, "w", zipfile.ZIP_DEFLATED) as zf:

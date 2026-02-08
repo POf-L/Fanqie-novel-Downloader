@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -25,7 +26,20 @@ try:
 except ImportError as e:
     print(f"⚠️ 仓库配置模块不可用: {e}，使用默认配置")
     REPO_CONFIG_AVAILABLE = False
+
     def get_effective_repo():
+        env_repo = os.environ.get("FANQIE_GITHUB_REPO", "").strip()
+        if env_repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', env_repo):
+            return env_repo, "环境变量(降级)"
+
+        try:
+            import version as _version_module
+            version_repo = str(getattr(_version_module, "__github_repo__", "")).strip()
+            if version_repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', version_repo):
+                return version_repo, "version.py(降级)"
+        except Exception:
+            pass
+
         return "POf-L/Fanqie-novel-Downloader", "默认值"
 from pathlib import Path
 
@@ -37,6 +51,13 @@ try:
 except ImportError:
     aiohttp = None
     AIOHTTP_AVAILABLE = False
+
+try:
+    from utils.dependency_manager import auto_manage_dependencies
+    DEP_MANAGER_AVAILABLE = True
+except Exception:
+    DEP_MANAGER_AVAILABLE = False
+
 
 # TUI组件导入
 try:
@@ -1297,20 +1318,7 @@ def _ensure_runtime_dependencies() -> None:
     tui = get_tui() if RICH_AVAILABLE else None
 
     requirements_path = _requirements_file_for_platform()
-    requirements_bytes = requirements_path.read_bytes()
-    requirements_sha = _sha256_bytes(requirements_bytes)
-
-    deps_state = _read_json(_deps_state_path()) or {}
-    if (
-        deps_state.get("requirements_sha256") == requirements_sha
-        and deps_state.get("requirements_file") == str(requirements_path.relative_to(runtime_root))
-        and _runtime_venv_python().exists()
-    ):
-        if tui:
-            tui.show_status("依赖已就绪", "success")
-        else:
-            print("✓ 依赖已就绪")
-        return
+    dep_targets = ["main.py", "core", "utils", "web", "config"]
 
     py_path = _ensure_runtime_venv()
 
@@ -1320,17 +1328,56 @@ def _ensure_runtime_dependencies() -> None:
         print("正在安装 Runtime 依赖...")
     
     _pip_install_with_mirrors(py_path, ["--upgrade", "pip"])
-    _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
 
-    _write_json(
-        _deps_state_path(),
-        {
-            "requirements_file": str(requirements_path.relative_to(runtime_root)),
-            "requirements_sha256": requirements_sha,
-            "python_version": platform.python_version(),
-            "updated_at": int(time.time()),
-        },
-    )
+    installed_dynamic: List[str] = []
+    if DEP_MANAGER_AVAILABLE:
+        try:
+            result = auto_manage_dependencies(
+                project_root=runtime_root,
+                targets=dep_targets,
+                python_executable=str(py_path),
+                requirements_file=requirements_path,
+                state_file=_deps_state_path(),
+                installer=lambda pkgs: _pip_install_with_mirrors(py_path, pkgs),
+                extra_packages=["requests", "rich", "InquirerPy", "aiohttp"],
+                install_missing=True,
+                sync_requirements=True,
+                pin_versions=True,
+                skip_if_unchanged=True,
+            )
+            installed_dynamic = result.get("installed_packages", [])
+            if result.get("skipped"):
+                if tui:
+                    tui.show_status("依赖已就绪", "success")
+                else:
+                    print("✓ 依赖已就绪")
+                return
+
+            if installed_dynamic:
+                _write_error(f"[DEBUG] 动态安装依赖: {installed_dynamic}")
+        except Exception as exc:
+            _write_error(f"[DEBUG] 自动依赖管理失败，回退requirements: {exc}")
+            if requirements_path.exists():
+                _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
+            _write_json(
+                _deps_state_path(),
+                {
+                    "requirements_file": str(requirements_path.relative_to(runtime_root)) if requirements_path.exists() else "",
+                    "python_version": platform.python_version(),
+                    "updated_at": int(time.time()),
+                },
+            )
+    else:
+        if requirements_path.exists():
+            _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
+        _write_json(
+            _deps_state_path(),
+            {
+                "requirements_file": str(requirements_path.relative_to(runtime_root)) if requirements_path.exists() else "",
+                "python_version": platform.python_version(),
+                "updated_at": int(time.time()),
+            },
+        )
     
     if tui:
         tui.show_status("Runtime 依赖安装完成", "success")
@@ -1409,6 +1456,63 @@ async def _test_all_nodes_async() -> List[Tuple[str, float]]:
         return available
 
 
+def _ensure_launcher_dependency(module_name: str, package_name: Optional[str] = None) -> bool:
+    """为启动器自身尝试安装缺失依赖。"""
+    package = package_name or module_name
+    if DEP_MANAGER_AVAILABLE:
+        try:
+            result = auto_manage_dependencies(
+                project_root=_base_dir(),
+                targets=["launcher.py", "utils", "config"],
+                python_executable=sys.executable,
+                requirements_file=_base_dir() / "config" / "requirements.txt",
+                state_file=_base_dir() / ".launcher_deps_state.json",
+                extra_packages=[package],
+                install_missing=True,
+                sync_requirements=True,
+                pin_versions=True,
+                skip_if_unchanged=False,
+            )
+            installed = result.get("installed_packages", [])
+            if installed:
+                _write_error(f"[DEBUG] 启动器补装依赖: {installed}")
+        except Exception as exc:
+            _write_error(f"[DEBUG] 启动器依赖管理安装失败: {exc}")
+
+    try:
+        __import__(module_name)
+        return True
+    except Exception as exc:
+        _write_error(f"[DEBUG] 启动器依赖导入失败: {module_name}, {exc}")
+        return False
+
+
+def _resolve_repo_with_fallback() -> Tuple[str, str]:
+    """获取仓库配置并做强兜底，避免回退到错误默认值。"""
+    try:
+        repo, source = get_effective_repo()
+    except Exception as exc:
+        _write_error(f"[DEBUG] 读取仓库配置失败: {exc}")
+        repo, source = "", "读取失败"
+
+    if repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', repo):
+        return repo, source
+
+    env_repo = os.environ.get("FANQIE_GITHUB_REPO", "").strip()
+    if env_repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', env_repo):
+        return env_repo, "环境变量(兜底)"
+
+    try:
+        import version as _version_module
+        version_repo = str(getattr(_version_module, "__github_repo__", "")).strip()
+        if version_repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', version_repo):
+            return version_repo, "version.py(兜底)"
+    except Exception:
+        pass
+
+    return "POf-L/Fanqie-novel-Downloader", "默认值"
+
+
 def _test_all_nodes() -> List[Tuple[str, float]]:
     """同步测试所有镜像节点延迟 - 兼容性保留"""
     print("正在同步测试镜像节点延迟...")
@@ -1433,7 +1537,7 @@ def _test_all_nodes() -> List[Tuple[str, float]]:
 
 
 def _select_download_mode() -> None:
-    global _download_mode, _mirror_domain
+    global _download_mode, _mirror_domain, aiohttp, AIOHTTP_AVAILABLE
 
     # 获取TUI实例
     tui = get_tui() if RICH_AVAILABLE else None
@@ -1483,7 +1587,17 @@ def _select_download_mode() -> None:
                 loop = asyncio.get_event_loop()
                 available = loop.run_until_complete(_test_all_nodes_async())
         else:
-            raise RuntimeError("aiohttp 未安装")
+            if _ensure_launcher_dependency("aiohttp", "aiohttp"):
+                import aiohttp as _aiohttp
+                aiohttp = _aiohttp
+                AIOHTTP_AVAILABLE = True
+                if hasattr(asyncio, 'run'):
+                    available = asyncio.run(_test_all_nodes_async())
+                else:
+                    loop = asyncio.get_event_loop()
+                    available = loop.run_until_complete(_test_all_nodes_async())
+            else:
+                raise RuntimeError("aiohttp 未安装")
     except Exception as e:
         print(f"异步测速不可用，回退到同步模式: {e}")
         if tui and tui.use_tui:
@@ -1724,7 +1838,10 @@ def main() -> None:
         _write_error("[DEBUG] ======================================")
 
     # 获取仓库配置，使用统一的管理模块
-    repo, repo_source = get_effective_repo()
+    repo, repo_source = _resolve_repo_with_fallback()
+
+    # 强制注入仓库环境变量，确保后续子进程与动态模块统一使用
+    os.environ["FANQIE_GITHUB_REPO"] = repo
     
     if tui:
         tui.show_debug_info({"使用仓库": repo, "仓库来源": repo_source})

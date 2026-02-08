@@ -2008,7 +2008,10 @@ def api_queue_start():
         if not isinstance(task, dict):
             continue
 
+        task_id = str(task.get('id', '')).strip()
         book_id = str(task.get('book_id', '')).strip()
+        book_name = str(task.get('book_name', '')).strip()
+        author = str(task.get('author', '')).strip()
         if not book_id:
             continue
 
@@ -2051,7 +2054,10 @@ def api_queue_start():
                 selected_chapters = None
 
         cleaned_tasks.append({
+            'id': task_id if task_id else f"task_{book_id}_{int(time.time() * 1000)}",
             'book_id': book_id,
+            'book_name': book_name,
+            'author': author,
             'save_path': save_path,
             'file_format': file_format,
             'start_chapter': start_chapter,
@@ -2939,4 +2945,3 @@ if __name__ == '__main__':
     print(f'配置文件位置: {CONFIG_FILE}')
     print('Web 服务已启动')
     app.run(host='127.0.0.1', port=5000, debug=False)
-

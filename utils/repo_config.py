@@ -243,23 +243,35 @@ def _read_config_repo() -> Optional[str]:
         Optional[str]: 仓库名称，失败时返回None
     """
     try:
+        module_source = None
+
         # 首先尝试从环境变量获取配置路径
         config_path = os.environ.get("FANQIE_CONFIG_PATH", "config")
-        
-        # 检测循环导入风险
-        if _detect_circular_import(config_path):
-            print(f"⚠️ 检测到潜在的循环导入风险: {config_path}，跳过配置文件读取")
-            return None
-        
-        # 使用延迟导入避免循环导入
-        config_module = importlib.import_module(config_path)
-        repo = getattr(config_module, '__github_repo__', None)
-        return repo
-    except ImportError as e:
-        print(f"⚠️ 无法导入配置模块: {e}")
-        return None
-    except AttributeError as e:
-        print(f"⚠️ 配置模块中缺少__github_repo__属性: {e}")
+
+        # 兼容：若传入的是包名（如 config），优先尝试其 config 子模块
+        candidate_modules = [config_path]
+        if "." not in config_path:
+            candidate_modules.insert(0, f"{config_path}.config")
+
+        # CI 构建可注入 version.py，优先使用其仓库信息
+        candidate_modules.insert(0, "version")
+
+        for module_path in candidate_modules:
+            if _detect_circular_import(module_path):
+                print(f"⚠️ 检测到潜在的循环导入风险: {module_path}，跳过")
+                continue
+
+            try:
+                module = importlib.import_module(module_path)
+            except ImportError:
+                continue
+
+            repo = getattr(module, '__github_repo__', None)
+            if repo:
+                module_source = module_path
+                os.environ["FANQIE_REPO_MODULE_SOURCE"] = module_source
+                return repo
+
         return None
     except Exception as e:
         print(f"⚠️ 读取配置文件时发生意外错误: {e}")
@@ -358,6 +370,11 @@ def get_effective_repo() -> Tuple[str, str]:
     # 尝试配置文件
     repo, source = _try_get_repo_from_source("配置文件", _read_config_repo)
     if repo:
+        module_source = os.environ.get("FANQIE_REPO_MODULE_SOURCE", "").strip()
+        if module_source == "version":
+            return repo, "version.py"
+        if module_source.endswith(".config"):
+            return repo, "config.config"
         return repo, source
     
     # 使用默认值
