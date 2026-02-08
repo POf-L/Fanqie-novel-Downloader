@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       book_ids:
-        description: "书籍 ID 列表（用逗号或空格分隔，例如：7372503659137005093, 7372528691033300280）"
+        description: "书籍 ID 列表（逗号或空格分隔）"
         required: true
         type: string
       file_format:
@@ -29,212 +29,133 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
+
 jobs:
   download:
     runs-on: ubuntu-latest
-    name: 下载小说
-
+    name: Download Novels
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: 设置 Python 环境
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+          cache: pip
           cache-dependency-path: config/requirements.txt
 
-      - name: 安装系统依赖
+      - name: Install system dependencies
         run: |
-          sudo apt-get update
+          sudo apt-get update -q
           sudo apt-get install -y libheif1 libheif-dev
 
-      - name: 安装 Python 依赖
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          
-          # 自动生成依赖文件
-          echo "🔍 正在扫描代码依赖..."
-          python -m pip install pipreqs
-          python -m pipreqs . --force --ignore .git --savepath config/requirements-auto.txt
-          
-          # 验证生成的依赖文件
-          if [ ! -f "config/requirements-auto.txt" ]; then
-            echo "❌ 自动生成依赖文件失败，使用原始文件"
-            pip install --prefer-binary -r config/requirements.txt
-          else
-            echo "📋 自动生成的依赖:"
-            cat config/requirements-auto.txt
-            echo ""
-            
-            # 如果存在原始 requirements.txt，合并版本信息
-            if [ -f "config/requirements.txt" ]; then
-              echo "🔄 合并版本信息..."
-              python - <<'PY'
-              import re
-              
-              # 读取自动生成的依赖
-              with open('config/requirements-auto.txt', 'r') as f:
-                  auto_deps = set(line.strip().split('>=')[0].split('==')[0] for line in f if line.strip() and not line.startswith('#'))
-              
-              # 读取原始依赖及版本
-              version_map = {}
-              try:
-                  with open('config/requirements.txt', 'r') as f:
-                      for line in f:
-                          line = line.strip()
-                          if line and not line.startswith('#'):
-                              match = re.match(r'^([a-zA-Z0-9_-]+)', line)
-                              if match:
-                                  pkg_name = match.group(1)
-                                  version_map[pkg_name] = line
-              except FileNotFoundError:
-                  pass
-              
-              # 生成合并后的依赖文件
-              with open('config/requirements-final.txt', 'w') as f:
-                  f.write("# 自动生成的依赖文件 - GitHub Actions\n")
-                  f.write("# 生成时间: $(date)\n\n")
-                  
-                  for dep in sorted(auto_deps):
-                      if dep in version_map:
-                          f.write(f"{version_map[dep]}\n")
-                      else:
-                          f.write(f"{dep}\n")
-              
-              print("✅ 合并完成，使用 config/requirements-final.txt")
-              PY
-              
-              pip install --prefer-binary -r config/requirements-final.txt
-            else
-              pip install --prefer-binary -r config/requirements-auto.txt
-            fi
-          fi
+          python -m pip install --prefer-binary -r config/requirements.txt
 
-      - name: 解析书籍 ID 列表
+      - name: Parse book IDs
         id: parse_ids
+        shell: python
+        env:
+          RAW_IDS: ${{ github.event.inputs.book_ids }}
         run: |
-          IDS="${{ github.event.inputs.book_ids }}"
-          IDS=$(echo "$IDS" | tr ',' ' ' | tr -s ' ')
-          echo "Parsed book IDs: $IDS"
-          echo "book_ids=$IDS" >> $GITHUB_OUTPUT
+          import os, re
+          raw = os.environ["RAW_IDS"]
+          ids = re.split(r"[,\s]+", raw.strip())
+          ids = [i for i in ids if i]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"book_ids={' '.join(ids)}\n")
+              f.write(f"count={len(ids)}\n")
+          print(f"Parsed {len(ids)} book IDs: {' '.join(ids)}")
 
-          COUNT=$(echo "$IDS" | wc -w)
-          echo "Total books: $COUNT"
-          echo "count=$COUNT" >> $GITHUB_OUTPUT
-
-      - name: 创建下载目录
-        run: |
-          mkdir -p "${{ github.event.inputs.save_path }}"
-          echo "下载目录: ${{ github.event.inputs.save_path }}"
-
-      - name: 执行批量下载
+      - name: Download novels
         id: download
         run: |
-          echo "开始下载 ${{ steps.parse_ids.outputs.count }} 本小说..."
-          echo "格式: ${{ github.event.inputs.file_format }}"
-          echo "并发数: ${{ github.event.inputs.concurrent }}"
-          echo "保存路径: ${{ github.event.inputs.save_path }}"
-          echo ""
+          mkdir -p "${{ github.event.inputs.save_path }}"
 
           python core/cli.py batch-download \
             ${{ steps.parse_ids.outputs.book_ids }} \
             --path "${{ github.event.inputs.save_path }}" \
             --format "${{ github.event.inputs.file_format }}" \
-            --concurrent ${{ github.event.inputs.concurrent }}
+            --concurrent ${{ github.event.inputs.concurrent }} \
+            && echo "status=success" >> "$GITHUB_OUTPUT" \
+            || echo "status=partial" >> "$GITHUB_OUTPUT"
 
-          EXIT_CODE=$?
-
-          if [ $EXIT_CODE -eq 0 ]; then
-            echo "[OK] 下载完成"
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo "[!] 下载过程中出现错误（退出码: $EXIT_CODE）"
-            echo "status=partial" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 统计下载结果
+      - name: Collect stats
         id: stats
         run: |
           SAVE_PATH="${{ github.event.inputs.save_path }}"
+          FORMAT="${{ github.event.inputs.file_format }}"
 
           if [ -d "$SAVE_PATH" ]; then
-            FILE_COUNT=$(find "$SAVE_PATH" -type f -name "*.${{ github.event.inputs.file_format }}" | wc -l)
-            TOTAL_SIZE=$(du -sh "$SAVE_PATH" | cut -f1)
-
-            echo "[STATS] 下载统计:"
-            echo "- 文件数量: $FILE_COUNT"
-            echo "- 总大小: $TOTAL_SIZE"
-            echo ""
-            echo "[FILES] 文件列表:"
-            find "$SAVE_PATH" -type f -name "*.${{ github.event.inputs.file_format }}" -exec ls -lh {} \; | awk '{print "  - " $9 " (" $5 ")"}'
-
-            echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
-            echo "total_size=$TOTAL_SIZE" >> $GITHUB_OUTPUT
+            FILE_COUNT=$(find "$SAVE_PATH" -type f -name "*.${FORMAT}" | wc -l)
+            TOTAL_SIZE=$(du -sh "$SAVE_PATH" 2>/dev/null | cut -f1 || echo "0")
+            echo "file_count=${FILE_COUNT}" >> "$GITHUB_OUTPUT"
+            echo "total_size=${TOTAL_SIZE}" >> "$GITHUB_OUTPUT"
+            echo "Downloaded ${FILE_COUNT} files, total size: ${TOTAL_SIZE}"
           else
-            echo "[!] 下载目录不存在"
-            echo "file_count=0" >> $GITHUB_OUTPUT
-            echo "total_size=0" >> $GITHUB_OUTPUT
+            echo "file_count=0" >> "$GITHUB_OUTPUT"
+            echo "total_size=0" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 上传下载文件为 Artifact
+      - uses: actions/upload-artifact@v4
         if: steps.stats.outputs.file_count > 0
-        uses: actions/upload-artifact@v4
         with:
           name: novels-${{ github.event.inputs.file_format }}-${{ github.run_number }}
           path: ${{ github.event.inputs.save_path }}/**/*.${{ github.event.inputs.file_format }}
           retention-days: 30
           if-no-files-found: warn
 
-      - name: 生成下载报告
+      - name: Summary
         if: always()
         run: |
-          echo "## [REPORT] 小说下载报告" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### [CONFIG] 下载配置" >> $GITHUB_STEP_SUMMARY
-          echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
-          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-          echo "| [BOOKS] 书籍数量 | ${{ steps.parse_ids.outputs.count }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| [FORMAT] 输出格式 | \`${{ github.event.inputs.file_format }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| [CONCURRENT] 并发数 | ${{ github.event.inputs.concurrent }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| [PATH] 保存路径 | \`${{ github.event.inputs.save_path }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          cat >> "$GITHUB_STEP_SUMMARY" <<'HEADER'
+          ## 小说下载报告
 
-          echo "### [STATS] 下载结果" >> $GITHUB_STEP_SUMMARY
-          echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
-          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-          echo "| [OK] 成功文件 | ${{ steps.stats.outputs.file_count }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| [SIZE] 总大小 | ${{ steps.stats.outputs.total_size }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| [ARTIFACT] Artifact | \`novels-${{ github.event.inputs.file_format }}-${{ github.run_number }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          ### 下载配置
+          | 项目 | 值 |
+          | :--- | :--- |
+          HEADER
 
-          if [ "${{ steps.stats.outputs.file_count }}" -gt "0" ]; then
-            echo "### [DOWNLOAD] 如何下载" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "1. 进入本次运行的 **Summary** 页面" >> $GITHUB_STEP_SUMMARY
-            echo "2. 在页面底部找到 **Artifacts** 区域" >> $GITHUB_STEP_SUMMARY
-            echo "3. 点击 \`novels-${{ github.event.inputs.file_format }}-${{ github.run_number }}\` 下载压缩包" >> $GITHUB_STEP_SUMMARY
-            echo "4. 解压后即可获得所有下载的小说文件" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> [INFO] 提示: Artifact 将保留 30 天" >> $GITHUB_STEP_SUMMARY
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          | 书籍数量 | ${{ steps.parse_ids.outputs.count }} |
+          | 输出格式 | \`${{ github.event.inputs.file_format }}\` |
+          | 并发数 | ${{ github.event.inputs.concurrent }} |
+          | 保存路径 | \`${{ github.event.inputs.save_path }}\` |
+
+          ### 下载结果
+          | 项目 | 值 |
+          | :--- | :--- |
+          | 成功文件 | ${{ steps.stats.outputs.file_count }} |
+          | 总大小 | ${{ steps.stats.outputs.total_size }} |
+          | Artifact | \`novels-${{ github.event.inputs.file_format }}-${{ github.run_number }}\` |
+          EOF
+
+          FILE_COUNT="${{ steps.stats.outputs.file_count }}"
+          if [ "$FILE_COUNT" -gt "0" ] 2>/dev/null; then
+            cat >> "$GITHUB_STEP_SUMMARY" <<'GUIDE'
+
+          ### 如何下载
+          1. 进入本次运行的 **Summary** 页面
+          2. 在页面底部找到 **Artifacts** 区域
+          3. 点击对应 Artifact 下载压缩包
+          4. 解压后即可获得所有下载的小说文件
+
+          > Artifact 将保留 30 天
+          GUIDE
           else
-            echo "### [!] 下载失败" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "没有成功下载任何文件，请检查:" >> $GITHUB_STEP_SUMMARY
-            echo "- 书籍 ID 是否正确" >> $GITHUB_STEP_SUMMARY
-            echo "- API 服务是否可用" >> $GITHUB_STEP_SUMMARY
-            echo "- 查看上方日志了解详细错误信息" >> $GITHUB_STEP_SUMMARY
-          fi
+            cat >> "$GITHUB_STEP_SUMMARY" <<'FAIL'
 
-      - name: 下载完成通知
-        if: always()
-        run: |
-          if [ "${{ steps.stats.outputs.file_count }}" -gt "0" ]; then
-            echo "[OK] 下载任务完成！成功下载 ${{ steps.stats.outputs.file_count }} 个文件"
-          else
-            echo "[X] 下载任务失败，请查看日志"
+          ### 下载失败
+          没有成功下载任何文件，请检查:
+          - 书籍 ID 是否正确
+          - API 服务是否可用
+          - 查看上方日志了解详细错误信息
+          FAIL
             exit 1
           fi

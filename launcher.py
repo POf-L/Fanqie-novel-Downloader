@@ -1577,24 +1577,29 @@ def _launch_runtime() -> None:
             + f"\n请删除 {runtime_root} 目录后重新运行启动器以重新下载 Runtime"
         )
 
-    os.environ["FANQIE_RUNTIME_BASE"] = str(runtime_root)
-    sys.path.insert(0, str(runtime_root))
-
     runtime_venv = runtime_root / ".venv"
-    if runtime_venv.exists():
-        if sys.platform == "win32":
-            if (runtime_venv / "Lib" / "site-packages").exists():
-                sys.path.insert(0, str(runtime_venv / "Lib" / "site-packages"))
-        else:
-            for candidate in (runtime_venv / "lib").glob("python*/site-packages"):
-                sys.path.insert(0, str(candidate))
+    if sys.platform == "win32":
+        venv_python = runtime_venv / "Scripts" / "python.exe"
+    else:
+        venv_python = runtime_venv / "bin" / "python"
 
-    namespace = {
-        "__name__": "__main__",
-        "__file__": str(runtime_main),
-    }
-    code = compile(runtime_main.read_text(encoding="utf-8"), str(runtime_main), "exec")
-    exec(code, namespace, namespace)
+    if not venv_python.exists():
+        raise FileNotFoundError(
+            f"Runtime Python not found: {venv_python}\n"
+            f"Please delete {runtime_root} and restart to re-download Runtime"
+        )
+
+    env = os.environ.copy()
+    env["FANQIE_RUNTIME_BASE"] = str(runtime_root)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    result = subprocess.run(
+        [str(venv_python), str(runtime_main)],
+        cwd=str(runtime_root),
+        env=env,
+    )
+    sys.exit(result.returncode)
 
 def main() -> None:
     # 获取TUI实例
@@ -1698,8 +1703,8 @@ def main() -> None:
                     _write_error("按回车键退出...")
                     input()
                 except Exception:
-                    pass
-        raise
+                    time.sleep(30)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
