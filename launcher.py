@@ -845,13 +845,22 @@ def _ensure_runtime(repo: str) -> None:
 
     remote_manifest = _load_platform_manifest(repo, platform)
     if not remote_manifest:
-        if (_runtime_root() / "main.py").exists():
+        runtime_root = _runtime_root()
+        runtime_ok = (
+            (runtime_root / "main.py").exists()
+            and (runtime_root / "utils" / "runtime_bootstrap.py").exists()
+            and (runtime_root / "config" / "config.py").exists()
+        )
+        if runtime_ok:
             if tui:
                 tui.show_status("无法获取远程 Runtime 清单，使用本地 Runtime", "warning")
             else:
-                print("⚠ 无法获取远程 Runtime 清单，使用本地 Runtime")
+                print("无法获取远程 Runtime 清单，使用本地 Runtime")
             return
-        raise RuntimeError("无法获取远程 Runtime 清单，且本地 Runtime 不可用")
+        raise RuntimeError(
+            "无法获取远程 Runtime 清单，且本地 Runtime 不可用或不完整。\n"
+            f"请检查网络连接，或删除 {runtime_root} 目录后重试"
+        )
 
     if _is_runtime_up_to_date(local_state, remote_manifest):
         if tui:
@@ -931,14 +940,30 @@ def _ensure_runtime(repo: str) -> None:
 
 
 def _launch_runtime() -> None:
-    runtime_main = _runtime_root() / "main.py"
+    runtime_root = _runtime_root()
+    runtime_main = runtime_root / "main.py"
     if not runtime_main.exists():
         raise FileNotFoundError(f"未找到 Runtime 入口: {runtime_main}")
 
-    os.environ["FANQIE_RUNTIME_BASE"] = str(_runtime_root())
-    sys.path.insert(0, str(_runtime_root()))
+    critical_modules = [
+        runtime_root / "utils" / "__init__.py",
+        runtime_root / "utils" / "runtime_bootstrap.py",
+        runtime_root / "config" / "__init__.py",
+        runtime_root / "config" / "config.py",
+        runtime_root / "core" / "__init__.py",
+    ]
+    missing = [str(p) for p in critical_modules if not p.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Runtime 不完整，缺少关键文件:\n"
+            + "\n".join(f"  - {m}" for m in missing)
+            + f"\n请删除 {runtime_root} 目录后重新运行启动器以重新下载 Runtime"
+        )
 
-    runtime_venv = _runtime_root() / ".venv"
+    os.environ["FANQIE_RUNTIME_BASE"] = str(runtime_root)
+    sys.path.insert(0, str(runtime_root))
+
+    runtime_venv = runtime_root / ".venv"
     if runtime_venv.exists():
         if sys.platform == "win32":
             if (runtime_venv / "Lib" / "site-packages").exists():
@@ -953,7 +978,6 @@ def _launch_runtime() -> None:
     }
     code = compile(runtime_main.read_text(encoding="utf-8"), str(runtime_main), "exec")
     exec(code, namespace, namespace)
-
 
 def main() -> None:
     # 获取TUI实例
