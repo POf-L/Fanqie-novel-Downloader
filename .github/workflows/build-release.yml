@@ -44,33 +44,6 @@ jobs:
           echo "BUILD_TIME=${BUILD_TIME}" >> "$GITHUB_OUTPUT"
           echo "TAG_NAME=${TAG_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.TAG_NAME }}
-          name: "TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}"
-          body: |
-            ## TomatoNovelDownloader ${{ steps.version.outputs.TAG_NAME }}
-
-            ### 发布模式
-            - 稳定 Launcher + 云端 Runtime
-            - Runtime 包含代码与依赖
-
-            ### 发布信息
-            | 项目 | 详情 |
-            | :--- | :--- |
-            | 发布时间 | ${{ steps.version.outputs.BUILD_TIME }} |
-            | Commit | `${{ github.sha }}` |
-
-            ### 下载入口
-            - 稳定启动器（长期固定）：https://github.com/${{ github.repository }}/releases/tag/launcher-stable
-            - 本次 Runtime 资产：在本条 Release 的 Assets 中下载
-          draft: false
-          prerelease: false
-          make_latest: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   build-launcher:
     needs: [prepare-release]
     if: inputs.build_launcher == 'true'
@@ -273,39 +246,6 @@ jobs:
           name: launcher-${{ matrix.platform }}
           path: dist/${{ matrix.launcher_name }}
           if-no-files-found: error
-
-      - name: Upload launcher to versioned release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: dist/${{ matrix.launcher_name }}
-          make_latest: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload launcher to stable channel
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: launcher-stable
-          name: FanqieLauncher Stable
-          body: |
-            ## FanqieLauncher Stable
-
-            ### 快速开始
-            1. 下载对应平台的 Launcher（无需安装 Python）
-            2. 运行 Launcher，自动下载最新 Runtime
-            3. 享受完整的小说下载功能
-
-            ### 下载说明
-            - **Windows**: `FanqieLauncher-windows-x64.exe`
-            - **Linux**: `FanqieLauncher-linux-x64`
-            - **macOS**: `FanqieLauncher-macos-x64`
-          draft: false
-          prerelease: false
-          make_latest: true
-          files: dist/${{ matrix.launcher_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-runtime:
     needs: [prepare-release]
@@ -511,7 +451,7 @@ jobs:
 
           # 清理虚拟环境中的缓存以减小体积
           cache_dirs = [
-              runtime / ".venv" / "lib" / "python*" / "site-packages" / pip.__name__.replace(".", os.sep) / "__pycache__",
+              runtime / ".venv" / "lib" / "python*" / "site-packages" / "pip" / "__pycache__",
               runtime / ".venv" / "lib" / "python*" / "site-packages" / "setuptools" / "__pycache__",
           ]
           for cache_dir in cache_dirs:
@@ -603,17 +543,6 @@ jobs:
             ${{ matrix.runtime_name }}
             runtime-manifest-${{ matrix.platform }}.json
           if-no-files-found: error
-
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: |
-            ${{ matrix.runtime_name }}
-            runtime-manifest-${{ matrix.platform }}.json
-          make_latest: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify upload
         shell: python
@@ -793,27 +722,44 @@ jobs:
           fi
           chmod +x TomatoNovelDownloader-termux-arm64
 
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          files: |
+          name: runtime-termux-arm64
+          path: |
             TomatoNovelDownloader-termux-arm64
             runtime-termux-arm64.zip
             runtime-manifest-termux-arm64.json
-          make_latest: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if-no-files-found: error
 
   finalize-release:
     name: Finalize Release
-    if: always() && needs.prepare-release.result == 'success'
+    if: >-
+      always() &&
+      needs.prepare-release.result == 'success' &&
+      needs.build-runtime.result == 'success' &&
+      needs.build-runtime-termux.result == 'success' &&
+      (needs.build-launcher.result == 'success' || needs.build-launcher.result == 'skipped')
     needs: [prepare-release, build-runtime, build-runtime-termux, build-launcher]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download runtime artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Download launcher artifacts
+        if: inputs.build_launcher == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: launcher-*
+          path: release-assets
+          merge-multiple: true
 
       - name: Generate changelog
         id: changelog
@@ -840,7 +786,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Update release notes
+      - name: Publish versioned release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
@@ -866,8 +812,38 @@ jobs:
             | 构建时间 | ${{ needs.prepare-release.outputs.build_time }} |
             | 前次发布 | `${{ steps.changelog.outputs.latest_tag }}` |
             | Commit | `${{ github.sha }}` |
+          files: |
+            release-assets/*
           draft: false
           prerelease: false
           make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish launcher stable release
+        if: inputs.build_launcher == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: launcher-stable
+          name: FanqieLauncher Stable
+          body: |
+            ## FanqieLauncher Stable
+
+            ### 快速开始
+            1. 下载对应平台的 Launcher（无需安装 Python）
+            2. 运行 Launcher，自动下载最新 Runtime
+            3. 享受完整的小说下载功能
+
+            ### 下载说明
+            - **Windows**: `FanqieLauncher-windows-x64.exe`
+            - **Linux**: `FanqieLauncher-linux-x64`
+            - **macOS**: `FanqieLauncher-macos-x64`
+          draft: false
+          prerelease: false
+          make_latest: true
+          files: |
+            release-assets/FanqieLauncher-windows-x64.exe
+            release-assets/FanqieLauncher-linux-x64
+            release-assets/FanqieLauncher-macos-x64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
