@@ -338,10 +338,31 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install requests rich InquirerPy aiohttp
 
       - name: Auto manage dependencies
         shell: python
         run: |
+          import subprocess
+          import sys
+          import os
+
+          # 确保依赖已安装
+          required_packages = ["requests", "rich", "InquirerPy", "aiohttp"]
+          for package in required_packages:
+              try:
+                  __import__(package)
+                  print(f"✓ {package} already available")
+              except ImportError:
+                  print(f"Installing {package}...")
+                  subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+          # 检查 dependency_manager 是否存在
+          if not os.path.exists("utils/dependency_manager.py"):
+              print("WARNING: utils/dependency_manager.py not found, skipping auto dependency management")
+              sys.exit(0)
+
+          dep_script = r'''
           import subprocess
           import sys
 
@@ -358,7 +379,7 @@ jobs:
               "web",
               "config",
               "--state-file",
-              ".deps_state_ci_runtime.json",
+              ".deps_state_runtime_venv.json",
               "--extra-package",
               "requests",
               "--extra-package",
@@ -368,8 +389,9 @@ jobs:
               "--extra-package",
               "aiohttp",
               "--no-skip-if-unchanged",
-              "--json",
           ])
+          '''
+          subprocess.check_call([venv_python, "-c", dep_script])
 
       - name: Generate version.py
         shell: python
@@ -403,30 +425,41 @@ jobs:
           import os, shutil, subprocess, sys, zipfile
           from pathlib import Path
 
+          print("=== 开始打包 Runtime ===")
+          
           dirs_to_copy = ["assets", "config", "core", "utils", "web"]
           files_to_copy = ["main.py"]
           if Path("version.py").exists():
               files_to_copy.append("version.py")
 
+          print(f"检查必需目录: {dirs_to_copy}")
           for d in dirs_to_copy:
               if not Path(d).is_dir():
                   print(f"ERROR: required directory '{d}' not found")
                   sys.exit(1)
+              print(f"✓ 目录 '{d}' 存在")
+              
+          print(f"检查必需文件: {files_to_copy}")
           for f in files_to_copy:
               if not Path(f).is_file():
                   print(f"ERROR: required file '{f}' not found")
                   sys.exit(1)
+              print(f"✓ 文件 '{f}' 存在")
 
           runtime = Path("runtime")
           if runtime.exists():
               shutil.rmtree(runtime)
           runtime.mkdir()
 
+          print("复制文件到 runtime 目录...")
           for d in dirs_to_copy:
               shutil.copytree(d, runtime / d)
+              print(f"✓ 复制目录 '{d}'")
           for f in files_to_copy:
               shutil.copy2(f, runtime / f)
+              print(f"✓ 复制文件 '{f}'")
 
+          print("创建虚拟环境...")
           subprocess.check_call([sys.executable, "-m", "venv", str(runtime / ".venv")])
 
           if os.environ["RUNNER_OS"] == "Windows":
@@ -434,8 +467,12 @@ jobs:
           else:
               venv_python = str(runtime / ".venv" / "bin" / "python")
 
+          print(f"虚拟环境 Python 路径: {venv_python}")
+
+          print("升级虚拟环境中的 pip...")
           subprocess.check_call([venv_python, "-m", "pip", "install", "--upgrade", "pip"])
 
+          # 继续原来的依赖管理逻辑...
           dep_script = r'''
           import subprocess
           import sys
@@ -465,8 +502,23 @@ jobs:
               "--no-skip-if-unchanged",
           ])
           '''
-          subprocess.check_call([venv_python, "-c", dep_script])
+          try:
+              subprocess.check_call([venv_python, "-c", dep_script])
+              print("✓ 依赖管理完成")
+          except subprocess.CalledProcessError as e:
+              print(f"WARNING: 依赖管理失败: {e}")
+              print("继续打包过程...")
 
+          # 清理虚拟环境中的缓存以减小体积
+          cache_dirs = [
+              runtime / ".venv" / "lib" / "python*" / "site-packages" / pip.__name__.replace(".", os.sep) / "__pycache__",
+              runtime / ".venv" / "lib" / "python*" / "site-packages" / "setuptools" / "__pycache__",
+          ]
+          for cache_dir in cache_dirs:
+              if cache_dir.exists():
+                  shutil.rmtree(cache_dir)
+
+          print("创建 runtime 压缩包...")
           archive_name = os.environ["RUNTIME_NAME"]
           with zipfile.ZipFile(archive_name, "w", zipfile.ZIP_DEFLATED) as zf:
               for root, _, files in os.walk(runtime):
@@ -474,7 +526,9 @@ jobs:
                       full = Path(root) / file
                       rel = full.relative_to(runtime)
                       zf.write(full, rel)
-          print(f"Built runtime archive: {archive_name}")
+          
+          archive_size = Path(archive_name).stat().st_size
+          print(f"✓ Runtime archive created: {archive_name} ({archive_size:,} bytes)")
 
       - name: Generate runtime manifest
         shell: python
@@ -488,11 +542,26 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
 
+          print("=== 生成 Runtime Manifest ===")
+          
           runtime_path = Path(os.environ["RUNTIME_NAME"])
+          print(f"检查 runtime 文件: {runtime_path}")
+          
+          if not runtime_path.exists():
+              print(f"ERROR: Runtime file not found: {runtime_path}")
+              sys.exit(1)
+          
+          file_size = runtime_path.stat().st_size
+          print(f"Runtime 文件大小: {file_size:,} bytes")
+          
+          print("计算 SHA256...")
           hasher = hashlib.sha256()
           with runtime_path.open("rb") as f:
               while chunk := f.read(1 << 20):
                   hasher.update(chunk)
+          
+          sha256_hash = hasher.hexdigest()
+          print(f"SHA256: {sha256_hash}")
 
           manifest = {
               "manifest_version": "1",
@@ -503,16 +572,29 @@ jobs:
                   f"https://github.com/{os.environ['REPO_NAME']}"
                   f"/releases/download/{os.environ['TAG_NAME']}/{runtime_path.name}"
               ),
-              "runtime_archive_sha256": hasher.hexdigest(),
-              "runtime_archive_size": runtime_path.stat().st_size,
+              "runtime_archive_sha256": sha256_hash,
+              "runtime_archive_size": file_size,
               "min_launcher_version": "1.0.0",
               "generated_at": datetime.now(timezone.utc).isoformat(),
           }
 
           output = f"runtime-manifest-{os.environ['PLATFORM']}.json"
+          print(f"写入 manifest 文件: {output}")
+          
           with open(output, "w", encoding="utf-8") as f:
               json.dump(manifest, f, ensure_ascii=False, indent=2)
-          print(f"Generated manifest: {output}")
+          
+          # 验证 manifest 文件
+          with open(output, "r", encoding="utf-8") as f:
+              loaded_manifest = json.load(f)
+              print(f"✓ Manifest 验证成功，包含 {len(loaded_manifest)} 个字段")
+          
+          print(f"✓ Generated manifest: {output}")
+          print(f"Manifest 内容预览:")
+          print(f"  - Platform: {manifest['platform']}")
+          print(f"  - Runtime Version: {manifest['runtime_version']}")
+          print(f"  - Archive Size: {manifest['runtime_archive_size']:,} bytes")
+          print(f"  - Archive URL: {manifest['runtime_archive_url']}")
 
       - uses: actions/upload-artifact@v4
         with:
@@ -532,6 +614,39 @@ jobs:
           make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify upload
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          
+          runtime_file = Path(os.environ["RUNTIME_NAME"])
+          manifest_file = Path(f"runtime-manifest-{os.environ['PLATFORM']}.json")
+          
+          print("=== 验证上传文件 ===")
+          print(f"Runtime 文件: {runtime_file}")
+          print(f"  - 存在: {runtime_file.exists()}")
+          if runtime_file.exists():
+              print(f"  - 大小: {runtime_file.stat().st_size:,} bytes")
+          
+          print(f"Manifest 文件: {manifest_file}")
+          print(f"  - 存在: {manifest_file.exists()}")
+          if manifest_file.exists():
+              print(f"  - 大小: {manifest_file.stat().st_size:,} bytes")
+              # 显示 manifest 内容
+              import json
+              with open(manifest_file, 'r', encoding='utf-8') as f:
+                  manifest = json.load(f)
+                  print(f"  - 平台: {manifest.get('platform', 'N/A')}")
+                  print(f"  - 版本: {manifest.get('runtime_version', 'N/A')}")
+                  print(f"  - SHA256: {manifest.get('runtime_archive_sha256', 'N/A')[:16]}...")
+          
+          if not (runtime_file.exists() and manifest_file.exists()):
+              print("ERROR: 必需文件缺失，上传可能失败")
+              sys.exit(1)
+          
+          print("✓ 所有文件准备就绪，上传完成")
 
   build-runtime-termux:
     needs: [prepare-release]
@@ -610,11 +725,26 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
 
+          print("=== 生成 Termux Runtime Manifest ===")
+          
           runtime_path = Path("runtime-termux-arm64.zip")
+          print(f"检查 runtime 文件: {runtime_path}")
+          
+          if not runtime_path.exists():
+              print(f"ERROR: Runtime file not found: {runtime_path}")
+              sys.exit(1)
+          
+          file_size = runtime_path.stat().st_size
+          print(f"Runtime 文件大小: {file_size:,} bytes")
+          
+          print("计算 SHA256...")
           hasher = hashlib.sha256()
           with runtime_path.open("rb") as f:
               while chunk := f.read(1 << 20):
                   hasher.update(chunk)
+
+          sha256_hash = hasher.hexdigest()
+          print(f"SHA256: {sha256_hash}")
 
           manifest = {
               "manifest_version": "1",
@@ -625,15 +755,29 @@ jobs:
                   f"https://github.com/{os.environ['REPO_NAME']}"
                   f"/releases/download/{os.environ['TAG_NAME']}/{runtime_path.name}"
               ),
-              "runtime_archive_sha256": hasher.hexdigest(),
-              "runtime_archive_size": runtime_path.stat().st_size,
+              "runtime_archive_sha256": sha256_hash,
+              "runtime_archive_size": file_size,
               "min_launcher_version": "1.0.0",
               "generated_at": datetime.now(timezone.utc).isoformat(),
           }
 
-          with open("runtime-manifest-termux-arm64.json", "w", encoding="utf-8") as f:
+          output = "runtime-manifest-termux-arm64.json"
+          print(f"写入 manifest 文件: {output}")
+          
+          with open(output, "w", encoding="utf-8") as f:
               json.dump(manifest, f, ensure_ascii=False, indent=2)
-          print("Generated termux manifest")
+          
+          # 验证 manifest 文件
+          with open(output, "r", encoding="utf-8") as f:
+              loaded_manifest = json.load(f)
+              print(f"✓ Manifest 验证成功，包含 {len(loaded_manifest)} 个字段")
+          
+          print(f"✓ Generated termux manifest: {output}")
+          print(f"Manifest 内容预览:")
+          print(f"  - Platform: {manifest['platform']}")
+          print(f"  - Runtime Version: {manifest['runtime_version']}")
+          print(f"  - Archive Size: {manifest['runtime_archive_size']:,} bytes")
+          print(f"  - Archive URL: {manifest['runtime_archive_url']}")
 
       - name: Prepare termux launcher
         run: |
