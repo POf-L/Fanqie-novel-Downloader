@@ -1,0 +1,12 @@
+{
+  "manifest_version": "1",
+  "platform": "macos-x64",
+  "runtime_version": "v2026.02.07.0216+85375e1",
+  "runtime_archive_name": "TomatoNovelDownloader-macos",
+  "runtime_archive_url": "https://github.com/POf-L/Fanqie-novel-Downloader/releases/download/v2026.02.07.0216%2B85375e1/TomatoNovelDownloader-macos",
+  "runtime_archive_sha256": "576d447cdbc5fb585d403fc9db7836a489d589f504f2b879dcb11ba2d12aec89",
+  "runtime_archive_size": 27934368,
+  "min_launcher_version": "1.0.0",
+  "generated_at": "2026-02-09T02:39:07.203896+00:00",
+  "note": "临时修复：使用 TomatoNovelDownloader-macos 作为 runtime 替代"
+}
