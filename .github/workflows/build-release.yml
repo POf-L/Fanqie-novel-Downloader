@@ -840,7 +840,7 @@ jobs:
             - **macOS**: `FanqieLauncher-macos-x64`
           draft: false
           prerelease: false
-          make_latest: true
+          make_latest: false
           files: |
             release-assets/FanqieLauncher-windows-x64.exe
             release-assets/FanqieLauncher-linux-x64

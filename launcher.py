@@ -741,7 +741,7 @@ _session = requests.Session()
 
 NODE_TEST_TIMEOUT_SECONDS = 5.0
 NODE_TEST_CONNECT_TIMEOUT_SECONDS = 1.0
-NODE_TEST_MAX_WORKERS = 500  # 超级高并发
+NODE_TEST_MAX_WORKERS = 500  # 并发测试线程上限
 
 PIP_INDEX_MIRRORS = [
     ("清华", "https://pypi.tuna.tsinghua.edu.cn/simple"),
@@ -903,6 +903,27 @@ def _fetch_latest_release(repo: str) -> Optional[Dict]:
     return data if isinstance(data, dict) else None
 
 
+def _fetch_recent_releases(repo: str, per_page: int = 20) -> List[Dict]:
+    url = f"https://api.github.com/repos/{repo}/releases?per_page={per_page}"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "FanqieLauncher",
+    }
+    try:
+        response = _do_get(url, headers=headers, timeout=(3, 10))
+    except Exception:
+        return []
+    if response.status_code != 200:
+        return []
+    try:
+        data = response.json()
+    except ValueError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict)]
+
+
 def _get_asset_url(release_data: Dict, asset_name: str) -> Optional[str]:
     for asset in release_data.get("assets", []):
         if asset.get("name") == asset_name:
@@ -911,27 +932,39 @@ def _get_asset_url(release_data: Dict, asset_name: str) -> Optional[str]:
 
 
 def _load_platform_manifest(repo: str, platform: str) -> Optional[Dict]:
-    release_data = _fetch_latest_release(repo)
-    if not release_data:
-        return None
-
     asset_name = f"runtime-manifest-{platform}.json"
-    manifest_url = _get_asset_url(release_data, asset_name)
-    if not manifest_url:
-        return None
+    candidates: List[Dict] = []
+
+    latest_release = _fetch_latest_release(repo)
+    if latest_release:
+        candidates.append(latest_release)
+
+    for release in _fetch_recent_releases(repo):
+        if release.get("id") == latest_release.get("id") if latest_release else False:
+            continue
+        candidates.append(release)
 
     headers = {"User-Agent": "FanqieLauncher"}
-    response = _do_get(manifest_url, headers=headers, timeout=(3, 10))
-    if response.status_code != 200:
-        return None
+    for release_data in candidates:
+        manifest_url = _get_asset_url(release_data, asset_name)
+        if not manifest_url:
+            continue
 
-    try:
-        data = response.json()
-    except ValueError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    return data
+        try:
+            response = _do_get(manifest_url, headers=headers, timeout=(3, 10))
+        except Exception:
+            continue
+        if response.status_code != 200:
+            continue
+
+        try:
+            data = response.json()
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            return data
+
+    return None
 
 
 def _is_launcher_update_required(remote_manifest: Dict) -> bool:
@@ -1386,7 +1419,7 @@ def _ensure_runtime_dependencies() -> None:
 
 
 async def _test_node_latency_async(domain: str, session: Any) -> Tuple[str, Optional[float]]:
-    """异步测试单个节点延迟 - 超级高并发版本"""
+    """异步测试单个节点延迟。"""
     try:
         start = time.perf_counter()
         timeout = aiohttp.ClientTimeout(total=NODE_TEST_TIMEOUT_SECONDS, connect=NODE_TEST_CONNECT_TIMEOUT_SECONDS)
@@ -1418,13 +1451,13 @@ def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
 
 
 async def _test_all_nodes_async() -> List[Tuple[str, float]]:
-    """异步测试所有镜像节点延迟 - 超级高并发版本"""
+    """异步测试所有镜像节点延迟。"""
     if not AIOHTTP_AVAILABLE:
         return []
 
-    print(f"正在异步测试 {len(MIRROR_NODES)} 个镜像节点延迟 (超级高并发模式)...")
+    print(f"正在测试 {len(MIRROR_NODES)} 个镜像节点延迟（并发）...")
     
-    # 配置 aiohttp 连接器以支持超级高并发
+    # 配置 aiohttp 连接器用于并发测速
     connector = aiohttp.TCPConnector(
         limit=1000,  # 总连接池大小
         limit_per_host=50,  # 每个主机的连接数
@@ -1576,7 +1609,7 @@ def _select_download_mode() -> None:
     _download_mode = "mirror"
     _session.trust_env = False
 
-    # 测试镜像节点 - 使用超级高并发异步测速
+    # 测试镜像节点 - 使用异步并发测速
     try:
         if AIOHTTP_AVAILABLE:
             if hasattr(asyncio, 'run'):
