@@ -391,7 +391,7 @@ jobs:
               "--no-skip-if-unchanged",
           ])
           '''
-          subprocess.check_call([venv_python, "-c", dep_script])
+          subprocess.check_call([sys.executable, "-c", dep_script])
 
       - name: Generate version.py
         shell: python
@@ -538,7 +538,7 @@ jobs:
           TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
           REPO_NAME: ${{ github.repository }}
         run: |
-          import hashlib, json, os
+          import hashlib, json, os, sys
           from datetime import datetime, timezone
           from pathlib import Path
 
@@ -617,8 +617,12 @@ jobs:
 
       - name: Verify upload
         shell: python
+        env:
+          RUNTIME_NAME: ${{ matrix.runtime_name }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           import os
+          import sys
           from pathlib import Path
           
           runtime_file = Path(os.environ["RUNTIME_NAME"])
@@ -721,7 +725,7 @@ jobs:
           TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
           REPO_NAME: ${{ github.repository }}
         run: |
-          import hashlib, json, os
+          import hashlib, json, os, sys
           from datetime import datetime, timezone
           from pathlib import Path
 
