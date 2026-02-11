@@ -14,15 +14,15 @@ from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.async_logger import safe_print
+import requests
 
-# 尝试导入 aiohttp，如果不可用则使用 requests
+# aiohttp 是可选加速依赖；requests 为同步路径必需依赖
 try:
     import aiohttp
     AIOHTTP_AVAILABLE = True
 except ImportError:
     aiohttp = None
     AIOHTTP_AVAILABLE = False
-    import requests
 
 
 class NodeTester:
