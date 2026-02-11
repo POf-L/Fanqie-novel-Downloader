@@ -754,6 +754,8 @@ PIP_INDEX_MIRRORS = [
 
 _selected_pip_mirror_name = "PyPI"
 _selected_pip_index_url = "https://pypi.org/simple"
+_available_pip_mirrors: List[Tuple[str, str, float]] = []
+_available_runtime_mirrors: List[Tuple[str, float]] = []
 
 
 def _write_error(message: str) -> None:
@@ -1092,6 +1094,76 @@ def _requirements_file_for_platform() -> Path:
     raise FileNotFoundError("未找到 requirements 文件")
 
 
+def _looks_like_python_executable(executable: Path) -> bool:
+    name = executable.name.lower()
+    if "python" in name:
+        return True
+    return name in {"py", "py.exe"}
+
+
+def _probe_python_command(cmd_prefix: List[str]) -> Tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            [*cmd_prefix, "-c", "import sys, venv; print(sys.executable)"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception as exc:
+        return False, str(exc)
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        return False, stderr or f"returncode={result.returncode}"
+
+    detected = (result.stdout or "").strip()
+    return True, detected or "unknown"
+
+
+def _resolve_venv_builder_command() -> Tuple[List[str], str]:
+    """自动寻找可用于创建 venv 的 Python 命令。"""
+    candidates: List[List[str]] = []
+    seen = set()
+
+    def _add_candidate(cmd: List[str]) -> None:
+        key = tuple(cmd)
+        if key not in seen:
+            seen.add(key)
+            candidates.append(cmd)
+
+    env_python = os.environ.get("FANQIE_BOOTSTRAP_PYTHON", "").strip()
+    if env_python:
+        _add_candidate([env_python])
+
+    for raw_path in (sys.executable, getattr(sys, "_base_executable", "")):
+        if not raw_path:
+            continue
+        candidate = Path(raw_path)
+        if candidate.exists() and _looks_like_python_executable(candidate):
+            _add_candidate([str(candidate)])
+
+    for cmd_name in ("python", "python3"):
+        resolved = shutil.which(cmd_name)
+        if resolved:
+            _add_candidate([resolved])
+
+    if sys.platform == "win32":
+        py_launcher = shutil.which("py")
+        if py_launcher:
+            _add_candidate([py_launcher, "-3"])
+
+    for cmd in candidates:
+        ok, details = _probe_python_command(cmd)
+        _write_error(f"[DEBUG] Python候选检查: {' '.join(cmd)} -> {'OK' if ok else 'FAIL'} {details}")
+        if ok:
+            return cmd, details
+
+    raise RuntimeError(
+        "未找到可用 Python 解释器，无法创建 Runtime 虚拟环境。"
+        "请安装 Python 3（建议 3.11+），或设置 FANQIE_BOOTSTRAP_PYTHON 指向 python 可执行文件。"
+    )
+
+
 def _ensure_runtime_venv() -> Path:
     runtime_root = _runtime_root()
     py_path = _runtime_venv_python()
@@ -1127,23 +1199,33 @@ def _ensure_runtime_venv() -> Path:
             _write_error(f"[DEBUG] 删除虚拟环境失败: {e}")
 
     print("正在创建 Runtime 虚拟环境...")
-    _write_error(f"[DEBUG] 使用系统Python: {sys.executable}")
+    builder_cmd, detected_python = _resolve_venv_builder_command()
+    _write_error(f"[DEBUG] 使用系统Python命令: {' '.join(builder_cmd)}")
+    _write_error(f"[DEBUG] 探测到解释器: {detected_python}")
     _write_error(f"[DEBUG] 目标路径: {runtime_root / '.venv'}")
     
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "venv", str(runtime_root / ".venv")],
+            [*builder_cmd, "-m", "venv", str(runtime_root / ".venv")],
             check=True,
             cwd=str(runtime_root),
             capture_output=True,
-            text=True
+            text=True,
+            timeout=300,
         )
         _write_error(f"[DEBUG] 虚拟环境创建成功")
+        if result.stdout:
+            _write_error(f"[DEBUG] stdout: {result.stdout.strip()}")
+        if result.stderr:
+            _write_error(f"[DEBUG] stderr: {result.stderr.strip()}")
     except subprocess.CalledProcessError as e:
         _write_error(f"[DEBUG] 虚拟环境创建失败: {e}")
         _write_error(f"[DEBUG] stdout: {e.stdout}")
         _write_error(f"[DEBUG] stderr: {e.stderr}")
         raise RuntimeError(f"虚拟环境创建失败: {e}")
+    except subprocess.TimeoutExpired as e:
+        _write_error(f"[DEBUG] 虚拟环境创建超时: {e}")
+        raise RuntimeError("虚拟环境创建超时（300秒）")
 
     py_path = _runtime_venv_python()
     if not py_path.exists():
@@ -1206,9 +1288,9 @@ def _test_all_pip_mirrors() -> List[Tuple[str, str, float]]:
     return available
 
 
-def _select_pip_mirror(allow_manual: bool = False) -> None:
-    """选择 pip 镜像。默认自动选最快；仅当 allow_manual=True（如安装失败后）才弹出选择框。"""
-    global _selected_pip_mirror_name, _selected_pip_index_url
+def _select_pip_mirror() -> None:
+    """自动选择 pip 镜像源，并保存候选列表用于失败回退。"""
+    global _selected_pip_mirror_name, _selected_pip_index_url, _available_pip_mirrors
 
     tui = get_tui() if RICH_AVAILABLE else None
 
@@ -1227,51 +1309,17 @@ def _select_pip_mirror(allow_manual: bool = False) -> None:
             tui.show_status("pip 镜像测速失败，将使用官方 PyPI", "warning")
         else:
             print("pip 镜像测速失败，将使用官方 PyPI")
+        _available_pip_mirrors = [("PyPI", "https://pypi.org/simple", 0.0)]
         _selected_pip_mirror_name = "PyPI"
         _selected_pip_index_url = "https://pypi.org/simple"
         return
 
-    if allow_manual:
-        # 仅在安装失败等情况下允许用户手动选择
-        if tui and tui.use_tui:
-            mirror_infos = [MirrorInfo(name, url, latency) for name, url, latency in available]
-            idx = tui.show_mirror_table(mirror_infos, "请手动选择 pip 镜像源（当前源安装失败）", default_index=0)
-        else:
-            max_name_len = max(len(name) for name, _, _ in available)
-            for i, (name, url, latency) in enumerate(available, 1):
-                print(f"  {i:>3}. {name:<{max_name_len}}  {latency:>7.0f}ms  {url}")
-            try:
-                sel = input(f"\n请选择 pip 镜像编号 [1-{len(available)}] (默认 1): ").strip()
-            except (EOFError, KeyboardInterrupt):
-                sel = "1"
-            try:
-                idx = int(sel) - 1 if sel else 0
-                if not (0 <= idx < len(available)):
-                    idx = 0
-            except ValueError:
-                idx = 0
-        _selected_pip_mirror_name, _selected_pip_index_url, _ = available[idx]
-        if tui:
-            tui.show_status(f"已选择 pip 镜像: {_selected_pip_mirror_name}", "success")
-        else:
-            print(f"已选择 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
+    _available_pip_mirrors = available
+    _selected_pip_mirror_name, _selected_pip_index_url, _ = available[0]
+    if tui:
+        tui.show_status(f"已自动选择最快 pip 镜像: {_selected_pip_mirror_name}", "info")
     else:
-        # 默认自动选择延迟最低的镜像
-        idx = 0
-        _selected_pip_mirror_name, _selected_pip_index_url, _ = available[idx]
-        if tui:
-            tui.show_status(f"已自动选择最快 pip 镜像: {_selected_pip_mirror_name}", "info")
-        else:
-            print(f"已自动选择最快 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
-
-
-def _can_prompt_user() -> bool:
-    return bool(
-        sys.stdin
-        and sys.stdout
-        and sys.stdin.isatty()
-        and sys.stdout.isatty()
-    )
+        print(f"已自动选择最快 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
 
 
 def _run_pip_install_command(cmd: List[str], timeout_seconds: int = 900) -> None:
@@ -1290,19 +1338,12 @@ def _run_pip_install_command(cmd: List[str], timeout_seconds: int = 900) -> None
 def _pip_install_with_mirrors(
     py_path: Path,
     install_args: List[str],
-    allow_manual_selection: Optional[bool] = None
 ) -> None:
-    if allow_manual_selection is None:
-        tui = get_tui() if RICH_AVAILABLE else None
-        allow_manual_selection = _can_prompt_user() and not (tui and tui.use_tui)
-
     install_target = " ".join(install_args).strip() or "(无参数)"
     if len(install_target) > 160:
         install_target = install_target[:157] + "..."
-    print(f"使用 {_selected_pip_mirror_name} 源安装依赖: {install_target}", flush=True)
     _write_error(f"[DEBUG] pip安装参数: {install_args}")
     _write_error(f"[DEBUG] 使用Python路径: {py_path}")
-    _write_error(f"[DEBUG] allow_manual_selection={allow_manual_selection}")
 
     def _build_cmd(index_url: str) -> List[str]:
         return [
@@ -1317,61 +1358,49 @@ def _pip_install_with_mirrors(
             *install_args,
         ]
 
-    try:
-        cmd = _build_cmd(_selected_pip_index_url)
-        _write_error(f"[DEBUG] 执行命令: {' '.join(cmd)}")
-        _run_pip_install_command(cmd, timeout_seconds=900)
-        _write_error("[DEBUG] pip安装成功")
-        return
+    mirror_attempts: List[Tuple[str, str]] = []
+    seen_urls = set()
 
-    except subprocess.CalledProcessError as exc:
-        _write_error(f"[DEBUG] {_selected_pip_mirror_name} 源安装失败")
-        _write_error(f"[DEBUG] 返回码: {exc.returncode}")
+    def _append_attempt(name: str, index_url: str) -> None:
+        if not index_url or index_url in seen_urls:
+            return
+        seen_urls.add(index_url)
+        mirror_attempts.append((name, index_url))
 
-        if _selected_pip_index_url == "https://pypi.org/simple":
-            raise RuntimeError(f"pip 安装失败: {exc}")
+    _append_attempt(_selected_pip_mirror_name, _selected_pip_index_url)
+    for name, index_url, _ in _available_pip_mirrors:
+        _append_attempt(name, index_url)
+    _append_attempt("PyPI", "https://pypi.org/simple")
 
-        # 在交互式终端可选手动镜像；TUI 和非交互环境自动回退，避免卡在隐藏输入。
-        if allow_manual_selection:
-            try:
-                choice_manual = input(
-                    f"{_selected_pip_mirror_name} 源安装失败，是否手动选择其他镜像？[y/N]（回车使用官方 PyPI）: "
-                ).strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                choice_manual = ""
-            if choice_manual in ("y", "yes"):
-                _select_pip_mirror(allow_manual=True)
-                try:
-                    retry_cmd = _build_cmd(_selected_pip_index_url)
-                    _write_error(f"[DEBUG] 手动镜像重试命令: {' '.join(retry_cmd)}")
-                    _run_pip_install_command(retry_cmd, timeout_seconds=900)
-                    _write_error("[DEBUG] 手动选择镜像后安装成功")
-                    return
-                except subprocess.CalledProcessError:
-                    pass  # 仍失败则回退 PyPI
-        else:
-            _write_error("[DEBUG] 当前环境不适合交互输入，自动回退官方 PyPI")
+    last_error: Optional[Exception] = None
+    total_attempts = len(mirror_attempts)
 
-        print("当前镜像安装失败，回退到官方 PyPI...", flush=True)
-        _write_error("[DEBUG] 尝试使用官方PyPI...")
-
+    for attempt_index, (mirror_name, index_url) in enumerate(mirror_attempts, 1):
+        print(
+            f"使用 {mirror_name} 源安装依赖: {install_target} "
+            f"(尝试 {attempt_index}/{total_attempts})",
+            flush=True
+        )
         try:
-            fallback_cmd = _build_cmd("https://pypi.org/simple")
-            _write_error(f"[DEBUG] 回退命令: {' '.join(fallback_cmd)}")
-            _run_pip_install_command(fallback_cmd, timeout_seconds=900)
-            _write_error("[DEBUG] PyPI回退安装成功")
+            cmd = _build_cmd(index_url)
+            _write_error(f"[DEBUG] 执行命令: {' '.join(cmd)}")
+            _run_pip_install_command(cmd, timeout_seconds=900)
+            _write_error(f"[DEBUG] pip安装成功: {mirror_name}")
+            return
+        except subprocess.CalledProcessError as exc:
+            last_error = exc
+            _write_error(f"[DEBUG] pip安装失败: {mirror_name}, returncode={exc.returncode}")
+            continue
+        except subprocess.TimeoutExpired as exc:
+            last_error = exc
+            _write_error(f"[DEBUG] pip安装超时: {mirror_name}, {exc}")
+            continue
+        except Exception as exc:
+            last_error = exc
+            _write_error(f"[DEBUG] pip安装异常: {mirror_name}, {exc}")
+            continue
 
-        except subprocess.CalledProcessError as exc2:
-            _write_error("[DEBUG] PyPI回退也失败")
-            _write_error(f"[DEBUG] 返回码: {exc2.returncode}")
-            raise RuntimeError(f"pip 安装失败（包括PyPI回退）: {exc2}")
-
-    except subprocess.TimeoutExpired as exc:
-        _write_error(f"[DEBUG] pip安装超时: {exc}")
-        raise RuntimeError(f"pip 安装超时: {exc}")
-    except Exception as exc:
-        _write_error(f"[DEBUG] pip安装异常: {exc}")
-        raise RuntimeError(f"pip 安装异常: {exc}")
+    raise RuntimeError(f"pip 安装失败（全部镜像均重试失败）: {last_error}")
 
 
 def _ensure_runtime_dependencies() -> None:
@@ -1526,12 +1555,20 @@ async def _test_all_nodes_async() -> List[Tuple[str, float]]:
 def _ensure_launcher_dependency(module_name: str, package_name: Optional[str] = None) -> bool:
     """为启动器自身尝试安装缺失依赖。"""
     package = package_name or module_name
+    python_for_install = sys.executable
+    try:
+        resolved_cmd, _ = _resolve_venv_builder_command()
+        if resolved_cmd:
+            python_for_install = resolved_cmd[0]
+    except Exception as exc:
+        _write_error(f"[DEBUG] 解析启动器依赖安装解释器失败，回退sys.executable: {exc}")
+
     if DEP_MANAGER_AVAILABLE:
         try:
             result = auto_manage_dependencies(
                 project_root=_base_dir(),
                 targets=["launcher.py", "utils", "config"],
-                python_executable=sys.executable,
+                python_executable=python_for_install,
                 requirements_file=_base_dir() / "config" / "requirements.txt",
                 state_file=_base_dir() / ".launcher_deps_state.json",
                 extra_packages=[package],
@@ -1603,54 +1640,31 @@ def _test_all_nodes() -> List[Tuple[str, float]]:
     return available
 
 
-def _select_download_mode() -> None:
-    global _download_mode, _mirror_domain, aiohttp, AIOHTTP_AVAILABLE
+def _has_proxy_env() -> bool:
+    proxy_keys = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy")
+    return any(os.environ.get(key, "").strip() for key in proxy_keys)
 
-    # 获取TUI实例
+
+def _select_download_mode() -> None:
+    global _download_mode, _mirror_domain, aiohttp, AIOHTTP_AVAILABLE, _available_runtime_mirrors
     tui = get_tui() if RICH_AVAILABLE else None
 
-    # 定义下载选项
-    options = [
-        DownloadOption("1", "直连 GitHub", "不使用代理，直接连接GitHub"),
-        DownloadOption("2", "直连 GitHub", "使用系统代理"),
-        DownloadOption("3", "使用镜像节点", "通过GitHub镜像节点下载")
-    ]
-
-    if tui and tui.use_tui:
-        # TUI模式
-        choice = tui.select_download_mode(options, default="3")
-    else:
-        # 传统命令行模式
-        print("\n请选择下载方式:")
-        for i, opt in enumerate(options, 1):
-            print(f"  {i}. {opt.name} - {opt.description}")
-
-        try:
-            choice = input("请输入选项 [1/2/3] (默认 3): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            choice = "3"
-
-    if choice == "1":
-        _download_mode = "direct"
-        _session.trust_env = False
-        return
-
-    if choice == "2":
-        _download_mode = "proxy"
-        _session.trust_env = True
-        return
-
+    # 全自动：默认优先镜像，失败后自动回退
     _download_mode = "mirror"
     _session.trust_env = False
+    _mirror_domain = None
+    _available_runtime_mirrors = []
 
-    # 测试镜像节点 - 使用异步并发测速
+    if tui:
+        tui.show_status("下载策略：自动模式（优先镜像）", "info")
+    else:
+        print("下载策略：自动模式（优先镜像）")
+
     try:
         if AIOHTTP_AVAILABLE:
             if hasattr(asyncio, 'run'):
-                # Python 3.7+ 支持 asyncio.run
                 available = asyncio.run(_test_all_nodes_async())
             else:
-                # 兼容旧版本 Python
                 loop = asyncio.get_event_loop()
                 available = loop.run_until_complete(_test_all_nodes_async())
         else:
@@ -1678,14 +1692,23 @@ def _select_download_mode() -> None:
             available = _test_all_nodes()
 
     if not available:
-        if tui:
-            tui.show_status("所有镜像节点均不可用，将使用直连", "warning")
+        if _has_proxy_env():
+            _download_mode = "proxy"
+            _session.trust_env = True
+            if tui:
+                tui.show_status("镜像不可用，检测到系统代理，自动使用代理直连", "warning")
+            else:
+                print("镜像不可用，检测到系统代理，自动使用代理直连")
         else:
-            print("所有镜像节点均不可用，将使用直连")
-        _download_mode = "direct"
+            _download_mode = "direct"
+            _session.trust_env = False
+            if tui:
+                tui.show_status("所有镜像节点均不可用，自动使用直连", "warning")
+            else:
+                print("所有镜像节点均不可用，自动使用直连")
         return
 
-    # 默认自动选择延迟最低的镜像，无需用户手动选择
+    _available_runtime_mirrors = available
     _mirror_domain = available[0][0]
     latency_ms = available[0][1]
     if tui:
@@ -1694,56 +1717,8 @@ def _select_download_mode() -> None:
         print(f"已自动选择最快镜像: {_mirror_domain} ({latency_ms:.0f}ms)")
 
 
-def _manual_select_runtime_mirror() -> bool:
-    """仅在下载失败时调用：重新测速并让用户手动选择镜像节点。返回是否已选择并更新了 _mirror_domain。"""
-    global _mirror_domain
-    tui = get_tui() if RICH_AVAILABLE else None
-    try:
-        if AIOHTTP_AVAILABLE:
-            available = asyncio.run(_test_all_nodes_async()) if hasattr(asyncio, "run") else asyncio.get_event_loop().run_until_complete(_test_all_nodes_async())
-        else:
-            raise RuntimeError("aiohttp 未安装")
-    except Exception:
-        if tui and tui.use_tui:
-            available = tui.show_progress_test(
-                "正在测试镜像节点延迟", MIRROR_NODES, _test_node_latency, timeout=NODE_TEST_TIMEOUT_SECONDS
-            )
-        else:
-            available = _test_all_nodes()
-    if not available:
-        if tui:
-            tui.show_status("暂无可用镜像节点，将尝试直连", "warning")
-        else:
-            print("暂无可用镜像节点，将尝试直连")
-        return False
-    if tui and tui.use_tui:
-        mirror_infos = [MirrorInfo(d, f"https://{d}", lat) for d, lat in available]
-        idx = tui.show_mirror_table(mirror_infos, "请手动选择镜像节点（下载失败时）", default_index=0)
-    else:
-        max_len = max(len(d) for d, _ in available)
-        for i, (domain, latency) in enumerate(available, 1):
-            print(f"  {i:>3}. {domain:<{max_len}}  {latency:>7.0f}ms")
-        try:
-            sel = input(f"\n请选择节点编号 [1-{len(available)}] (默认 1，直接回车跳过): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return False
-        if sel == "":
-            return False
-        try:
-            idx = int(sel) - 1
-            if not (0 <= idx < len(available)):
-                idx = 0
-        except ValueError:
-            idx = 0
-    _mirror_domain = available[idx][0]
-    if tui:
-        tui.show_status(f"已选择镜像: {_mirror_domain}", "info")
-    else:
-        print(f"已选择镜像: {_mirror_domain}")
-    return True
-
-
 def _ensure_runtime(repo: str) -> None:
+    global _mirror_domain
     platform = _platform_name()
     state_path = _state_path()
     local_state = _read_json(state_path) or {}
@@ -1793,75 +1768,62 @@ def _ensure_runtime(repo: str) -> None:
     else:
         print(f"正在更新 Runtime: {runtime_version}")
     
-    # 下载Runtime
-    if _download_mode == "mirror" and _mirror_domain:
-        mirror_url = f"https://{_mirror_domain}/{runtime_url}"
-        try:
-            if tui and tui.use_tui:
-                archive_bytes = tui.show_download_progress(
-                    f"下载 Runtime ({runtime_version})",
-                    _download_runtime_archive,
-                    mirror_url, runtime_sha
-                )
-            else:
-                archive_bytes = _download_runtime_archive(mirror_url, runtime_sha)
-        except Exception:
-            if tui:
-                tui.show_status("镜像下载失败", "warning")
-            else:
-                print("\n镜像下载失败")
-            # 仅在此处允许用户手动选择其他镜像，否则自动直连
-            choice_manual = ""
-            try:
-                choice_manual = input("是否手动选择其他镜像？[y/N]（直接回车将尝试直连）: ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                pass
-            if (choice_manual in ("y", "yes")) and _manual_select_runtime_mirror():
-                mirror_url = f"https://{_mirror_domain}/{runtime_url}"
-                try:
-                    if tui and tui.use_tui:
-                        archive_bytes = tui.show_download_progress(
-                            f"下载 Runtime ({runtime_version})",
-                            _download_runtime_archive,
-                            mirror_url, runtime_sha
-                        )
-                    else:
-                        archive_bytes = _download_runtime_archive(mirror_url, runtime_sha)
-                except Exception:
-                    if tui:
-                        tui.show_status("所选镜像仍失败，尝试直连...", "warning")
-                    else:
-                        print("所选镜像仍失败，尝试直连...")
-                    if tui and tui.use_tui:
-                        archive_bytes = tui.show_download_progress(
-                            f"下载 Runtime ({runtime_version})",
-                            _download_runtime_archive,
-                            runtime_url, runtime_sha
-                        )
-                    else:
-                        archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
-            else:
-                if tui:
-                    tui.show_status("尝试直连...", "warning")
-                else:
-                    print("尝试直连...")
-                if tui and tui.use_tui:
-                    archive_bytes = tui.show_download_progress(
-                        f"下载 Runtime ({runtime_version})",
-                        _download_runtime_archive,
-                        runtime_url, runtime_sha
-                    )
-                else:
-                    archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
-    else:
+    def _download_with_progress(target_url: str) -> bytes:
         if tui and tui.use_tui:
-            archive_bytes = tui.show_download_progress(
+            return tui.show_download_progress(
                 f"下载 Runtime ({runtime_version})",
                 _download_runtime_archive,
-                runtime_url, runtime_sha
+                target_url, runtime_sha
             )
-        else:
-            archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
+        return _download_runtime_archive(target_url, runtime_sha)
+
+    archive_bytes: Optional[bytes] = None
+    mirror_errors: List[str] = []
+
+    # 下载 Runtime：全自动策略
+    # 1) 若启用镜像，按测速结果依次尝试镜像
+    # 2) 全部失败后自动回退直连
+    if _download_mode == "mirror":
+        mirror_candidates: List[str] = []
+        if _mirror_domain:
+            mirror_candidates.append(_mirror_domain)
+        for domain, _ in _available_runtime_mirrors:
+            if domain not in mirror_candidates:
+                mirror_candidates.append(domain)
+
+        for idx, domain in enumerate(mirror_candidates, 1):
+            mirror_url = f"https://{domain}/{runtime_url}"
+            try:
+                if idx == 1:
+                    if tui:
+                        tui.show_status(f"尝试镜像下载: {domain}", "info")
+                    else:
+                        print(f"尝试镜像下载: {domain}")
+                else:
+                    if tui:
+                        tui.show_status(f"镜像重试({idx}/{len(mirror_candidates)}): {domain}", "warning")
+                    else:
+                        print(f"镜像重试({idx}/{len(mirror_candidates)}): {domain}")
+                archive_bytes = _download_with_progress(mirror_url)
+                _mirror_domain = domain
+                break
+            except Exception as exc:
+                mirror_errors.append(f"{domain}: {exc}")
+                _write_error(f"[DEBUG] 镜像下载失败: {domain}, {exc}")
+                continue
+
+        if archive_bytes is None:
+            if tui:
+                tui.show_status("镜像均失败，自动回退直连下载", "warning")
+            else:
+                print("镜像均失败，自动回退直连下载")
+
+    if archive_bytes is None:
+        try:
+            archive_bytes = _download_with_progress(runtime_url)
+        except Exception as exc:
+            detail = "; ".join(mirror_errors) if mirror_errors else "无镜像失败记录"
+            raise RuntimeError(f"Runtime 下载失败（直连失败，镜像错误: {detail}）: {exc}")
     
     _replace_runtime_archive(archive_bytes)
 
