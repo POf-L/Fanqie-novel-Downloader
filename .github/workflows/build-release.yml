@@ -9,6 +9,26 @@ on:
         default: "false"
         type: choice
         options: ["false", "true"]
+      platform_windows_x64:
+        description: "编译 Windows x64"
+        required: false
+        default: true
+        type: boolean
+      platform_linux_x64:
+        description: "编译 Linux x64"
+        required: false
+        default: true
+        type: boolean
+      platform_macos_x64:
+        description: "编译 macOS x64"
+        required: false
+        default: true
+        type: boolean
+      platform_termux_arm64:
+        description: "编译 Termux ARM64"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -29,10 +49,36 @@ jobs:
       version: ${{ steps.version.outputs.VERSION }}
       build_time: ${{ steps.version.outputs.BUILD_TIME }}
       tag_name: ${{ steps.version.outputs.TAG_NAME }}
+      platforms: ${{ steps.platforms.outputs.platforms }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set build platforms
+        id: platforms
+        env:
+          P_WIN: ${{ inputs.platform_windows_x64 }}
+          P_LIN: ${{ inputs.platform_linux_x64 }}
+          P_MAC: ${{ inputs.platform_macos_x64 }}
+          P_TERMUX: ${{ inputs.platform_termux_arm64 }}
+        run: |
+          python3 << 'PY'
+          import json
+          import os
+          p = []
+          if os.environ.get("P_WIN") == "true": p.append("windows-x64")
+          if os.environ.get("P_LIN") == "true": p.append("linux-x64")
+          if os.environ.get("P_MAC") == "true": p.append("macos-x64")
+          if os.environ.get("P_TERMUX") == "true": p.append("termux-arm64")
+          if not p:
+              print("ERROR: 请至少勾选一个要编译的平台")
+              raise SystemExit(1)
+          out = json.dumps(p)
+          with open(os.environ.get("GITHUB_OUTPUT", ""), "a") as f:
+              f.write("platforms=" + out + "\n")
+          print("Selected platforms:", out)
+          PY
 
       - name: Generate version
         id: version
@@ -46,7 +92,7 @@ jobs:
 
   build-launcher:
     needs: [prepare-release]
-    if: inputs.build_launcher == 'true'
+    if: inputs.build_launcher == 'true' && contains(fromJSON(needs.prepare-release.outputs.platforms), matrix.platform)
     strategy:
       fail-fast: false
       matrix:
@@ -249,6 +295,7 @@ jobs:
 
   build-runtime:
     needs: [prepare-release]
+    if: contains(fromJSON(needs.prepare-release.outputs.platforms), matrix.platform)
     strategy:
       fail-fast: false
       matrix:
@@ -583,6 +630,7 @@ jobs:
 
   build-runtime-termux:
     needs: [prepare-release]
+    if: contains(fromJSON(needs.prepare-release.outputs.platforms), 'termux-arm64')
     runs-on: ubuntu-latest
     name: Build Runtime (termux-arm64)
     steps:
@@ -736,8 +784,8 @@ jobs:
     if: >-
       always() &&
       needs.prepare-release.result == 'success' &&
-      needs.build-runtime.result == 'success' &&
-      needs.build-runtime-termux.result == 'success' &&
+      (needs.build-runtime.result == 'success' || needs.build-runtime.result == 'skipped') &&
+      (needs.build-runtime-termux.result == 'success' || needs.build-runtime-termux.result == 'skipped') &&
       (needs.build-launcher.result == 'success' || needs.build-launcher.result == 'skipped')
     needs: [prepare-release, build-runtime, build-runtime-termux, build-launcher]
     runs-on: ubuntu-latest

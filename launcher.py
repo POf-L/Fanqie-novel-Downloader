@@ -1206,13 +1206,12 @@ def _test_all_pip_mirrors() -> List[Tuple[str, str, float]]:
     return available
 
 
-def _select_pip_mirror() -> None:
+def _select_pip_mirror(allow_manual: bool = False) -> None:
+    """选择 pip 镜像。默认自动选最快；仅当 allow_manual=True（如安装失败后）才弹出选择框。"""
     global _selected_pip_mirror_name, _selected_pip_index_url
 
-    # 获取TUI实例
     tui = get_tui() if RICH_AVAILABLE else None
 
-    # 测试pip镜像
     if tui and tui.use_tui:
         available = tui.show_progress_test(
             "正在测试 pip 镜像源延迟",
@@ -1232,111 +1231,141 @@ def _select_pip_mirror() -> None:
         _selected_pip_index_url = "https://pypi.org/simple"
         return
 
-    # 选择pip镜像
-    if tui and tui.use_tui:
-        mirror_infos = [MirrorInfo(name, url, latency) for name, url, latency in available]
-        idx = tui.show_mirror_table(mirror_infos, "选择pip镜像源", default_index=0)
-    else:
-        max_name_len = max(len(name) for name, _, _ in available)
-        for i, (name, url, latency) in enumerate(available, 1):
-            print(f"  {i:>3}. {name:<{max_name_len}}  {latency:>7.0f}ms  {url}")
-
-        try:
-            sel = input(f"\n请选择 pip 镜像编号 [1-{len(available)}] (默认 1): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            sel = ""
-
-        try:
-            idx = int(sel) - 1 if sel else 0
-            if not (0 <= idx < len(available)):
+    if allow_manual:
+        # 仅在安装失败等情况下允许用户手动选择
+        if tui and tui.use_tui:
+            mirror_infos = [MirrorInfo(name, url, latency) for name, url, latency in available]
+            idx = tui.show_mirror_table(mirror_infos, "请手动选择 pip 镜像源（当前源安装失败）", default_index=0)
+        else:
+            max_name_len = max(len(name) for name, _, _ in available)
+            for i, (name, url, latency) in enumerate(available, 1):
+                print(f"  {i:>3}. {name:<{max_name_len}}  {latency:>7.0f}ms  {url}")
+            try:
+                sel = input(f"\n请选择 pip 镜像编号 [1-{len(available)}] (默认 1): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                sel = "1"
+            try:
+                idx = int(sel) - 1 if sel else 0
+                if not (0 <= idx < len(available)):
+                    idx = 0
+            except ValueError:
                 idx = 0
-        except ValueError:
-            idx = 0
-
-    _selected_pip_mirror_name, _selected_pip_index_url, _ = available[idx]
-    if tui:
-        tui.show_status(f"已选择 pip 镜像: {_selected_pip_mirror_name}", "success")
+        _selected_pip_mirror_name, _selected_pip_index_url, _ = available[idx]
+        if tui:
+            tui.show_status(f"已选择 pip 镜像: {_selected_pip_mirror_name}", "success")
+        else:
+            print(f"已选择 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
     else:
-        print(f"已选择 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
+        # 默认自动选择延迟最低的镜像
+        idx = 0
+        _selected_pip_mirror_name, _selected_pip_index_url, _ = available[idx]
+        if tui:
+            tui.show_status(f"已自动选择最快 pip 镜像: {_selected_pip_mirror_name}", "info")
+        else:
+            print(f"已自动选择最快 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
 
 
-def _pip_install_with_mirrors(py_path: Path, install_args: List[str]) -> None:
-    print(f"使用 {_selected_pip_mirror_name} 源安装依赖...")
+def _can_prompt_user() -> bool:
+    return bool(
+        sys.stdin
+        and sys.stdout
+        and sys.stdin.isatty()
+        and sys.stdout.isatty()
+    )
+
+
+def _run_pip_install_command(cmd: List[str], timeout_seconds: int = 900) -> None:
+    env = os.environ.copy()
+    env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+    env.setdefault("PIP_NO_INPUT", "1")
+    subprocess.run(
+        cmd,
+        check=True,
+        timeout=timeout_seconds,
+        text=True,
+        env=env,
+    )
+
+
+def _pip_install_with_mirrors(
+    py_path: Path,
+    install_args: List[str],
+    allow_manual_selection: Optional[bool] = None
+) -> None:
+    if allow_manual_selection is None:
+        tui = get_tui() if RICH_AVAILABLE else None
+        allow_manual_selection = _can_prompt_user() and not (tui and tui.use_tui)
+
+    install_target = " ".join(install_args).strip() or "(无参数)"
+    if len(install_target) > 160:
+        install_target = install_target[:157] + "..."
+    print(f"使用 {_selected_pip_mirror_name} 源安装依赖: {install_target}", flush=True)
     _write_error(f"[DEBUG] pip安装参数: {install_args}")
     _write_error(f"[DEBUG] 使用Python路径: {py_path}")
-    
-    try:
-        cmd = [
+    _write_error(f"[DEBUG] allow_manual_selection={allow_manual_selection}")
+
+    def _build_cmd(index_url: str) -> List[str]:
+        return [
             str(py_path),
             "-m",
             "pip",
             "install",
+            "--progress-bar",
+            "on",
             "--index-url",
-            _selected_pip_index_url,
+            index_url,
             *install_args,
         ]
+
+    try:
+        cmd = _build_cmd(_selected_pip_index_url)
         _write_error(f"[DEBUG] 执行命令: {' '.join(cmd)}")
-        
-        result = subprocess.run(
-            cmd,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=300  # 5分钟超时
-        )
-        
-        _write_error(f"[DEBUG] pip安装成功")
-        if result.stdout:
-            _write_error(f"[DEBUG] pip stdout: {result.stdout[-500:]}")  # 只显示最后500字符
+        _run_pip_install_command(cmd, timeout_seconds=900)
+        _write_error("[DEBUG] pip安装成功")
         return
-        
+
     except subprocess.CalledProcessError as exc:
         _write_error(f"[DEBUG] {_selected_pip_mirror_name} 源安装失败")
         _write_error(f"[DEBUG] 返回码: {exc.returncode}")
-        if exc.stdout:
-            _write_error(f"[DEBUG] stdout: {exc.stdout}")
-        if exc.stderr:
-            _write_error(f"[DEBUG] stderr: {exc.stderr}")
-        
+
         if _selected_pip_index_url == "https://pypi.org/simple":
             raise RuntimeError(f"pip 安装失败: {exc}")
 
-        print(f"{_selected_pip_mirror_name} 源安装失败，回退到官方 PyPI...")
+        # 在交互式终端可选手动镜像；TUI 和非交互环境自动回退，避免卡在隐藏输入。
+        if allow_manual_selection:
+            try:
+                choice_manual = input(
+                    f"{_selected_pip_mirror_name} 源安装失败，是否手动选择其他镜像？[y/N]（回车使用官方 PyPI）: "
+                ).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                choice_manual = ""
+            if choice_manual in ("y", "yes"):
+                _select_pip_mirror(allow_manual=True)
+                try:
+                    retry_cmd = _build_cmd(_selected_pip_index_url)
+                    _write_error(f"[DEBUG] 手动镜像重试命令: {' '.join(retry_cmd)}")
+                    _run_pip_install_command(retry_cmd, timeout_seconds=900)
+                    _write_error("[DEBUG] 手动选择镜像后安装成功")
+                    return
+                except subprocess.CalledProcessError:
+                    pass  # 仍失败则回退 PyPI
+        else:
+            _write_error("[DEBUG] 当前环境不适合交互输入，自动回退官方 PyPI")
+
+        print("当前镜像安装失败，回退到官方 PyPI...", flush=True)
         _write_error("[DEBUG] 尝试使用官方PyPI...")
-        
+
         try:
-            fallback_cmd = [
-                str(py_path),
-                "-m",
-                "pip",
-                "install",
-                "--index-url",
-                "https://pypi.org/simple",
-                *install_args,
-            ]
+            fallback_cmd = _build_cmd("https://pypi.org/simple")
             _write_error(f"[DEBUG] 回退命令: {' '.join(fallback_cmd)}")
-            
-            result = subprocess.run(
-                fallback_cmd,
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=300
-            )
-            
-            _write_error(f"[DEBUG] PyPI回退安装成功")
-            if result.stdout:
-                _write_error(f"[DEBUG] PyPI stdout: {result.stdout[-500:]}")
-                
+            _run_pip_install_command(fallback_cmd, timeout_seconds=900)
+            _write_error("[DEBUG] PyPI回退安装成功")
+
         except subprocess.CalledProcessError as exc2:
-            _write_error(f"[DEBUG] PyPI回退也失败")
+            _write_error("[DEBUG] PyPI回退也失败")
             _write_error(f"[DEBUG] 返回码: {exc2.returncode}")
-            if exc2.stdout:
-                _write_error(f"[DEBUG] stdout: {exc2.stdout}")
-            if exc2.stderr:
-                _write_error(f"[DEBUG] stderr: {exc2.stderr}")
             raise RuntimeError(f"pip 安装失败（包括PyPI回退）: {exc2}")
-            
+
     except subprocess.TimeoutExpired as exc:
         _write_error(f"[DEBUG] pip安装超时: {exc}")
         raise RuntimeError(f"pip 安装超时: {exc}")
@@ -1361,8 +1390,10 @@ def _ensure_runtime_dependencies() -> None:
         tui.show_status("正在安装 Runtime 依赖...", "info")
     else:
         print("正在安装 Runtime 依赖...")
-    
+
+    print("依赖安装进度 1/3: 升级 pip", flush=True)
     _pip_install_with_mirrors(py_path, ["--upgrade", "pip"])
+    print("依赖安装进度 2/3: 扫描并安装缺失依赖", flush=True)
 
     installed_dynamic: List[str] = []
     if DEP_MANAGER_AVAILABLE:
@@ -1418,6 +1449,7 @@ def _ensure_runtime_dependencies() -> None:
         tui.show_status("Runtime 依赖安装完成", "success")
     else:
         print("✓ Runtime 依赖安装完成")
+    print("依赖安装进度 3/3: 完成", flush=True)
 
 
 async def _test_node_latency_async(domain: str, session: Any) -> Tuple[str, Optional[float]]:
@@ -1653,32 +1685,62 @@ def _select_download_mode() -> None:
         _download_mode = "direct"
         return
 
-    # 选择镜像节点
+    # 默认自动选择延迟最低的镜像，无需用户手动选择
+    _mirror_domain = available[0][0]
+    latency_ms = available[0][1]
+    if tui:
+        tui.show_status(f"已自动选择最快镜像: {_mirror_domain} ({latency_ms:.0f}ms)", "info")
+    else:
+        print(f"已自动选择最快镜像: {_mirror_domain} ({latency_ms:.0f}ms)")
+
+
+def _manual_select_runtime_mirror() -> bool:
+    """仅在下载失败时调用：重新测速并让用户手动选择镜像节点。返回是否已选择并更新了 _mirror_domain。"""
+    global _mirror_domain
+    tui = get_tui() if RICH_AVAILABLE else None
+    try:
+        if AIOHTTP_AVAILABLE:
+            available = asyncio.run(_test_all_nodes_async()) if hasattr(asyncio, "run") else asyncio.get_event_loop().run_until_complete(_test_all_nodes_async())
+        else:
+            raise RuntimeError("aiohttp 未安装")
+    except Exception:
+        if tui and tui.use_tui:
+            available = tui.show_progress_test(
+                "正在测试镜像节点延迟", MIRROR_NODES, _test_node_latency, timeout=NODE_TEST_TIMEOUT_SECONDS
+            )
+        else:
+            available = _test_all_nodes()
+    if not available:
+        if tui:
+            tui.show_status("暂无可用镜像节点，将尝试直连", "warning")
+        else:
+            print("暂无可用镜像节点，将尝试直连")
+        return False
     if tui and tui.use_tui:
-        mirror_infos = [MirrorInfo(domain, f"https://{domain}", latency) for domain, latency in available]
-        idx = tui.show_mirror_table(mirror_infos, "选择镜像节点", default_index=0)
+        mirror_infos = [MirrorInfo(d, f"https://{d}", lat) for d, lat in available]
+        idx = tui.show_mirror_table(mirror_infos, "请手动选择镜像节点（下载失败时）", default_index=0)
     else:
         max_len = max(len(d) for d, _ in available)
         for i, (domain, latency) in enumerate(available, 1):
             print(f"  {i:>3}. {domain:<{max_len}}  {latency:>7.0f}ms")
-
         try:
-            sel = input(f"\n请选择节点编号 [1-{len(available)}] (默认 1): ").strip()
+            sel = input(f"\n请选择节点编号 [1-{len(available)}] (默认 1，直接回车跳过): ").strip()
         except (EOFError, KeyboardInterrupt):
-            sel = "1"
-
+            return False
+        if sel == "":
+            return False
         try:
-            idx = int(sel) - 1 if sel else 0
+            idx = int(sel) - 1
             if not (0 <= idx < len(available)):
                 idx = 0
         except ValueError:
             idx = 0
-
     _mirror_domain = available[idx][0]
     if tui:
         tui.show_status(f"已选择镜像: {_mirror_domain}", "info")
     else:
         print(f"已选择镜像: {_mirror_domain}")
+    return True
 
 
 def _ensure_runtime(repo: str) -> None:
@@ -1745,17 +1807,52 @@ def _ensure_runtime(repo: str) -> None:
                 archive_bytes = _download_runtime_archive(mirror_url, runtime_sha)
         except Exception:
             if tui:
-                tui.show_status("镜像下载失败，尝试直连...", "warning")
+                tui.show_status("镜像下载失败", "warning")
             else:
-                print("\n镜像下载失败，尝试直连...")
-            if tui and tui.use_tui:
-                archive_bytes = tui.show_download_progress(
-                    f"下载 Runtime ({runtime_version})",
-                    _download_runtime_archive,
-                    runtime_url, runtime_sha
-                )
+                print("\n镜像下载失败")
+            # 仅在此处允许用户手动选择其他镜像，否则自动直连
+            choice_manual = ""
+            try:
+                choice_manual = input("是否手动选择其他镜像？[y/N]（直接回车将尝试直连）: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                pass
+            if (choice_manual in ("y", "yes")) and _manual_select_runtime_mirror():
+                mirror_url = f"https://{_mirror_domain}/{runtime_url}"
+                try:
+                    if tui and tui.use_tui:
+                        archive_bytes = tui.show_download_progress(
+                            f"下载 Runtime ({runtime_version})",
+                            _download_runtime_archive,
+                            mirror_url, runtime_sha
+                        )
+                    else:
+                        archive_bytes = _download_runtime_archive(mirror_url, runtime_sha)
+                except Exception:
+                    if tui:
+                        tui.show_status("所选镜像仍失败，尝试直连...", "warning")
+                    else:
+                        print("所选镜像仍失败，尝试直连...")
+                    if tui and tui.use_tui:
+                        archive_bytes = tui.show_download_progress(
+                            f"下载 Runtime ({runtime_version})",
+                            _download_runtime_archive,
+                            runtime_url, runtime_sha
+                        )
+                    else:
+                        archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
             else:
-                archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
+                if tui:
+                    tui.show_status("尝试直连...", "warning")
+                else:
+                    print("尝试直连...")
+                if tui and tui.use_tui:
+                    archive_bytes = tui.show_download_progress(
+                        f"下载 Runtime ({runtime_version})",
+                        _download_runtime_archive,
+                        runtime_url, runtime_sha
+                    )
+                else:
+                    archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
     else:
         if tui and tui.use_tui:
             archive_bytes = tui.show_download_progress(
@@ -1897,13 +1994,13 @@ def main() -> None:
             tui.show_status("检查Runtime更新...", "info")
         _ensure_runtime(repo)
         
-        # 依赖安装
+        # 依赖安装（直接输出 pip 实时日志，避免进度被静默）
         if tui:
-            success = tui.show_installation_progress(
-                "安装Runtime依赖",
-                _ensure_runtime_dependencies
-            )
-            if not success:
+            tui.show_status("安装Runtime依赖（显示实时日志）...", "info")
+            try:
+                _ensure_runtime_dependencies()
+            except Exception as dep_error:
+                _write_error(f"[DEBUG] 依赖安装失败，但继续尝试启动: {dep_error}")
                 tui.show_status("依赖安装失败，但继续尝试启动...", "warning")
         else:
             _ensure_runtime_dependencies()
