@@ -50,6 +50,11 @@ jobs:
       build_time: ${{ steps.version.outputs.BUILD_TIME }}
       tag_name: ${{ steps.version.outputs.TAG_NAME }}
       platforms: ${{ steps.platforms.outputs.platforms }}
+      launcher_matrix: ${{ steps.platforms.outputs.launcher_matrix }}
+      runtime_matrix: ${{ steps.platforms.outputs.runtime_matrix }}
+      launcher_count: ${{ steps.platforms.outputs.launcher_count }}
+      runtime_count: ${{ steps.platforms.outputs.runtime_count }}
+      termux_enabled: ${{ steps.platforms.outputs.termux_enabled }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,18 +71,87 @@ jobs:
           python3 << 'PY'
           import json
           import os
-          p = []
-          if os.environ.get("P_WIN") == "true": p.append("windows-x64")
-          if os.environ.get("P_LIN") == "true": p.append("linux-x64")
-          if os.environ.get("P_MAC") == "true": p.append("macos-x64")
-          if os.environ.get("P_TERMUX") == "true": p.append("termux-arm64")
-          if not p:
+
+          def _to_bool(name: str) -> bool:
+              value = str(os.environ.get(name, "")).strip().lower()
+              return value in {"1", "true", "yes", "on"}
+
+          selected = []
+          if _to_bool("P_WIN"):
+              selected.append("windows-x64")
+          if _to_bool("P_LIN"):
+              selected.append("linux-x64")
+          if _to_bool("P_MAC"):
+              selected.append("macos-x64")
+          if _to_bool("P_TERMUX"):
+              selected.append("termux-arm64")
+
+          if not selected:
               print("ERROR: 请至少勾选一个要编译的平台")
               raise SystemExit(1)
-          out = json.dumps(p)
-          with open(os.environ.get("GITHUB_OUTPUT", ""), "a") as f:
-              f.write("platforms=" + out + "\n")
-          print("Selected platforms:", out)
+
+          launcher_defs = {
+              "windows-x64": {
+                  "os": "windows-latest",
+                  "platform": "windows-x64",
+                  "launcher_name": "FanqieLauncher-windows-x64.exe",
+                  "sep": ";",
+                  "icon_arg": "--icon=assets/icons/icon.ico",
+              },
+              "linux-x64": {
+                  "os": "ubuntu-latest",
+                  "platform": "linux-x64",
+                  "launcher_name": "FanqieLauncher-linux-x64",
+                  "sep": ":",
+                  "icon_arg": "",
+              },
+              "macos-x64": {
+                  "os": "macos-latest",
+                  "platform": "macos-x64",
+                  "launcher_name": "FanqieLauncher-macos-x64",
+                  "sep": ":",
+                  "icon_arg": "",
+              },
+          }
+
+          runtime_defs = {
+              "windows-x64": {
+                  "os": "windows-latest",
+                  "platform": "windows-x64",
+                  "runtime_name": "runtime-windows-x64.zip",
+              },
+              "linux-x64": {
+                  "os": "ubuntu-latest",
+                  "platform": "linux-x64",
+                  "runtime_name": "runtime-linux-x64.zip",
+              },
+              "macos-x64": {
+                  "os": "macos-latest",
+                  "platform": "macos-x64",
+                  "runtime_name": "runtime-macos-x64.zip",
+              },
+          }
+
+          launcher_include = [launcher_defs[p] for p in selected if p in launcher_defs]
+          runtime_include = [runtime_defs[p] for p in selected if p in runtime_defs]
+
+          outputs = {
+              "platforms": json.dumps(selected, ensure_ascii=False, separators=(",", ":")),
+              "launcher_matrix": json.dumps({"include": launcher_include}, ensure_ascii=False, separators=(",", ":")),
+              "runtime_matrix": json.dumps({"include": runtime_include}, ensure_ascii=False, separators=(",", ":")),
+              "launcher_count": str(len(launcher_include)),
+              "runtime_count": str(len(runtime_include)),
+              "termux_enabled": "true" if "termux-arm64" in selected else "false",
+          }
+
+          output_file = os.environ["GITHUB_OUTPUT"]
+          with open(output_file, "a", encoding="utf-8") as f:
+              for key, value in outputs.items():
+                  f.write(f"{key}={value}\n")
+
+          print("Selected platforms:", outputs["platforms"])
+          print("Launcher matrix:", outputs["launcher_matrix"])
+          print("Runtime matrix:", outputs["runtime_matrix"])
           PY
 
       - name: Generate version
@@ -92,26 +166,10 @@ jobs:
 
   build-launcher:
     needs: [prepare-release]
-    if: inputs.build_launcher == 'true' && contains(fromJSON(needs.prepare-release.outputs.platforms), matrix.platform)
+    if: inputs.build_launcher == 'true' && needs.prepare-release.outputs.launcher_count != '0'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows-x64
-            launcher_name: FanqieLauncher-windows-x64.exe
-            sep: ";"
-            icon_arg: "--icon=assets/icons/icon.ico"
-          - os: ubuntu-latest
-            platform: linux-x64
-            launcher_name: FanqieLauncher-linux-x64
-            sep: ":"
-            icon_arg: ""
-          - os: macos-latest
-            platform: macos-x64
-            launcher_name: FanqieLauncher-macos-x64
-            sep: ":"
-            icon_arg: ""
+      matrix: ${{ fromJSON(needs.prepare-release.outputs.launcher_matrix) }}
     runs-on: ${{ matrix.os }}
     name: Build Launcher (${{ matrix.platform }})
     steps:
@@ -295,20 +353,10 @@ jobs:
 
   build-runtime:
     needs: [prepare-release]
-    if: contains(fromJSON(needs.prepare-release.outputs.platforms), matrix.platform)
+    if: needs.prepare-release.outputs.runtime_count != '0'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows-x64
-            runtime_name: runtime-windows-x64.zip
-          - os: ubuntu-latest
-            platform: linux-x64
-            runtime_name: runtime-linux-x64.zip
-          - os: macos-latest
-            platform: macos-x64
-            runtime_name: runtime-macos-x64.zip
+      matrix: ${{ fromJSON(needs.prepare-release.outputs.runtime_matrix) }}
     runs-on: ${{ matrix.os }}
     name: Build Runtime (${{ matrix.platform }})
     steps:
@@ -630,7 +678,7 @@ jobs:
 
   build-runtime-termux:
     needs: [prepare-release]
-    if: contains(fromJSON(needs.prepare-release.outputs.platforms), 'termux-arm64')
+    if: needs.prepare-release.outputs.termux_enabled == 'true'
     runs-on: ubuntu-latest
     name: Build Runtime (termux-arm64)
     steps:
@@ -669,7 +717,7 @@ jobs:
           distro: ubuntu22.04
           githubToken: ${{ github.token }}
           dockerRunArgs: |
-            --volume "${PWD}:/workspace"
+            --volume "${{ github.workspace }}:/workspace"
           install: |
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -q
@@ -802,7 +850,7 @@ jobs:
           merge-multiple: true
 
       - name: Download launcher artifacts
-        if: inputs.build_launcher == 'true'
+        if: inputs.build_launcher == 'true' && needs.prepare-release.outputs.launcher_count != '0'
         uses: actions/download-artifact@v4
         with:
           pattern: launcher-*
@@ -869,7 +917,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish launcher stable release
-        if: inputs.build_launcher == 'true'
+        if: inputs.build_launcher == 'true' && needs.prepare-release.outputs.launcher_count != '0'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: launcher-stable
@@ -890,8 +938,6 @@ jobs:
           prerelease: false
           make_latest: false
           files: |
-            release-assets/FanqieLauncher-windows-x64.exe
-            release-assets/FanqieLauncher-linux-x64
-            release-assets/FanqieLauncher-macos-x64
+            release-assets/FanqieLauncher-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
