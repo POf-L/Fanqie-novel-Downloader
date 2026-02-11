@@ -373,7 +373,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests rich InquirerPy aiohttp
+          python -m pip install requests rich InquirerPy aiohttp
 
       - name: Auto manage dependencies
         shell: python
@@ -498,7 +498,7 @@ jobs:
           subprocess.check_call([sys.executable, "-m", "venv", str(runtime / ".venv")])
 
           if os.environ["RUNNER_OS"] == "Windows":
-              venv_python = str(runtime / ".venv" / "Scripts" / "python")
+              venv_python = str(runtime / ".venv" / "Scripts" / "python.exe")
           else:
               venv_python = str(runtime / ".venv" / "bin" / "python")
 
