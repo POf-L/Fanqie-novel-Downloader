@@ -252,12 +252,13 @@ class LauncherTUI:
             console=self.console
         ) as progress:
             def download_with_progress():
+                import launcher
+                # 在可能抛出的代码之前先保存全局回调，避免 finally 中访问时未定义
+                original_render = launcher._render_download_progress
                 task = progress.add_task(description, total=100)
                 progress_callback = lambda downloaded, total, start: self._update_download_progress(
                     progress, task, downloaded, total, start
                 )
-                import launcher
-                original_render = launcher._render_download_progress
                 launcher._render_download_progress = progress_callback
                 try:
                     result = download_func(*args, **kwargs)
