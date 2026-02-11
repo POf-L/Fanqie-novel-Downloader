@@ -571,6 +571,7 @@ class LauncherTUI:
             console=self.console
         ) as progress:
             def download_with_progress():
+                global _render_download_progress
                 task = progress.add_task(description, total=100)
                 progress_callback = lambda downloaded, total, start: self._update_download_progress(
                     progress, task, downloaded, total, start
