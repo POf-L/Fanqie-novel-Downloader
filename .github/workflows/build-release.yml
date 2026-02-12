@@ -39,6 +39,8 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.11"
+  STANDALONE_PYTHON_VERSION: "3.11.14"
+  STANDALONE_PYTHON_TAG: "20260211"
   PYTHONUTF8: "1"
   PYTHONIOENCODING: utf-8
 
@@ -119,16 +121,19 @@ jobs:
                   "os": "windows-latest",
                   "platform": "windows-x64",
                   "runtime_name": "runtime-windows-x64.zip",
+                  "python_triple": "x86_64-pc-windows-msvc",
               },
               "linux-x64": {
                   "os": "ubuntu-latest",
                   "platform": "linux-x64",
                   "runtime_name": "runtime-linux-x64.zip",
+                  "python_triple": "x86_64-unknown-linux-gnu",
               },
               "macos-x64": {
                   "os": "macos-latest",
                   "platform": "macos-x64",
                   "runtime_name": "runtime-macos-x64.zip",
+                  "python_triple": "x86_64-apple-darwin",
               },
           }
 
@@ -456,9 +461,13 @@ jobs:
         env:
           RUNTIME_NAME: ${{ matrix.runtime_name }}
           RUNNER_OS: ${{ runner.os }}
+          PYTHON_TRIPLE: ${{ matrix.python_triple }}
+          STANDALONE_PYTHON_VERSION: ${{ env.STANDALONE_PYTHON_VERSION }}
+          STANDALONE_PYTHON_TAG: ${{ env.STANDALONE_PYTHON_TAG }}
         run: |
-          import os, shutil, subprocess, sys, zipfile
+          import os, shutil, subprocess, sys, tarfile, zipfile
           from pathlib import Path
+          from urllib.request import urlretrieve
 
           print("=== 开始打包 Runtime ===")
           
@@ -467,14 +476,11 @@ jobs:
           if Path("version.py").exists():
               files_to_copy.append("version.py")
 
-          print(f"检查必需目录: {dirs_to_copy}")
           for d in dirs_to_copy:
               if not Path(d).is_dir():
                   print(f"ERROR: required directory '{d}' not found")
                   sys.exit(1)
               print(f"✓ 目录 '{d}' 存在")
-              
-          print(f"检查必需文件: {files_to_copy}")
           for f in files_to_copy:
               if not Path(f).is_file():
                   print(f"ERROR: required file '{f}' not found")
@@ -486,7 +492,6 @@ jobs:
               shutil.rmtree(runtime)
           runtime.mkdir()
 
-          print("复制文件到 runtime 目录...")
           for d in dirs_to_copy:
               shutil.copytree(d, runtime / d)
               print(f"✓ 复制目录 '{d}'")
@@ -494,64 +499,57 @@ jobs:
               shutil.copy2(f, runtime / f)
               print(f"✓ 复制文件 '{f}'")
 
-          print("创建虚拟环境...")
-          subprocess.check_call([sys.executable, "-m", "venv", str(runtime / ".venv")])
+          py_ver = os.environ["STANDALONE_PYTHON_VERSION"]
+          py_tag = os.environ["STANDALONE_PYTHON_TAG"]
+          py_triple = os.environ["PYTHON_TRIPLE"]
+          archive_file = f"cpython-{py_ver}+{py_tag}-{py_triple}-install_only_stripped.tar.gz"
+          url = f"https://github.com/astral-sh/python-build-standalone/releases/download/{py_tag}/{archive_file}"
+
+          print(f"下载独立 Python: {archive_file}")
+          urlretrieve(url, archive_file)
+          print(f"✓ 下载完成 ({Path(archive_file).stat().st_size:,} bytes)")
+
+          print("解压独立 Python 到 runtime/python/ ...")
+          with tarfile.open(archive_file) as tar:
+              tar.extractall(str(runtime))
+          print("✓ 解压完成")
+
+          python_dir = runtime / "python"
+          if not python_dir.exists():
+              print("ERROR: 解压后未找到 python/ 目录")
+              sys.exit(1)
 
           if os.environ["RUNNER_OS"] == "Windows":
-              venv_python = str(runtime / ".venv" / "Scripts" / "python.exe")
+              bundled_python = str(python_dir / "python.exe")
           else:
-              venv_python = str(runtime / ".venv" / "bin" / "python")
+              bundled_python = str(python_dir / "bin" / "python3")
 
-          print(f"虚拟环境 Python 路径: {venv_python}")
+          print(f"内置 Python 路径: {bundled_python}")
+          subprocess.check_call([bundled_python, "--version"])
 
-          print("升级虚拟环境中的 pip...")
-          subprocess.check_call([venv_python, "-m", "pip", "install", "--upgrade", "pip"])
+          print("安装依赖到内置 Python ...")
+          subprocess.check_call([bundled_python, "-m", "pip", "install", "--upgrade", "pip", "--quiet"])
 
-          # 继续原来的依赖管理逻辑...
-          dep_script = r'''
-          import subprocess
-          import sys
+          req_file = runtime / "config" / "requirements.txt"
+          if req_file.exists():
+              subprocess.check_call([bundled_python, "-m", "pip", "install", "--prefer-binary", "-r", str(req_file)])
+              print("✓ requirements.txt 安装完成")
+          else:
+              subprocess.check_call([bundled_python, "-m", "pip", "install", "--prefer-binary",
+                  "requests", "rich", "InquirerPy", "aiohttp", "Flask", "flask-cors",
+                  "fake-useragent", "EbookLib", "tqdm", "packaging", "urllib3", "pywebview"])
+              print("✓ 依赖安装完成（手动列表）")
 
-          subprocess.check_call([
-              sys.executable,
-              "-m",
-              "utils.dependency_manager",
-              "--project-root",
-              ".",
-              "--targets",
-              "main.py",
-              "core",
-              "utils",
-              "web",
-              "config",
-              "--state-file",
-              ".deps_state_runtime_venv.json",
-              "--extra-package",
-              "requests",
-              "--extra-package",
-              "rich",
-              "--extra-package",
-              "InquirerPy",
-              "--extra-package",
-              "aiohttp",
-              "--no-skip-if-unchanged",
-          ])
-          '''
-          try:
-              subprocess.check_call([venv_python, "-c", dep_script])
-              print("✓ 依赖管理完成")
-          except subprocess.CalledProcessError as e:
-              print(f"WARNING: 依赖管理失败: {e}")
-              print("继续打包过程...")
-
-          # 清理虚拟环境中的缓存以减小体积
-          cache_dirs = [
-              runtime / ".venv" / "lib" / "python*" / "site-packages" / "pip" / "__pycache__",
-              runtime / ".venv" / "lib" / "python*" / "site-packages" / "setuptools" / "__pycache__",
-          ]
-          for cache_dir in cache_dirs:
-              if cache_dir.exists():
-                  shutil.rmtree(cache_dir)
+          print("清理缓存以减小体积...")
+          for cache in python_dir.rglob("__pycache__"):
+              shutil.rmtree(cache, ignore_errors=True)
+          pip_cache = python_dir / "lib" if os.environ["RUNNER_OS"] != "Windows" else python_dir / "Lib"
+          for p in pip_cache.rglob("*.dist-info"):
+              installer = p / "INSTALLER"
+              record = p / "RECORD"
+              for f in [installer, record]:
+                  if f.exists():
+                      f.unlink()
 
           print("创建 runtime 压缩包...")
           archive_name = os.environ["RUNTIME_NAME"]

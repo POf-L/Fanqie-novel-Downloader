@@ -669,6 +669,7 @@ LAUNCHER_VERSION = "1.0.0"
 APP_DIR_NAME = "FanqieNovelDownloader"
 STATE_FILE = "launcher_state.json"
 RUNTIME_DIR = "runtime"
+BUNDLED_PYTHON_DIR = "python"
 BACKUP_DIR = "runtime_backup"
 DEPS_STATE_FILE = "deps_state.json"
 
@@ -1069,6 +1070,17 @@ def _replace_runtime_archive(content: bytes) -> None:
         shutil.rmtree(temp_extract, ignore_errors=True)
 
 
+def _bundled_python_path() -> Optional[Path]:
+    python_dir = _runtime_root() / BUNDLED_PYTHON_DIR
+    if not python_dir.exists():
+        return None
+    if sys.platform == "win32":
+        py = python_dir / "python.exe"
+    else:
+        py = python_dir / "bin" / "python3"
+    return py if py.exists() else None
+
+
 def _runtime_venv_python() -> Path:
     runtime_venv = _runtime_root() / ".venv"
     if sys.platform == "win32":
@@ -1265,6 +1277,11 @@ def _repair_venv_pyvenv_cfg(venv_path: Path) -> bool:
 
 
 def _ensure_runtime_venv() -> Path:
+    bundled = _bundled_python_path()
+    if bundled:
+        _write_error(f"[DEBUG] 使用内置 Python: {bundled}")
+        return bundled
+
     runtime_root = _runtime_root()
     py_path = _runtime_venv_python()
     
@@ -1506,6 +1523,11 @@ def _pip_install_with_mirrors(
 
 
 def _ensure_runtime_dependencies() -> None:
+    if _bundled_python_path():
+        _write_error("[DEBUG] 内置 Python 已包含所有依赖，跳过安装")
+        print("✓ 使用内置 Python，无需安装依赖")
+        return
+
     runtime_root = _runtime_root()
     if not runtime_root.exists():
         raise RuntimeError("Runtime 不存在，无法安装依赖")
@@ -1989,15 +2011,19 @@ def _launch_runtime() -> None:
             + f"\n请删除 {runtime_root} 目录后重新运行启动器以重新下载 Runtime"
         )
 
-    runtime_venv = runtime_root / ".venv"
-    if sys.platform == "win32":
-        venv_python = runtime_venv / "Scripts" / "python.exe"
+    bundled = _bundled_python_path()
+    if bundled:
+        runtime_python = bundled
     else:
-        venv_python = runtime_venv / "bin" / "python"
+        runtime_venv = runtime_root / ".venv"
+        if sys.platform == "win32":
+            runtime_python = runtime_venv / "Scripts" / "python.exe"
+        else:
+            runtime_python = runtime_venv / "bin" / "python"
 
-    if not venv_python.exists():
+    if not runtime_python.exists():
         raise FileNotFoundError(
-            f"Runtime Python not found: {venv_python}\n"
+            f"Runtime Python not found: {runtime_python}\n"
             f"Please delete {runtime_root} and restart to re-download Runtime"
         )
 
@@ -2007,7 +2033,7 @@ def _launch_runtime() -> None:
     env["PYTHONIOENCODING"] = "utf-8"
 
     result = subprocess.run(
-        [str(venv_python), str(runtime_main)],
+        [str(runtime_python), str(runtime_main)],
         cwd=str(runtime_root),
         env=env,
     )
