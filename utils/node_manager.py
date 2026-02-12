@@ -38,7 +38,7 @@ class NodeTester:
         self._test_lock = threading.Lock()
         
     async def _test_node_async(self, base_url: str, supports_full_download: bool = True, session: aiohttp.ClientSession = None) -> Dict:
-        """异步测试单个节点 - 超级高并发版本"""
+        """异步测试单个节点"""
         base_url = base_url.strip().rstrip('/')
         
         # 如果没有传入 session，创建一个临时的
@@ -231,15 +231,15 @@ class NodeTester:
         return results
     
     async def test_all_nodes_async(self) -> List[Dict]:
-        """异步测试所有节点 - 超级高并发版本"""
-        safe_print(f"开始异步测试 {len(self.api_sources)} 个 API 节点 (超级高并发模式)...")
+        """异步测试所有节点"""
+        safe_print(f"开始异步测试 {len(self.api_sources)} 个 API 节点...")
         
         # 检查 aiohttp 是否可用
         if not AIOHTTP_AVAILABLE:
             safe_print("警告: aiohttp 不可用，回退到同步模式")
             return self.test_all_nodes_sync()
         
-        # 配置 aiohttp 连接器以支持超级高并发
+        # 配置 aiohttp 连接器
         connector = aiohttp.TCPConnector(
             limit=1000,  # 总连接池大小
             limit_per_host=50,  # 每个主机的连接数
