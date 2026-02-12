@@ -880,36 +880,27 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Publish versioned release
+      - name: Publish versioned release (Runtime)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          name: TomatoNovelDownloader Runtime ${{ needs.prepare-release.outputs.tag_name }}
+          name: Runtime ${{ needs.prepare-release.outputs.tag_name }}
           body: |
-            ## Runtime 更新包
+            ## Runtime 更新包（由 Launcher 自动下载，无需手动操作）
 
-            **注意：这是 Runtime 更新包，请通过 Launcher 自动下载使用。**
+            首次使用请下载 [Launcher Stable](https://github.com/${{ github.repository }}/releases/tag/launcher-stable)
 
-            ### 首次使用
-            1. 首次使用请下载 [Launcher Stable](https://github.com/${{ github.repository }}/releases/tag/launcher-stable)
-            2. 运行 Launcher，自动下载此 Runtime
-            3. 无需手动下载 Runtime 文件
-
-            ### 更新内容（距上一个版本）
+            ### 更新内容
             ${{ steps.changelog.outputs.content }}
 
-            ---
-
-            ### 构建信息
             | 项目 | 详情 |
             | :--- | :--- |
             | 构建时间 | ${{ needs.prepare-release.outputs.build_time }} |
-            | 前次发布 | `${{ steps.changelog.outputs.latest_tag }}` |
             | Commit | `${{ github.sha }}` |
           files: |
-            release-assets/*
+            release-assets/runtime-*
           draft: false
-          prerelease: false
+          prerelease: true
           make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -934,7 +925,7 @@ jobs:
             - **macOS**: `FanqieLauncher-macos-x64`
           draft: false
           prerelease: false
-          make_latest: false
+          make_latest: true
           files: |
             release-assets/FanqieLauncher-*
         env:
