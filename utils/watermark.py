@@ -8,6 +8,30 @@ import re
 import hashlib
 import time
 
+# 导入仓库配置管理模块（带异常处理）
+try:
+    from .repo_config import safe_get_repo
+    REPO_CONFIG_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ 仓库配置模块不可用: {e}，使用默认配置")
+    REPO_CONFIG_AVAILABLE = False
+    def safe_get_repo():
+        return "POf-L/Fanqie-novel-Downloader"
+
+# 导入配置常量（带异常处理）
+try:
+    from config.watermark_config import WATERMARK_CONFIG
+    CONFIG_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ 水印配置文件不可用: {e}，使用默认配置")
+    CONFIG_AVAILABLE = False
+    WATERMARK_CONFIG = {
+        'INSERT_INTERVAL': 50000,  # 水印插入间隔（字符数）
+        'POSITION_VARIATION': 0.2,  # 插入位置变化范围（20%）
+        'MIN_INVISIBLE_CHARS': 3,   # 最小隐形字符数量
+        'MAX_INVISIBLE_CHARS': 8,   # 最大隐形字符数量
+    }
+
 URL_PATTERN = re.compile(r"(https?://[^\s]+)")
 
 # 扩展隐形字符集（这些字符不会影响URL识别）
@@ -41,6 +65,66 @@ def generate_random_invisible_sequence(min_len: int, max_len: int) -> str:
     """生成随机长度的隐形字符序列"""
     length = random.randint(min_len, max_len)
     return ''.join(random.choice(ENHANCED_INVISIBLE_CHARS) for _ in range(length))
+
+
+def generate_configured_invisible_sequence() -> str:
+    """使用配置常量生成隐形字符序列"""
+    return generate_random_invisible_sequence(
+        WATERMARK_CONFIG['MIN_INVISIBLE_CHARS'],
+        WATERMARK_CONFIG['MAX_INVISIBLE_CHARS']
+    )
+
+
+def _validate_watermark_config() -> None:
+    """验证水印配置的有效性"""
+    errors = []
+
+    # 验证 INSERT_INTERVAL
+    interval = WATERMARK_CONFIG.get('INSERT_INTERVAL', 50000)
+    if not isinstance(interval, int) or interval <= 0:
+        errors.append(f"INSERT_INTERVAL 必须为正整数，当前值: {interval}")
+
+    # 验证 POSITION_VARIATION
+    variation = WATERMARK_CONFIG.get('POSITION_VARIATION', 0.2)
+    if not isinstance(variation, (int, float)) or not (0 <= variation <= 1):
+        errors.append(f"POSITION_VARIATION 必须在0-1之间，当前值: {variation}")
+
+    # 验证 MIN_INVISIBLE_CHARS 和 MAX_INVISIBLE_CHARS
+    min_chars = WATERMARK_CONFIG.get('MIN_INVISIBLE_CHARS', 3)
+    max_chars = WATERMARK_CONFIG.get('MAX_INVISIBLE_CHARS', 8)
+
+    if not isinstance(min_chars, int) or min_chars <= 0:
+        errors.append(f"MIN_INVISIBLE_CHARS 必须为正整数，当前值: {min_chars}")
+
+    if not isinstance(max_chars, int) or max_chars <= 0:
+        errors.append(f"MAX_INVISIBLE_CHARS 必须为正整数，当前值: {max_chars}")
+
+    if min_chars > max_chars:
+        errors.append(f"MIN_INVISIBLE_CHARS ({min_chars}) 不能大于 MAX_INVISIBLE_CHARS ({max_chars})")
+
+    # 如果有错误，抛出异常
+    if errors:
+        error_msg = "水印配置验证失败:\n" + "\n".join(f"  - {err}" for err in errors)
+        raise ValueError(error_msg)
+
+    # 验证通过，确保配置值是正确的类型
+    WATERMARK_CONFIG['INSERT_INTERVAL'] = int(interval)
+    WATERMARK_CONFIG['POSITION_VARIATION'] = float(variation)
+    WATERMARK_CONFIG['MIN_INVISIBLE_CHARS'] = int(min_chars)
+    WATERMARK_CONFIG['MAX_INVISIBLE_CHARS'] = int(max_chars)
+
+
+# 在模块加载时验证配置
+try:
+    _validate_watermark_config()
+except ValueError as e:
+    print(f"⚠️ {e}，使用默认配置")
+    WATERMARK_CONFIG.update({
+        'INSERT_INTERVAL': 50000,
+        'POSITION_VARIATION': 0.2,
+        'MIN_INVISIBLE_CHARS': 3,
+        'MAX_INVISIBLE_CHARS': 8,
+    })
 
 
 def _add_invisible_chars_to_segment(text: str) -> str:
@@ -227,7 +311,14 @@ def apply_watermark_to_chapter(content: str) -> str:
     if not content:
         return content
 
-    plain_url = "https://github.com/POf-L/Fanqie-novel-Downloader"
+    # 空内容直接返回，不插入水印
+    if len(content) == 0:
+        return content
+
+    # 从配置获取仓库信息，使用统一的管理模块
+    repo = safe_get_repo()
+
+    plain_url = f"https://github.com/{repo}"
     hardened_url = add_zero_width_to_url(plain_url)
 
     # 新的水印文本
@@ -239,33 +330,67 @@ def apply_watermark_to_chapter(content: str) -> str:
     protected_watermark = apply_multi_layer_protection(base_watermark, content)
 
     content_length = len(content)
-    interval = 50000
+    interval = WATERMARK_CONFIG['INSERT_INTERVAL']
+    variation = WATERMARK_CONFIG['POSITION_VARIATION']
 
-    # 如果内容少于50000字，在中间位置插入一次
+    # 如果内容少于配置间隔字数，在中间位置插入一次
     if content_length < interval:
-        # 在中间位置随机插入（中间位置±20%范围内）
+        # 极短内容（少于20字）不插入水印
+        if content_length < 20:
+            return content
+
+        # 在中间位置随机插入（中间位置±变化范围内）
         mid_point = content_length // 2
-        variation = int(content_length * 0.2)
-        insert_pos = random.randint(max(0, mid_point - variation), min(content_length, mid_point + variation))
+        # 确保变化范围合理，避免超出内容长度
+        max_variation = max(1, min(mid_point, int(content_length * variation)))
+        variation_amount = max_variation
+
+        # 计算安全的插入位置范围
+        min_pos = max(0, mid_point - variation_amount)
+        max_pos = min(content_length, mid_point + variation_amount)
+
+        # 确保范围有效
+        if min_pos >= max_pos:
+            insert_pos = min(content_length, mid_point)
+        else:
+            insert_pos = random.randint(min_pos, max_pos)
 
         # 插入水印（前后加换行）
         watermark_with_newlines = '\n' + protected_watermark + '\n'
         final_content = content[:insert_pos] + watermark_with_newlines + content[insert_pos:]
         return final_content
 
-    # 如果内容大于等于50000字，每50000字插入一次
-    num_insertions = content_length // interval
+    # 如果内容大于等于配置间隔字数，每间隔字数插入一次
+    # 添加整数溢出保护
+    try:
+        num_insertions = max(1, content_length // interval)
+    except (OverflowError, ValueError):
+        # 如果发生溢出，限制插入次数
+        num_insertions = 10
 
     # 计算插入位置（在每个区间内随机选择位置）
     insert_positions = []
     for i in range(num_insertions):
         # 每个区间的起始和结束位置
         segment_start = i * interval
-        segment_end = (i + 1) * interval
+        segment_end = min((i + 1) * interval, content_length)
 
         # 在区间内随机选择位置（避免太靠近边界）
         margin = int(interval * 0.1)  # 10%的边界
-        insert_pos = random.randint(segment_start + margin, segment_end - margin)
+        min_insert_pos = segment_start + margin
+        max_insert_pos = segment_end - margin
+
+        # 确保插入位置有效
+        if min_insert_pos >= max_insert_pos:
+            # 如果区间太小，使用区间中心
+            insert_pos = (segment_start + segment_end) // 2
+        else:
+            try:
+                insert_pos = random.randint(min_insert_pos, max_insert_pos)
+            except ValueError:
+                # 如果随机数范围无效，使用区间中心
+                insert_pos = (segment_start + segment_end) // 2
+
         insert_positions.append(insert_pos)
 
     # 从后往前插入，避免位置偏移

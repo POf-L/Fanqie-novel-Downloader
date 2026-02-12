@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """稳定启动器：仅负责拉取并启动远程 Runtime。"""
 
+import asyncio
 import concurrent.futures
 import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -13,16 +15,661 @@ import tempfile
 import time
 import traceback
 import zipfile
+from typing import Dict, List, Optional, Tuple, Any, Callable
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# 导入仓库配置管理模块（带异常处理）
+try:
+    from utils.repo_config import get_effective_repo
+    REPO_CONFIG_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ 仓库配置模块不可用: {e}，使用默认配置")
+    REPO_CONFIG_AVAILABLE = False
+
+    def get_effective_repo():
+        env_repo = os.environ.get("FANQIE_GITHUB_REPO", "").strip()
+        if env_repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', env_repo):
+            return env_repo, "环境变量(降级)"
+
+        try:
+            import version as _version_module
+            version_repo = str(getattr(_version_module, "__github_repo__", "")).strip()
+            if version_repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', version_repo):
+                return version_repo, "version.py(降级)"
+        except Exception:
+            pass
+
+        return "POf-L/Fanqie-novel-Downloader", "默认值"
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import requests
 
+try:
+    import aiohttp
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    aiohttp = None
+    AIOHTTP_AVAILABLE = False
+
+try:
+    from utils.dependency_manager import auto_manage_dependencies
+    DEP_MANAGER_AVAILABLE = True
+except Exception:
+    DEP_MANAGER_AVAILABLE = False
+
+
+# TUI组件导入
+try:
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TimeRemainingColumn
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.live import Live
+    from rich.prompt import Prompt, Confirm
+    from rich.align import Align
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
+try:
+    from InquirerPy import inquirer
+    INQUIRER_AVAILABLE = True
+except ImportError:
+    INQUIRER_AVAILABLE = False
+
+
+@dataclass
+class DownloadOption:
+    id: str
+    name: str
+    description: str
+
+
+@dataclass
+class MirrorInfo:
+    name: str
+    url: str
+    latency: Optional[float] = None
+
+
+class LauncherTUI:
+
+    def __init__(self):
+        self.console = Console() if RICH_AVAILABLE else None
+        self.use_tui = RICH_AVAILABLE and self._is_tui_available()
+
+    def _is_tui_available(self) -> bool:
+        if not sys.stdout.isatty():
+            return False
+        return True
+
+    def print(self, *args, **kwargs):
+        if self.use_tui and self.console:
+            self.console.print(*args, **kwargs)
+        else:
+            print(*args, **kwargs)
+
+    def show_header(self):
+        if self.use_tui:
+            header_text = Text("番茄小说下载器 启动器", style="bold blue")
+            panel = Panel(
+                Align.center(header_text),
+                border_style="blue",
+                padding=(1, 2)
+            )
+            self.console.print(panel)
+        else:
+            print("=" * 50)
+            print("番茄小说下载器 启动器")
+            print("=" * 50)
+
+    def show_debug_info(self, debug_info: dict):
+        if self.use_tui:
+            table = Table(title="环境信息", show_header=False, box=None)
+            table.add_column("Key", style="cyan")
+            table.add_column("Value", style="white")
+            for key, value in debug_info.items():
+                table.add_row(key, str(value))
+            panel = Panel(table, title="DEBUG", border_style="dim")
+            self.console.print(panel)
+        else:
+            self.print("[DEBUG] ========== 启动环境信息 ==========")
+            for key, value in debug_info.items():
+                self.print(f"[DEBUG] {key}: {value}")
+            self.print("[DEBUG] ======================================")
+
+    def _inquirer_select(self, message: str, choices: List[dict], default: Any = None) -> Any:
+        if INQUIRER_AVAILABLE:
+            try:
+                return inquirer.select(
+                    message=message,
+                    choices=choices,
+                    default=default,
+                    pointer="▸",
+                    instruction="(↑/↓ 移动, Enter 确认)",
+                ).execute()
+            except Exception:
+                pass
+        return None
+
+    def _arrow_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        """使用方向键选择选项"""
+        if not self.use_tui or not self.console:
+            # 回退到数字输入
+            for i, opt in enumerate(options, 1):
+                print(f"  {i}. {opt.name} - {opt.description}")
+            try:
+                choice = input(f"请输入选项 [1-{len(options)}] (默认 {default}): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                choice = default
+            if choice.isdigit() and 1 <= int(choice) <= len(options):
+                return options[int(choice) - 1].id
+            return default
+
+        # Windows系统检查
+        if sys.platform == "win32":
+            return self._windows_arrow_select(message, options, default)
+        else:
+            return self._unix_arrow_select(message, options, default)
+
+    def _windows_arrow_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        """Windows系统的方向键选择"""
+        import msvcrt
+        
+        console = Console()
+        
+        # 找到默认选项的索引
+        default_index = 0
+        for i, opt in enumerate(options):
+            if opt.id == default:
+                default_index = i
+                break
+        
+        current_index = default_index
+        
+        def display_options():
+            console.clear()
+            console.print(f"\n[bold cyan]{message}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            for i, opt in enumerate(options):
+                if i == current_index:
+                    console.print(f"▸ [bold green]{opt.name}[/bold green] - [dim]{opt.description}[/dim]")
+                else:
+                    console.print(f"  {opt.name} - [dim]{opt.description}[/dim]")
+        
+        display_options()
+        
+        try:
+            while True:
+                try:
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch()
+                        
+                        if key == b'\xe0':  # Special key prefix
+                            key = msvcrt.getch()
+                            if key == b'H':  # Up arrow
+                                current_index = (current_index - 1) % len(options)
+                                display_options()
+                            elif key == b'P':  # Down arrow
+                                current_index = (current_index + 1) % len(options)
+                                display_options()
+                        elif key == b'\r':  # Enter
+                            return options[current_index].id
+                        elif key == b'\x03':  # Ctrl+C
+                            raise KeyboardInterrupt()
+                            
+                except (KeyboardInterrupt, EOFError):
+                    return default
+                    
+        except Exception:
+            # 如果方向键支持失败，回退到rich prompt
+            return self._fallback_rich_select(message, options, default)
+
+    def _unix_arrow_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        """Unix/Linux系统的方向键选择"""
+        from rich.prompt import Prompt
+        from rich.console import Console
+        
+        console = Console()
+        
+        # 找到默认选项的索引
+        default_index = 0
+        for i, opt in enumerate(options):
+            if opt.id == default:
+                default_index = i
+                break
+        
+        current_index = default_index
+        
+        def display_options():
+            console.clear()
+            console.print(f"\n[bold cyan]{message}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            for i, opt in enumerate(options):
+                if i == current_index:
+                    console.print(f"▸ [bold green]{opt.name}[/bold green] - [dim]{opt.description}[/dim]")
+                else:
+                    console.print(f"  {opt.name} - [dim]{opt.description}[/dim]")
+        
+        display_options()
+        
+        import sys
+        import tty
+        import termios
+        
+        def get_key():
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':  # ESC sequence
+                    ch += sys.stdin.read(2)
+                return ch
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+        try:
+            while True:
+                try:
+                    key = get_key()
+                    
+                    if key == '\x1b[A':  # Up arrow
+                        current_index = (current_index - 1) % len(options)
+                        display_options()
+                    elif key == '\x1b[B':  # Down arrow
+                        current_index = (current_index + 1) % len(options)
+                        display_options()
+                    elif key == '\r' or key == '\n':  # Enter
+                        return options[current_index].id
+                    elif key == '\x03':  # Ctrl+C
+                        raise KeyboardInterrupt()
+                        
+                except (KeyboardInterrupt, EOFError):
+                    return default
+                    
+        except Exception:
+            # 如果方向键支持失败，回退到rich prompt
+            return self._fallback_rich_select(message, options, default)
+
+    def _fallback_rich_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        """Rich prompt回退方案"""
+        from rich.prompt import Prompt
+        
+        self.print(f"\n[bold cyan]{message}[/bold cyan]")
+        choice_map = {}
+        for i, opt in enumerate(options):
+            choice_map[str(i + 1)] = opt.id
+            self.print(f"  [yellow]{i + 1}[/yellow]. {opt.name} - [dim]{opt.description}[/dim]")
+        
+        try:
+            choice = Prompt.ask(
+                f"请输入选项 [1-{len(options)}]",
+                default=default,
+                choices=list(choice_map.keys())
+            )
+            return choice_map[choice]
+        except (EOFError, KeyboardInterrupt):
+            return default
+
+    def select_download_mode(self, options: List[DownloadOption], default: str = "3") -> str:
+        if INQUIRER_AVAILABLE:
+            choices = [
+                {"name": f"{opt.name} - {opt.description}", "value": opt.id}
+                for opt in options
+            ]
+            result = self._inquirer_select("选择下载方式:", choices, default=default)
+            if result is not None:
+                return result
+
+        # 使用自定义方向键选择器
+        return self._arrow_select("选择下载方式:", options, default)
+
+    def show_progress_test(self, title: str, items: List[Any], test_func: Callable, timeout: float = 3.0) -> List[Any]:
+        deadline = time.perf_counter() + timeout + 2.0
+        results = []
+
+        if self.use_tui:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                transient=True,
+                console=self.console
+            ) as progress:
+                task = progress.add_task(f"{title}...", total=len(items))
+
+                def test_with_progress(item):
+                    result = test_func(item)
+                    progress.advance(task)
+                    return result
+
+                with ThreadPoolExecutor(max_workers=8) as executor:
+                    futures = {executor.submit(test_with_progress, item): item for item in items}
+                    for future in as_completed(futures):
+                        if time.perf_counter() > deadline:
+                            break
+                        try:
+                            result = future.result(timeout=0.1)
+                            if result:
+                                results.append(result)
+                        except Exception:
+                            pass
+                    for f in futures:
+                        f.cancel()
+        else:
+            self.print(f"{title}...")
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                futures = {executor.submit(test_func, item): item for item in items}
+                for future in as_completed(futures):
+                    if time.perf_counter() > deadline:
+                        break
+                    try:
+                        result = future.result(timeout=0.1)
+                        if result:
+                            results.append(result)
+                    except Exception:
+                        pass
+                for f in futures:
+                    f.cancel()
+
+        return results
+
+    def _arrow_select_mirror(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        """使用方向键选择镜像"""
+        if not self.use_tui or not self.console:
+            # 回退到数字输入
+            max_name_len = max(len(m.name) for m in mirrors) if mirrors else 10
+            for i, mirror in enumerate(mirrors, 1):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                self.print(f"  {i:>3}. {mirror.name:<{max_name_len}}  {latency_str:>7}")
+            try:
+                sel = input(f"\n请选择编号 [1-{len(mirrors)}] (默认 {default_index + 1}): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                sel = str(default_index + 1)
+            try:
+                idx = int(sel) - 1 if sel else default_index
+                if not (0 <= idx < len(mirrors)):
+                    idx = default_index
+            except ValueError:
+                idx = default_index
+            return idx
+
+        # Windows系统检查
+        if sys.platform == "win32":
+            return self._windows_arrow_select_mirror(mirrors, title, default_index)
+        else:
+            return self._unix_arrow_select_mirror(mirrors, title, default_index)
+
+    def _windows_arrow_select_mirror(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        """Windows系统的镜像方向键选择"""
+        import msvcrt
+        
+        console = Console()
+        current_index = default_index
+        
+        def display_mirrors():
+            console.clear()
+            console.print(f"\n[bold cyan]{title}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            # 显示表头
+            console.print("  编号  镜像名称                        延迟")
+            console.print("  ----  ----------------------------  ----")
+            
+            for i, mirror in enumerate(mirrors):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                if i == current_index:
+                    console.print(f"▸ {i+1:>4}  [bold green]{mirror.name:<28}[/bold green]  {latency_str:>7}")
+                else:
+                    console.print(f"  {i+1:>4}  {mirror.name:<28}  {latency_str:>7}")
+        
+        display_mirrors()
+        
+        try:
+            while True:
+                try:
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch()
+                        
+                        if key == b'\xe0':  # Special key prefix
+                            key = msvcrt.getch()
+                            if key == b'H':  # Up arrow
+                                current_index = (current_index - 1) % len(mirrors)
+                                display_mirrors()
+                            elif key == b'P':  # Down arrow
+                                current_index = (current_index + 1) % len(mirrors)
+                                display_mirrors()
+                        elif key == b'\r':  # Enter
+                            return current_index
+                        elif key == b'\x03':  # Ctrl+C
+                            raise KeyboardInterrupt()
+                            
+                except (KeyboardInterrupt, EOFError):
+                    return default_index
+                    
+        except Exception:
+            # 如果方向键支持失败，回退到rich prompt
+            return self._fallback_rich_mirror_select(mirrors, title, default_index)
+
+    def _unix_arrow_select_mirror(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        """Unix/Linux系统的镜像方向键选择"""
+        console = Console()
+        current_index = default_index
+        
+        def display_mirrors():
+            console.clear()
+            console.print(f"\n[bold cyan]{title}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            # 显示表头
+            console.print("  编号  镜像名称                        延迟")
+            console.print("  ----  ----------------------------  ----")
+            
+            for i, mirror in enumerate(mirrors):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                if i == current_index:
+                    console.print(f"▸ {i+1:>4}  [bold green]{mirror.name:<28}[/bold green]  {latency_str:>7}")
+                else:
+                    console.print(f"  {i+1:>4}  {mirror.name:<28}  {latency_str:>7}")
+        
+        display_mirrors()
+        
+        import sys
+        import tty
+        import termios
+        
+        def get_key():
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':  # ESC sequence
+                    ch += sys.stdin.read(2)
+                return ch
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+        try:
+            while True:
+                try:
+                    key = get_key()
+                    
+                    if key == '\x1b[A':  # Up arrow
+                        current_index = (current_index - 1) % len(mirrors)
+                        display_mirrors()
+                    elif key == '\x1b[B':  # Down arrow
+                        current_index = (current_index + 1) % len(mirrors)
+                        display_mirrors()
+                    elif key == '\r' or key == '\n':  # Enter
+                        return current_index
+                    elif key == '\x03':  # Ctrl+C
+                        raise KeyboardInterrupt()
+                        
+                except (KeyboardInterrupt, EOFError):
+                    return default_index
+                    
+        except Exception:
+            # 如果方向键支持失败，回退到rich prompt
+            return self._fallback_rich_mirror_select(mirrors, title, default_index)
+
+    def _fallback_rich_mirror_select(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        """Rich prompt镜像选择回退方案"""
+        from rich.prompt import Prompt
+        
+        table = Table(title=title, show_header=True, header_style="bold magenta")
+        table.add_column("编号", style="cyan", width=6)
+        table.add_column("镜像名称", style="white")
+        table.add_column("延迟", style="green", justify="right")
+        for i, mirror in enumerate(mirrors, 1):
+            latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+            table.add_row(str(i), mirror.name, latency_str)
+        self.console.print(table)
+        
+        try:
+            choice = Prompt.ask(
+                f"请选择镜像编号 [1-{len(mirrors)}]",
+                default=str(default_index + 1)
+            )
+            idx = int(choice) - 1
+            if 0 <= idx < len(mirrors):
+                return idx
+            self.print("[red]无效的选择，请重新输入[/red]")
+            return default_index
+        except (EOFError, KeyboardInterrupt, ValueError):
+            return default_index
+
+    def show_mirror_table(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        if INQUIRER_AVAILABLE:
+            choices = []
+            for i, mirror in enumerate(mirrors):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                choices.append({"name": f"{mirror.name}  ({latency_str})", "value": i})
+            result = self._inquirer_select(title, choices, default=default_index)
+            if result is not None:
+                return result
+
+        # 使用自定义方向键选择器
+        return self._arrow_select_mirror(mirrors, title, default_index)
+
+    def show_download_progress(self, description: str, download_func: Callable, *args, **kwargs) -> Any:
+        if not self.use_tui:
+            self.print(f"{description}...")
+            return download_func(*args, **kwargs)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=self.console
+        ) as progress:
+            def download_with_progress():
+                global _render_download_progress
+                # 在可能抛出的代码之前先读取并保存全局回调，避免 finally 中访问时未绑定
+                original_render = _render_download_progress
+                task = progress.add_task(description, total=100)
+                progress_callback = lambda downloaded, total, start: self._update_download_progress(
+                    progress, task, downloaded, total, start
+                )
+                _render_download_progress = progress_callback
+                try:
+                    result = download_func(*args, **kwargs)
+                finally:
+                    _render_download_progress = original_render
+                progress.update(task, completed=100)
+                return result
+            return download_with_progress()
+
+    def _update_download_progress(self, progress_obj, task_id, downloaded, total, start_ts):
+        if total > 0:
+            progress_obj.update(task_id, completed=int(downloaded * 100 / total))
+
+    def show_installation_progress(self, title: str, install_func: Callable, *args, **kwargs) -> bool:
+        if not self.use_tui:
+            self.print(f"{title}...")
+            try:
+                install_func(*args, **kwargs)
+                return True
+            except Exception as e:
+                self.print(f"安装失败: {e}")
+                return False
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True,
+            console=self.console
+        ) as progress:
+            task = progress.add_task(title, total=None)
+            try:
+                install_func(*args, **kwargs)
+                progress.update(task, description=f"[green]{title} 完成[/green]")
+                return True
+            except Exception as e:
+                progress.update(task, description=f"[red]{title} 失败: {e}[/red]")
+                return False
+
+    def show_status(self, message: str, status_type: str = "info"):
+        if not self.use_tui:
+            self.print(message)
+            return
+        style_map = {
+            "info": "blue",
+            "success": "green",
+            "warning": "yellow",
+            "error": "red"
+        }
+        style = style_map.get(status_type, "white")
+        self.print(f"[{style}]{message}[/{style}]")
+
+    def show_error(self, message: str, pause: bool = False):
+        if self.use_tui:
+            self.print(f"[red bold]错误: {message}[/red bold]")
+        else:
+            self.print(f"错误: {message}")
+        if pause and getattr(sys, "frozen", False):
+            try:
+                input("按回车键退出...")
+            except Exception:
+                pass
+
+    def confirm_action(self, message: str, default: bool = True) -> bool:
+        if INQUIRER_AVAILABLE:
+            try:
+                return inquirer.confirm(message=message, default=default).execute()
+            except Exception:
+                pass
+        if not self.use_tui:
+            try:
+                response = input(f"{message} ({'Y/n' if default else 'y/N'}): ").strip().lower()
+                if not response:
+                    return default
+                return response in ['y', 'yes']
+            except (EOFError, KeyboardInterrupt):
+                return default
+        return Confirm.ask(message, default=default)
+
+
+_tui_instance = None
+
+def get_tui() -> LauncherTUI:
+    global _tui_instance
+    if _tui_instance is None:
+        _tui_instance = LauncherTUI()
+    return _tui_instance
 
 LAUNCHER_VERSION = "1.0.0"
 APP_DIR_NAME = "FanqieNovelDownloader"
 STATE_FILE = "launcher_state.json"
 RUNTIME_DIR = "runtime"
+BUNDLED_PYTHON_DIR = "python"
 BACKUP_DIR = "runtime_backup"
 DEPS_STATE_FILE = "deps_state.json"
 
@@ -95,9 +742,9 @@ _download_mode = "direct"
 _mirror_domain = None
 _session = requests.Session()
 
-NODE_TEST_TIMEOUT_SECONDS = 3.0
-NODE_TEST_CONNECT_TIMEOUT_SECONDS = 0.8
-NODE_TEST_MAX_WORKERS = 120
+NODE_TEST_TIMEOUT_SECONDS = 5.0
+NODE_TEST_CONNECT_TIMEOUT_SECONDS = 1.0
+NODE_TEST_MAX_WORKERS = 500  # 并发测试线程上限
 
 PIP_INDEX_MIRRORS = [
     ("清华", "https://pypi.tuna.tsinghua.edu.cn/simple"),
@@ -108,12 +755,16 @@ PIP_INDEX_MIRRORS = [
 
 _selected_pip_mirror_name = "PyPI"
 _selected_pip_index_url = "https://pypi.org/simple"
+_available_pip_mirrors: List[Tuple[str, str, float]] = []
+_available_runtime_mirrors: List[Tuple[str, float]] = []
 
 
 def _write_error(message: str) -> None:
     try:
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        formatted_message = f"[{timestamp}] {message}"
         stderr = sys.__stderr__ if hasattr(sys, "__stderr__") and sys.__stderr__ else sys.stderr
-        stderr.write(message + "\n")
+        stderr.write(formatted_message + "\n")
         stderr.flush()
     except Exception:
         pass
@@ -257,6 +908,27 @@ def _fetch_latest_release(repo: str) -> Optional[Dict]:
     return data if isinstance(data, dict) else None
 
 
+def _fetch_recent_releases(repo: str, per_page: int = 20) -> List[Dict]:
+    url = f"https://api.github.com/repos/{repo}/releases?per_page={per_page}"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "FanqieLauncher",
+    }
+    try:
+        response = _do_get(url, headers=headers, timeout=(3, 10))
+    except Exception:
+        return []
+    if response.status_code != 200:
+        return []
+    try:
+        data = response.json()
+    except ValueError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict)]
+
+
 def _get_asset_url(release_data: Dict, asset_name: str) -> Optional[str]:
     for asset in release_data.get("assets", []):
         if asset.get("name") == asset_name:
@@ -265,27 +937,39 @@ def _get_asset_url(release_data: Dict, asset_name: str) -> Optional[str]:
 
 
 def _load_platform_manifest(repo: str, platform: str) -> Optional[Dict]:
-    release_data = _fetch_latest_release(repo)
-    if not release_data:
-        return None
-
     asset_name = f"runtime-manifest-{platform}.json"
-    manifest_url = _get_asset_url(release_data, asset_name)
-    if not manifest_url:
-        return None
+    candidates: List[Dict] = []
+
+    latest_release = _fetch_latest_release(repo)
+    if latest_release:
+        candidates.append(latest_release)
+
+    for release in _fetch_recent_releases(repo):
+        if release.get("id") == latest_release.get("id") if latest_release else False:
+            continue
+        candidates.append(release)
 
     headers = {"User-Agent": "FanqieLauncher"}
-    response = _do_get(manifest_url, headers=headers, timeout=(3, 10))
-    if response.status_code != 200:
-        return None
+    for release_data in candidates:
+        manifest_url = _get_asset_url(release_data, asset_name)
+        if not manifest_url:
+            continue
 
-    try:
-        data = response.json()
-    except ValueError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    return data
+        try:
+            response = _do_get(manifest_url, headers=headers, timeout=(3, 10))
+        except Exception:
+            continue
+        if response.status_code != 200:
+            continue
+
+        try:
+            data = response.json()
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            return data
+
+    return None
 
 
 def _is_launcher_update_required(remote_manifest: Dict) -> bool:
@@ -386,6 +1070,17 @@ def _replace_runtime_archive(content: bytes) -> None:
         shutil.rmtree(temp_extract, ignore_errors=True)
 
 
+def _bundled_python_path() -> Optional[Path]:
+    python_dir = _runtime_root() / BUNDLED_PYTHON_DIR
+    if not python_dir.exists():
+        return None
+    if sys.platform == "win32":
+        py = python_dir / "python.exe"
+    else:
+        py = python_dir / "bin" / "python3"
+    return py if py.exists() else None
+
+
 def _runtime_venv_python() -> Path:
     runtime_venv = _runtime_root() / ".venv"
     if sys.platform == "win32":
@@ -411,22 +1106,267 @@ def _requirements_file_for_platform() -> Path:
     raise FileNotFoundError("未找到 requirements 文件")
 
 
-def _ensure_runtime_venv() -> Path:
+def _looks_like_python_executable(executable: Path) -> bool:
+    name = executable.name.lower()
+    if "python" in name:
+        return True
+    return name in {"py", "py.exe"}
+
+
+def _probe_python_command(cmd_prefix: List[str]) -> Tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            [*cmd_prefix, "-c", "import sys, venv; print(sys.executable)"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception as exc:
+        return False, str(exc)
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        return False, stderr or f"returncode={result.returncode}"
+
+    detected = (result.stdout or "").strip()
+    return True, detected or "unknown"
+
+
+def _resolve_venv_builder_command() -> Tuple[List[str], str]:
+    """自动寻找可用于创建 venv 的 Python 命令。"""
+    candidates: List[List[str]] = []
+    seen = set()
+
+    def _add_candidate(cmd: List[str]) -> None:
+        key = tuple(cmd)
+        if key not in seen:
+            seen.add(key)
+            candidates.append(cmd)
+
+    env_python = os.environ.get("FANQIE_BOOTSTRAP_PYTHON", "").strip()
+    if env_python:
+        _add_candidate([env_python])
+
+    for raw_path in (sys.executable, getattr(sys, "_base_executable", "")):
+        if not raw_path:
+            continue
+        candidate = Path(raw_path)
+        if candidate.exists() and _looks_like_python_executable(candidate):
+            _add_candidate([str(candidate)])
+
+    for cmd_name in ("python", "python3"):
+        resolved = shutil.which(cmd_name)
+        if resolved:
+            _add_candidate([resolved])
+
+    if sys.platform == "win32":
+        py_launcher = shutil.which("py")
+        if py_launcher:
+            _add_candidate([py_launcher, "-3"])
+
+    for cmd in candidates:
+        ok, details = _probe_python_command(cmd)
+        _write_error(f"[DEBUG] Python候选检查: {' '.join(cmd)} -> {'OK' if ok else 'FAIL'} {details}")
+        if ok:
+            return cmd, details
+
+    raise RuntimeError(
+        "未找到可用 Python 解释器，无法创建 Runtime 虚拟环境。"
+        "请安装 Python 3（建议 3.11+），或设置 FANQIE_BOOTSTRAP_PYTHON 指向 python 可执行文件。"
+    )
+
+
+def _repair_venv_pyvenv_cfg(venv_path: Path) -> bool:
+    cfg_path = venv_path / "pyvenv.cfg"
+    if not cfg_path.exists():
+        _write_error("[DEBUG] pyvenv.cfg not found")
+        return False
+
+    try:
+        cfg_text = cfg_path.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        _write_error(f"[DEBUG] Failed to read pyvenv.cfg: {e}")
+        return False
+
+    cfg_lines = cfg_text.splitlines()
+    home_value = None
+    for line in cfg_lines:
+        if line.strip().startswith("home"):
+            parts = line.split("=", 1)
+            if len(parts) == 2:
+                home_value = parts[1].strip()
+                break
+
+    if home_value and Path(home_value).exists():
+        _write_error(f"[DEBUG] pyvenv.cfg home path valid: {home_value}")
+        return False
+
+    _write_error(f"[DEBUG] pyvenv.cfg home path invalid: {home_value}, attempting repair")
+
+    try:
+        builder_cmd, detected_python = _resolve_venv_builder_command()
+    except RuntimeError:
+        _write_error("[DEBUG] No usable system Python found, cannot repair pyvenv.cfg")
+        return False
+
+    local_python = Path(detected_python)
+    if not local_python.exists():
+        _write_error(f"[DEBUG] Detected Python path does not exist: {detected_python}")
+        return False
+
+    local_home = str(local_python.parent)
+    _write_error(f"[DEBUG] Repairing pyvenv.cfg home to: {local_home}")
+
+    new_lines = []
+    for line in cfg_lines:
+        stripped = line.strip()
+        if stripped.startswith("home"):
+            new_lines.append(f"home = {local_home}")
+        elif stripped.startswith("executable"):
+            new_lines.append(f"executable = {detected_python}")
+        elif stripped.startswith("command"):
+            new_lines.append(f"command = {detected_python} -m venv {venv_path}")
+        else:
+            new_lines.append(line)
+
+    try:
+        cfg_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    except Exception as e:
+        _write_error(f"[DEBUG] Failed to write pyvenv.cfg: {e}")
+        return False
+
+    if sys.platform == "win32":
+        venv_python_exe = venv_path / "Scripts" / "python.exe"
+        if venv_python_exe.exists() and local_python.exists():
+            try:
+                shutil.copy2(str(local_python), str(venv_python_exe))
+                pythonw = local_python.parent / "pythonw.exe"
+                venv_pythonw = venv_path / "Scripts" / "pythonw.exe"
+                if pythonw.exists():
+                    shutil.copy2(str(pythonw), str(venv_pythonw))
+            except Exception as e:
+                _write_error(f"[DEBUG] Failed to copy Python executables: {e}")
+    else:
+        venv_python_bin = venv_path / "bin" / "python"
+        if venv_python_bin.is_symlink() or venv_python_bin.exists():
+            try:
+                venv_python_bin.unlink(missing_ok=True)
+                os.symlink(detected_python, str(venv_python_bin))
+                for name in ("python3",):
+                    link = venv_path / "bin" / name
+                    link.unlink(missing_ok=True)
+                    os.symlink(detected_python, str(link))
+            except Exception as e:
+                _write_error(f"[DEBUG] Failed to update symlinks: {e}")
+
     py_path = _runtime_venv_python()
+    try:
+        result = subprocess.run(
+            [str(py_path), "--version"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            _write_error(f"[DEBUG] venv repair succeeded: {result.stdout.strip()}")
+            return True
+        else:
+            _write_error(f"[DEBUG] venv still broken after repair: {result.stderr}")
+            return False
+    except Exception as e:
+        _write_error(f"[DEBUG] venv verification failed after repair: {e}")
+        return False
+
+
+def _ensure_runtime_venv() -> Path:
+    bundled = _bundled_python_path()
+    if bundled:
+        _write_error(f"[DEBUG] 使用内置 Python: {bundled}")
+        return bundled
+
+    runtime_root = _runtime_root()
+    py_path = _runtime_venv_python()
+    
+    _write_error(f"[DEBUG] 检查虚拟环境: {py_path}")
+    
     if py_path.exists():
-        return py_path
+        # 验证虚拟环境是否可用
+        try:
+            result = subprocess.run(
+                [str(py_path), "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                _write_error(f"[DEBUG] 虚拟环境可用: {result.stdout.strip()}")
+                return py_path
+            else:
+                _write_error(f"[DEBUG] 虚拟环境不可用: {result.stderr}")
+        except Exception as e:
+            _write_error(f"[DEBUG] 虚拟环境测试失败: {e}")
+        
+        venv_path = runtime_root / ".venv"
+        _write_error("[DEBUG] 尝试修复 pyvenv.cfg")
+        if _repair_venv_pyvenv_cfg(venv_path):
+            return _runtime_venv_python()
+
+        _write_error("[DEBUG] 修复失败，将重新创建虚拟环境")
+        try:
+            if venv_path.exists():
+                shutil.rmtree(venv_path)
+                _write_error("[DEBUG] 已删除损坏的虚拟环境")
+        except Exception as e:
+            _write_error(f"[DEBUG] 删除虚拟环境失败: {e}")
 
     print("正在创建 Runtime 虚拟环境...")
-    runtime_root = _runtime_root()
-    subprocess.run(
-        [sys.executable, "-m", "venv", str(runtime_root / ".venv")],
-        check=True,
-        cwd=str(runtime_root),
-    )
+    builder_cmd, detected_python = _resolve_venv_builder_command()
+    _write_error(f"[DEBUG] 使用系统Python命令: {' '.join(builder_cmd)}")
+    _write_error(f"[DEBUG] 探测到解释器: {detected_python}")
+    _write_error(f"[DEBUG] 目标路径: {runtime_root / '.venv'}")
+    
+    try:
+        result = subprocess.run(
+            [*builder_cmd, "-m", "venv", str(runtime_root / ".venv")],
+            check=True,
+            cwd=str(runtime_root),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        _write_error(f"[DEBUG] 虚拟环境创建成功")
+        if result.stdout:
+            _write_error(f"[DEBUG] stdout: {result.stdout.strip()}")
+        if result.stderr:
+            _write_error(f"[DEBUG] stderr: {result.stderr.strip()}")
+    except subprocess.CalledProcessError as e:
+        _write_error(f"[DEBUG] 虚拟环境创建失败: {e}")
+        _write_error(f"[DEBUG] stdout: {e.stdout}")
+        _write_error(f"[DEBUG] stderr: {e.stderr}")
+        raise RuntimeError(f"虚拟环境创建失败: {e}")
+    except subprocess.TimeoutExpired as e:
+        _write_error(f"[DEBUG] 虚拟环境创建超时: {e}")
+        raise RuntimeError("虚拟环境创建超时（300秒）")
 
     py_path = _runtime_venv_python()
     if not py_path.exists():
         raise RuntimeError("虚拟环境创建失败，未找到 Python 可执行文件")
+    
+    # 验证新创建的虚拟环境
+    try:
+        result = subprocess.run(
+            [str(py_path), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            _write_error(f"[DEBUG] 新虚拟环境验证成功: {result.stdout.strip()}")
+        else:
+            _write_error(f"[DEBUG] 新虚拟环境验证失败: {result.stderr}")
+            raise RuntimeError("新虚拟环境不可用")
+    except Exception as e:
+        _write_error(f"[DEBUG] 新虚拟环境验证异常: {e}")
+        raise RuntimeError(f"新虚拟环境验证失败: {e}")
+    
     return py_path
 
 
@@ -448,118 +1388,265 @@ def _test_pip_mirror_latency(mirror: Tuple[str, str]) -> Tuple[str, str, Optiona
 def _test_all_pip_mirrors() -> List[Tuple[str, str, float]]:
     print("正在测试 pip 镜像源延迟...")
     max_workers = max(1, min(len(PIP_INDEX_MIRRORS), 8))
+    deadline = time.perf_counter() + NODE_TEST_TIMEOUT_SECONDS + 2.0
+    available: List[Tuple[str, str, float]] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(_test_pip_mirror_latency, PIP_INDEX_MIRRORS))
-
-    available = sorted(
-        [(name, url, latency) for name, url, latency in results if latency is not None],
-        key=lambda item: item[2],
-    )
+        futures = {executor.submit(_test_pip_mirror_latency, m): m for m in PIP_INDEX_MIRRORS}
+        for future in concurrent.futures.as_completed(futures):
+            if time.perf_counter() > deadline:
+                break
+            try:
+                name, url, latency = future.result(timeout=0.1)
+                if latency is not None:
+                    available.append((name, url, latency))
+            except Exception:
+                pass
+        for f in futures:
+            f.cancel()
+    available.sort(key=lambda item: item[2])
     return available
 
 
 def _select_pip_mirror() -> None:
-    global _selected_pip_mirror_name, _selected_pip_index_url
+    """自动选择 pip 镜像源，并保存候选列表用于失败回退。"""
+    global _selected_pip_mirror_name, _selected_pip_index_url, _available_pip_mirrors
 
-    available = _test_all_pip_mirrors()
+    tui = get_tui() if RICH_AVAILABLE else None
+
+    if tui and tui.use_tui:
+        available = tui.show_progress_test(
+            "正在测试 pip 镜像源延迟",
+            PIP_INDEX_MIRRORS,
+            _test_pip_mirror_latency,
+            timeout=NODE_TEST_TIMEOUT_SECONDS
+        )
+    else:
+        available = _test_all_pip_mirrors()
+
     if not available:
-        print("pip 镜像测速失败，将使用官方 PyPI")
+        if tui:
+            tui.show_status("pip 镜像测速失败，将使用官方 PyPI", "warning")
+        else:
+            print("pip 镜像测速失败，将使用官方 PyPI")
+        _available_pip_mirrors = [("PyPI", "https://pypi.org/simple", 0.0)]
         _selected_pip_mirror_name = "PyPI"
         _selected_pip_index_url = "https://pypi.org/simple"
         return
 
-    max_name_len = max(len(name) for name, _, _ in available)
-    for i, (name, url, latency) in enumerate(available, 1):
-        print(f"  {i:>3}. {name:<{max_name_len}}  {latency:>7.0f}ms  {url}")
-
-    try:
-        sel = input(f"\n请选择 pip 镜像编号 [1-{len(available)}] (默认 1): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        sel = ""
-
-    try:
-        idx = int(sel) - 1 if sel else 0
-        if not (0 <= idx < len(available)):
-            idx = 0
-    except ValueError:
-        idx = 0
-
-    _selected_pip_mirror_name, _selected_pip_index_url, _ = available[idx]
-    print(f"已选择 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
+    _available_pip_mirrors = available
+    _selected_pip_mirror_name, _selected_pip_index_url, _ = available[0]
+    if tui:
+        tui.show_status(f"已自动选择最快 pip 镜像: {_selected_pip_mirror_name}", "info")
+    else:
+        print(f"已自动选择最快 pip 镜像: {_selected_pip_mirror_name} ({_selected_pip_index_url})")
 
 
-def _pip_install_with_mirrors(py_path: Path, install_args: List[str]) -> None:
-    print(f"使用 {_selected_pip_mirror_name} 源安装依赖...")
-    try:
-        subprocess.run(
-            [
-                str(py_path),
-                "-m",
-                "pip",
-                "install",
-                "--index-url",
-                _selected_pip_index_url,
-                *install_args,
-            ],
-            check=True,
+def _run_pip_install_command(cmd: List[str], timeout_seconds: int = 900) -> None:
+    env = os.environ.copy()
+    env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+    env.setdefault("PIP_NO_INPUT", "1")
+    subprocess.run(
+        cmd,
+        check=True,
+        timeout=timeout_seconds,
+        text=True,
+        env=env,
+    )
+
+
+def _pip_install_with_mirrors(
+    py_path: Path,
+    install_args: List[str],
+) -> None:
+    install_target = " ".join(install_args).strip() or "(无参数)"
+    if len(install_target) > 160:
+        install_target = install_target[:157] + "..."
+    _write_error(f"[DEBUG] pip安装参数: {install_args}")
+    _write_error(f"[DEBUG] 使用Python路径: {py_path}")
+
+    def _build_cmd(index_url: str) -> List[str]:
+        return [
+            str(py_path),
+            "-m",
+            "pip",
+            "install",
+            "--progress-bar",
+            "on",
+            "--index-url",
+            index_url,
+            *install_args,
+        ]
+
+    mirror_attempts: List[Tuple[str, str]] = []
+    seen_urls = set()
+
+    def _append_attempt(name: str, index_url: str) -> None:
+        if not index_url or index_url in seen_urls:
+            return
+        seen_urls.add(index_url)
+        mirror_attempts.append((name, index_url))
+
+    _append_attempt(_selected_pip_mirror_name, _selected_pip_index_url)
+    for name, index_url, _ in _available_pip_mirrors:
+        _append_attempt(name, index_url)
+    _append_attempt("PyPI", "https://pypi.org/simple")
+
+    last_error: Optional[Exception] = None
+    total_attempts = len(mirror_attempts)
+
+    for attempt_index, (mirror_name, index_url) in enumerate(mirror_attempts, 1):
+        print(
+            f"使用 {mirror_name} 源安装依赖: {install_target} "
+            f"(尝试 {attempt_index}/{total_attempts})",
+            flush=True
         )
-        return
-    except subprocess.CalledProcessError as exc:
-        if _selected_pip_index_url == "https://pypi.org/simple":
-            raise RuntimeError(f"pip 安装失败: {exc}")
+        try:
+            cmd = _build_cmd(index_url)
+            _write_error(f"[DEBUG] 执行命令: {' '.join(cmd)}")
+            _run_pip_install_command(cmd, timeout_seconds=900)
+            _write_error(f"[DEBUG] pip安装成功: {mirror_name}")
+            return
+        except subprocess.CalledProcessError as exc:
+            last_error = exc
+            _write_error(f"[DEBUG] pip安装失败: {mirror_name}, returncode={exc.returncode}")
+            continue
+        except subprocess.TimeoutExpired as exc:
+            last_error = exc
+            _write_error(f"[DEBUG] pip安装超时: {mirror_name}, {exc}")
+            continue
+        except Exception as exc:
+            last_error = exc
+            _write_error(f"[DEBUG] pip安装异常: {mirror_name}, {exc}")
+            continue
 
-        print(f"{_selected_pip_mirror_name} 源安装失败，回退到官方 PyPI...")
-        subprocess.run(
-            [
-                str(py_path),
-                "-m",
-                "pip",
-                "install",
-                "--index-url",
-                "https://pypi.org/simple",
-                *install_args,
-            ],
-            check=True,
-        )
+    raise RuntimeError(f"pip 安装失败（全部镜像均重试失败）: {last_error}")
 
 
 def _ensure_runtime_dependencies() -> None:
+    if _bundled_python_path():
+        _write_error("[DEBUG] 内置 Python 已包含所有依赖，跳过安装")
+        print("✓ 使用内置 Python，无需安装依赖")
+        return
+
     runtime_root = _runtime_root()
     if not runtime_root.exists():
         raise RuntimeError("Runtime 不存在，无法安装依赖")
 
-    requirements_path = _requirements_file_for_platform()
-    requirements_bytes = requirements_path.read_bytes()
-    requirements_sha = _sha256_bytes(requirements_bytes)
+    tui = get_tui() if RICH_AVAILABLE else None
 
-    deps_state = _read_json(_deps_state_path()) or {}
-    if (
-        deps_state.get("requirements_sha256") == requirements_sha
-        and deps_state.get("requirements_file") == str(requirements_path.relative_to(runtime_root))
-        and _runtime_venv_python().exists()
-    ):
-        print("✓ 依赖已就绪")
-        return
+    requirements_path = _requirements_file_for_platform()
+    dep_targets = ["main.py", "core", "utils", "web", "config"]
 
     py_path = _ensure_runtime_venv()
 
-    print("正在安装 Runtime 依赖...")
-    _pip_install_with_mirrors(py_path, ["--upgrade", "pip"])
-    _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
+    if tui:
+        tui.show_status("正在安装 Runtime 依赖...", "info")
+    else:
+        print("正在安装 Runtime 依赖...")
 
-    _write_json(
-        _deps_state_path(),
-        {
-            "requirements_file": str(requirements_path.relative_to(runtime_root)),
-            "requirements_sha256": requirements_sha,
-            "python_version": platform.python_version(),
-            "updated_at": int(time.time()),
-        },
-    )
-    print("✓ Runtime 依赖安装完成")
+    print("依赖安装进度 1/3: 扫描并校验依赖状态", flush=True)
+
+    pip_upgraded = False
+    install_step_announced = False
+
+    def _ensure_pip_upgraded() -> None:
+        nonlocal pip_upgraded
+        if pip_upgraded:
+            return
+        _write_error("[DEBUG] 开始升级pip（仅在需要安装依赖时执行）")
+        _pip_install_with_mirrors(py_path, ["--upgrade", "pip"])
+        pip_upgraded = True
+
+    def _install_missing_packages(pkgs: List[str]) -> None:
+        nonlocal install_step_announced
+        if not install_step_announced:
+            print("依赖安装进度 2/3: 安装缺失依赖", flush=True)
+            install_step_announced = True
+        _ensure_pip_upgraded()
+        _pip_install_with_mirrors(py_path, pkgs)
+
+    installed_dynamic: List[str] = []
+    if DEP_MANAGER_AVAILABLE:
+        try:
+            result = auto_manage_dependencies(
+                project_root=runtime_root,
+                targets=dep_targets,
+                python_executable=str(py_path),
+                requirements_file=requirements_path,
+                state_file=_deps_state_path(),
+                installer=_install_missing_packages,
+                extra_packages=["requests", "rich", "InquirerPy", "aiohttp"],
+                install_missing=True,
+                sync_requirements=True,
+                pin_versions=True,
+                skip_if_unchanged=True,
+            )
+            installed_dynamic = result.get("installed_packages", [])
+            if result.get("skipped"):
+                if tui:
+                    tui.show_status("依赖已就绪", "success")
+                else:
+                    print("✓ 依赖已就绪")
+                print("依赖安装进度 3/3: 完成（无需安装）", flush=True)
+                return
+
+            if installed_dynamic:
+                _write_error(f"[DEBUG] 动态安装依赖: {installed_dynamic}")
+        except Exception as exc:
+            _write_error(f"[DEBUG] 自动依赖管理失败，回退requirements: {exc}")
+            if requirements_path.exists():
+                print("依赖安装进度 2/3: 回退安装 requirements", flush=True)
+                _ensure_pip_upgraded()
+                _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
+            _write_json(
+                _deps_state_path(),
+                {
+                    "requirements_file": str(requirements_path.relative_to(runtime_root)) if requirements_path.exists() else "",
+                    "python_version": platform.python_version(),
+                    "updated_at": int(time.time()),
+                },
+            )
+    else:
+        if requirements_path.exists():
+            print("依赖安装进度 2/3: 安装 requirements", flush=True)
+            _ensure_pip_upgraded()
+            _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
+        _write_json(
+            _deps_state_path(),
+            {
+                "requirements_file": str(requirements_path.relative_to(runtime_root)) if requirements_path.exists() else "",
+                "python_version": platform.python_version(),
+                "updated_at": int(time.time()),
+            },
+        )
+    
+    if tui:
+        tui.show_status("Runtime 依赖安装完成", "success")
+    else:
+        print("✓ Runtime 依赖安装完成")
+    print("依赖安装进度 3/3: 完成", flush=True)
+
+
+async def _test_node_latency_async(domain: str, session: Any) -> Tuple[str, Optional[float]]:
+    """异步测试单个节点延迟。"""
+    try:
+        start = time.perf_counter()
+        timeout = aiohttp.ClientTimeout(total=NODE_TEST_TIMEOUT_SECONDS, connect=NODE_TEST_CONNECT_TIMEOUT_SECONDS)
+        async with session.head(
+            f"https://{domain}",
+            timeout=timeout,
+            allow_redirects=False,
+            ssl=False  # 跳过 SSL 验证以提升速度
+        ) as response:
+            if response.status < 500:
+                return (domain, (time.perf_counter() - start) * 1000)
+            return (domain, None)
+    except Exception:
+        return (domain, None)
 
 
 def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
+    """同步测试单个节点延迟 - 兼容性保留"""
     try:
         start = time.perf_counter()
         _session.head(
@@ -572,84 +1659,243 @@ def _test_node_latency(domain: str) -> Tuple[str, Optional[float]]:
         return (domain, None)
 
 
-def _test_all_nodes() -> List[Tuple[str, float]]:
-    print("正在测试镜像节点延迟...")
-    max_workers = max(1, min(len(MIRROR_NODES), NODE_TEST_MAX_WORKERS))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(_test_node_latency, MIRROR_NODES))
-    available = sorted(
-        [(d, l) for d, l in results if l is not None],
-        key=lambda x: x[1],
+async def _test_all_nodes_async() -> List[Tuple[str, float]]:
+    """异步测试所有镜像节点延迟。"""
+    if not AIOHTTP_AVAILABLE:
+        return []
+
+    print(f"正在测试 {len(MIRROR_NODES)} 个镜像节点延迟（并发）...")
+    
+    # 配置 aiohttp 连接器用于并发测速
+    connector = aiohttp.TCPConnector(
+        limit=1000,  # 总连接池大小
+        limit_per_host=50,  # 每个主机的连接数
+        ttl_dns_cache=300,  # DNS 缓存时间
+        use_dns_cache=True,
+        ssl=False,  # 跳过 SSL 验证提升速度
+        enable_cleanup_closed=True
     )
+    
+    timeout = aiohttp.ClientTimeout(total=NODE_TEST_TIMEOUT_SECONDS, connect=NODE_TEST_CONNECT_TIMEOUT_SECONDS)
+    
+    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        # 创建所有任务
+        tasks = [_test_node_latency_async(domain, session) for domain in MIRROR_NODES]
+        
+        # 并发执行所有任务
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 处理结果
+        available = []
+        for result in results:
+            if isinstance(result, tuple) and len(result) == 2:
+                domain, latency = result
+                if latency is not None:
+                    available.append((domain, latency))
+        
+        available.sort(key=lambda x: x[1])
+        print(f"异步测速完成，可用节点: {len(available)}/{len(MIRROR_NODES)}")
+        return available
+
+
+def _ensure_launcher_dependency(module_name: str, package_name: Optional[str] = None) -> bool:
+    """为启动器自身尝试安装缺失依赖。"""
+    package = package_name or module_name
+    python_for_install = sys.executable
+    try:
+        resolved_cmd, _ = _resolve_venv_builder_command()
+        if resolved_cmd:
+            python_for_install = resolved_cmd[0]
+    except Exception as exc:
+        _write_error(f"[DEBUG] 解析启动器依赖安装解释器失败，回退sys.executable: {exc}")
+
+    if DEP_MANAGER_AVAILABLE:
+        try:
+            result = auto_manage_dependencies(
+                project_root=_base_dir(),
+                targets=["launcher.py", "utils", "config"],
+                python_executable=python_for_install,
+                requirements_file=_base_dir() / "config" / "requirements.txt",
+                state_file=_base_dir() / ".launcher_deps_state.json",
+                extra_packages=[package],
+                install_missing=True,
+                sync_requirements=True,
+                pin_versions=True,
+                skip_if_unchanged=False,
+            )
+            installed = result.get("installed_packages", [])
+            if installed:
+                _write_error(f"[DEBUG] 启动器补装依赖: {installed}")
+        except Exception as exc:
+            _write_error(f"[DEBUG] 启动器依赖管理安装失败: {exc}")
+
+    try:
+        __import__(module_name)
+        return True
+    except Exception as exc:
+        _write_error(f"[DEBUG] 启动器依赖导入失败: {module_name}, {exc}")
+        return False
+
+
+def _resolve_repo_with_fallback() -> Tuple[str, str]:
+    """获取仓库配置并做强兜底，避免回退到错误默认值。"""
+    try:
+        repo, source = get_effective_repo()
+    except Exception as exc:
+        _write_error(f"[DEBUG] 读取仓库配置失败: {exc}")
+        repo, source = "", "读取失败"
+
+    if repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', repo):
+        return repo, source
+
+    env_repo = os.environ.get("FANQIE_GITHUB_REPO", "").strip()
+    if env_repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', env_repo):
+        return env_repo, "环境变量(兜底)"
+
+    try:
+        import version as _version_module
+        version_repo = str(getattr(_version_module, "__github_repo__", "")).strip()
+        if version_repo and re.match(r'^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$', version_repo):
+            return version_repo, "version.py(兜底)"
+    except Exception:
+        pass
+
+    return "POf-L/Fanqie-novel-Downloader", "默认值"
+
+
+def _test_all_nodes() -> List[Tuple[str, float]]:
+    """同步测试所有镜像节点延迟 - 兼容性保留"""
+    print("正在同步测试镜像节点延迟...")
+    max_workers = max(1, min(len(MIRROR_NODES), NODE_TEST_MAX_WORKERS))
+    deadline = time.perf_counter() + NODE_TEST_TIMEOUT_SECONDS + 2.0
+    available: List[Tuple[str, float]] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_test_node_latency, d): d for d in MIRROR_NODES}
+        for future in concurrent.futures.as_completed(futures):
+            if time.perf_counter() > deadline:
+                break
+            try:
+                domain, latency = future.result(timeout=0.1)
+                if latency is not None:
+                    available.append((domain, latency))
+            except Exception:
+                pass
+        for f in futures:
+            f.cancel()
+    available.sort(key=lambda x: x[1])
     return available
 
 
+def _has_proxy_env() -> bool:
+    proxy_keys = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy")
+    return any(os.environ.get(key, "").strip() for key in proxy_keys)
+
+
 def _select_download_mode() -> None:
-    global _download_mode, _mirror_domain
+    global _download_mode, _mirror_domain, aiohttp, AIOHTTP_AVAILABLE, _available_runtime_mirrors
+    tui = get_tui() if RICH_AVAILABLE else None
 
-    print("\n请选择下载方式:")
-    print("  1. 直连 GitHub (不使用代理)")
-    print("  2. 直连 GitHub (使用系统代理)")
-    print("  3. 使用镜像节点")
-
-    try:
-        choice = input("请输入选项 [1/2/3] (默认 3): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        choice = ""
-
-    if choice == "1":
-        _download_mode = "direct"
-        _session.trust_env = False
-        return
-
-    if choice == "2":
-        _download_mode = "proxy"
-        _session.trust_env = True
-        return
-
+    # 全自动：默认优先镜像，失败后自动回退
     _download_mode = "mirror"
     _session.trust_env = False
+    _mirror_domain = None
+    _available_runtime_mirrors = []
 
-    available = _test_all_nodes()
+    if tui:
+        tui.show_status("下载策略：自动模式（优先镜像）", "info")
+    else:
+        print("下载策略：自动模式（优先镜像）")
+
+    try:
+        if AIOHTTP_AVAILABLE:
+            if hasattr(asyncio, 'run'):
+                available = asyncio.run(_test_all_nodes_async())
+            else:
+                loop = asyncio.get_event_loop()
+                available = loop.run_until_complete(_test_all_nodes_async())
+        else:
+            if _ensure_launcher_dependency("aiohttp", "aiohttp"):
+                import aiohttp as _aiohttp
+                aiohttp = _aiohttp
+                AIOHTTP_AVAILABLE = True
+                if hasattr(asyncio, 'run'):
+                    available = asyncio.run(_test_all_nodes_async())
+                else:
+                    loop = asyncio.get_event_loop()
+                    available = loop.run_until_complete(_test_all_nodes_async())
+            else:
+                raise RuntimeError("aiohttp 未安装")
+    except Exception as e:
+        print(f"异步测速不可用，回退到同步模式: {e}")
+        if tui and tui.use_tui:
+            available = tui.show_progress_test(
+                "正在测试镜像节点延迟",
+                MIRROR_NODES,
+                _test_node_latency,
+                timeout=NODE_TEST_TIMEOUT_SECONDS
+            )
+        else:
+            available = _test_all_nodes()
+
     if not available:
-        print("所有镜像节点均不可用，将使用直连")
-        _download_mode = "direct"
+        if _has_proxy_env():
+            _download_mode = "proxy"
+            _session.trust_env = True
+            if tui:
+                tui.show_status("镜像不可用，检测到系统代理，自动使用代理直连", "warning")
+            else:
+                print("镜像不可用，检测到系统代理，自动使用代理直连")
+        else:
+            _download_mode = "direct"
+            _session.trust_env = False
+            if tui:
+                tui.show_status("所有镜像节点均不可用，自动使用直连", "warning")
+            else:
+                print("所有镜像节点均不可用，自动使用直连")
         return
 
-    max_len = max(len(d) for d, _ in available)
-    for i, (domain, latency) in enumerate(available, 1):
-        print(f"  {i:>3}. {domain:<{max_len}}  {latency:>7.0f}ms")
-
-    try:
-        sel = input(f"\n请选择节点编号 [1-{len(available)}] (默认 1): ").strip()
-    except (EOFError, KeyboardInterrupt):
-        sel = ""
-
-    try:
-        idx = int(sel) - 1 if sel else 0
-        if not (0 <= idx < len(available)):
-            idx = 0
-    except ValueError:
-        idx = 0
-
-    _mirror_domain = available[idx][0]
-    print(f"已选择镜像: {_mirror_domain}")
+    _available_runtime_mirrors = available
+    _mirror_domain = available[0][0]
+    latency_ms = available[0][1]
+    if tui:
+        tui.show_status(f"已自动选择最快镜像: {_mirror_domain} ({latency_ms:.0f}ms)", "info")
+    else:
+        print(f"已自动选择最快镜像: {_mirror_domain} ({latency_ms:.0f}ms)")
 
 
 def _ensure_runtime(repo: str) -> None:
+    global _mirror_domain
     platform = _platform_name()
     state_path = _state_path()
     local_state = _read_json(state_path) or {}
+    
+    # 获取TUI实例
+    tui = get_tui() if RICH_AVAILABLE else None
 
     remote_manifest = _load_platform_manifest(repo, platform)
     if not remote_manifest:
-        if (_runtime_root() / "main.py").exists():
-            print("⚠ 无法获取远程 Runtime 清单，使用本地 Runtime")
+        runtime_root = _runtime_root()
+        runtime_ok = (
+            (runtime_root / "main.py").exists()
+            and (runtime_root / "utils" / "runtime_bootstrap.py").exists()
+            and (runtime_root / "config" / "config.py").exists()
+        )
+        if runtime_ok:
+            if tui:
+                tui.show_status("无法获取远程 Runtime 清单，使用本地 Runtime", "warning")
+            else:
+                print("无法获取远程 Runtime 清单，使用本地 Runtime")
             return
-        raise RuntimeError("无法获取远程 Runtime 清单，且本地 Runtime 不可用")
+        raise RuntimeError(
+            "无法获取远程 Runtime 清单，且本地 Runtime 不可用或不完整。\n"
+            f"请检查网络连接，或删除 {runtime_root} 目录后重试"
+        )
 
     if _is_runtime_up_to_date(local_state, remote_manifest):
-        print("✓ Runtime 已是最新")
+        if tui:
+            tui.show_status("Runtime 已是最新", "success")
+        else:
+            print("✓ Runtime 已是最新")
         return
 
     if _is_launcher_update_required(remote_manifest):
@@ -663,16 +1909,68 @@ def _ensure_runtime(repo: str) -> None:
     if not runtime_url or len(runtime_sha) != 64:
         raise RuntimeError("远程 Runtime 清单缺少必要字段")
 
-    print(f"正在更新 Runtime: {runtime_version}")
-    if _download_mode == "mirror" and _mirror_domain:
-        mirror_url = f"https://{_mirror_domain}/{runtime_url}"
-        try:
-            archive_bytes = _download_runtime_archive(mirror_url, runtime_sha)
-        except Exception:
-            print("\n镜像下载失败，尝试直连...")
-            archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
+    if tui:
+        tui.show_status(f"正在更新 Runtime: {runtime_version}", "info")
     else:
-        archive_bytes = _download_runtime_archive(runtime_url, runtime_sha)
+        print(f"正在更新 Runtime: {runtime_version}")
+    
+    def _download_with_progress(target_url: str) -> bytes:
+        if tui and tui.use_tui:
+            return tui.show_download_progress(
+                f"下载 Runtime ({runtime_version})",
+                _download_runtime_archive,
+                target_url, runtime_sha
+            )
+        return _download_runtime_archive(target_url, runtime_sha)
+
+    archive_bytes: Optional[bytes] = None
+    mirror_errors: List[str] = []
+
+    # 下载 Runtime：全自动策略
+    # 1) 若启用镜像，按测速结果依次尝试镜像
+    # 2) 全部失败后自动回退直连
+    if _download_mode == "mirror":
+        mirror_candidates: List[str] = []
+        if _mirror_domain:
+            mirror_candidates.append(_mirror_domain)
+        for domain, _ in _available_runtime_mirrors:
+            if domain not in mirror_candidates:
+                mirror_candidates.append(domain)
+
+        for idx, domain in enumerate(mirror_candidates, 1):
+            mirror_url = f"https://{domain}/{runtime_url}"
+            try:
+                if idx == 1:
+                    if tui:
+                        tui.show_status(f"尝试镜像下载: {domain}", "info")
+                    else:
+                        print(f"尝试镜像下载: {domain}")
+                else:
+                    if tui:
+                        tui.show_status(f"镜像重试({idx}/{len(mirror_candidates)}): {domain}", "warning")
+                    else:
+                        print(f"镜像重试({idx}/{len(mirror_candidates)}): {domain}")
+                archive_bytes = _download_with_progress(mirror_url)
+                _mirror_domain = domain
+                break
+            except Exception as exc:
+                mirror_errors.append(f"{domain}: {exc}")
+                _write_error(f"[DEBUG] 镜像下载失败: {domain}, {exc}")
+                continue
+
+        if archive_bytes is None:
+            if tui:
+                tui.show_status("镜像均失败，自动回退直连下载", "warning")
+            else:
+                print("镜像均失败，自动回退直连下载")
+
+    if archive_bytes is None:
+        try:
+            archive_bytes = _download_with_progress(runtime_url)
+        except Exception as exc:
+            detail = "; ".join(mirror_errors) if mirror_errors else "无镜像失败记录"
+            raise RuntimeError(f"Runtime 下载失败（直连失败，镜像错误: {detail}）: {exc}")
+    
     _replace_runtime_archive(archive_bytes)
 
     _write_json(
@@ -685,55 +1983,169 @@ def _ensure_runtime(repo: str) -> None:
             "runtime_updated_at": int(__import__("time").time()),
         },
     )
-    print("✓ Runtime 更新完成")
+    
+    if tui:
+        tui.show_status("Runtime 更新完成", "success")
+    else:
+        print("✓ Runtime 更新完成")
 
 
 def _launch_runtime() -> None:
-    runtime_main = _runtime_root() / "main.py"
+    runtime_root = _runtime_root()
+    runtime_main = runtime_root / "main.py"
     if not runtime_main.exists():
         raise FileNotFoundError(f"未找到 Runtime 入口: {runtime_main}")
 
-    os.environ["FANQIE_RUNTIME_BASE"] = str(_runtime_root())
-    sys.path.insert(0, str(_runtime_root()))
+    critical_modules = [
+        runtime_root / "utils" / "__init__.py",
+        runtime_root / "utils" / "runtime_bootstrap.py",
+        runtime_root / "config" / "__init__.py",
+        runtime_root / "config" / "config.py",
+        runtime_root / "core" / "__init__.py",
+    ]
+    missing = [str(p) for p in critical_modules if not p.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Runtime 不完整，缺少关键文件:\n"
+            + "\n".join(f"  - {m}" for m in missing)
+            + f"\n请删除 {runtime_root} 目录后重新运行启动器以重新下载 Runtime"
+        )
 
-    runtime_venv = _runtime_root() / ".venv"
-    if runtime_venv.exists():
+    bundled = _bundled_python_path()
+    if bundled:
+        runtime_python = bundled
+    else:
+        runtime_venv = runtime_root / ".venv"
         if sys.platform == "win32":
-            if (runtime_venv / "Lib" / "site-packages").exists():
-                sys.path.insert(0, str(runtime_venv / "Lib" / "site-packages"))
+            runtime_python = runtime_venv / "Scripts" / "python.exe"
         else:
-            for candidate in (runtime_venv / "lib").glob("python*/site-packages"):
-                sys.path.insert(0, str(candidate))
+            runtime_python = runtime_venv / "bin" / "python"
 
-    namespace = {
-        "__name__": "__main__",
-        "__file__": str(runtime_main),
-    }
-    code = compile(runtime_main.read_text(encoding="utf-8"), str(runtime_main), "exec")
-    exec(code, namespace, namespace)
+    if not runtime_python.exists():
+        raise FileNotFoundError(
+            f"Runtime Python not found: {runtime_python}\n"
+            f"Please delete {runtime_root} and restart to re-download Runtime"
+        )
 
+    env = os.environ.copy()
+    env["FANQIE_RUNTIME_BASE"] = str(runtime_root)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    result = subprocess.run(
+        [str(runtime_python), str(runtime_main)],
+        cwd=str(runtime_root),
+        env=env,
+    )
+    sys.exit(result.returncode)
 
 def main() -> None:
-    print("=" * 50)
-    print("番茄小说下载器 启动器")
-    print("=" * 50)
+    # 获取TUI实例
+    tui = get_tui() if RICH_AVAILABLE else None
+    
+    # 显示启动器头部
+    if tui:
+        tui.show_header()
+    else:
+        print("=" * 50)
+        print("番茄小说下载器 启动器")
+        print("=" * 50)
+    
+    # 准备调试信息
+    debug_info = {
+        "Python版本": sys.version,
+        "Python路径": sys.executable,
+        "平台": sys.platform,
+        "是否打包": getattr(sys, 'frozen', False),
+        "工作目录": os.getcwd(),
+        "TUI状态": "启用" if (tui and tui.use_tui) else "禁用"
+    }
+    
+    if getattr(sys, 'frozen', False):
+        if hasattr(sys, '_MEIPASS'):
+            debug_info["_MEIPASS"] = sys._MEIPASS
+        debug_info["sys.executable"] = sys.executable
+    
+    debug_info.update({
+        "基础目录": str(_base_dir()),
+        "运行时目录": str(_runtime_root()),
+        "状态文件": str(_state_path())
+    })
+    
+    # 显示调试信息
+    if tui:
+        tui.show_debug_info(debug_info)
+    else:
+        _write_error("[DEBUG] ========== 启动环境信息 ==========")
+        for key, value in debug_info.items():
+            _write_error(f"[DEBUG] {key}: {value}")
+        _write_error("[DEBUG] ======================================")
 
-    repo = os.environ.get("FANQIE_GITHUB_REPO", "POf-L/Fanqie-novel-Downloader")
+    # 获取仓库配置，使用统一的管理模块
+    repo, repo_source = _resolve_repo_with_fallback()
+
+    # 强制注入仓库环境变量，确保后续子进程与动态模块统一使用
+    os.environ["FANQIE_GITHUB_REPO"] = repo
+    
+    if tui:
+        tui.show_debug_info({"使用仓库": repo, "仓库来源": repo_source})
+    else:
+        _write_error(f"[DEBUG] 使用仓库: {repo}")
+        _write_error(f"[DEBUG] 仓库来源: {repo_source}")
+    
     try:
+        # 使用TUI增强的各个步骤
+        if tui:
+            tui.show_status("开始初始化启动器...", "info")
+        
         _select_download_mode()
         _select_pip_mirror()
+        
+        # Runtime检查和更新
+        if tui:
+            tui.show_status("检查Runtime更新...", "info")
         _ensure_runtime(repo)
-        _ensure_runtime_dependencies()
-        _launch_runtime()
-    except Exception as error:
-        _write_error(f"启动失败: {error}")
-        if getattr(sys, "frozen", False):
+        
+        # 依赖安装（直接输出 pip 实时日志，避免进度被静默）
+        if tui:
+            tui.show_status("安装Runtime依赖（显示实时日志）...", "info")
             try:
-                _write_error("按回车键退出...")
-                input()
-            except Exception:
-                pass
-        raise
+                _ensure_runtime_dependencies()
+            except Exception as dep_error:
+                _write_error(f"[DEBUG] 依赖安装失败，但继续尝试启动: {dep_error}")
+                tui.show_status("依赖安装失败，但继续尝试启动...", "warning")
+        else:
+            _ensure_runtime_dependencies()
+        
+        # 启动Runtime
+        if tui:
+            tui.show_status("启动应用程序...", "info")
+        _launch_runtime()
+        
+    except Exception as error:
+        if tui:
+            tui.show_error(f"启动失败: {error}", pause=True)
+        else:
+            _write_error(f"启动失败: {error}")
+            _write_error(f"[DEBUG] 异常类型: {type(error).__name__}")
+            
+            # 添加更详细的异常信息
+            import traceback
+            exc_type, exc_value, exc_tb = sys.exc_info()
+            if exc_type and exc_value and exc_tb:
+                _write_error("[DEBUG] ========== 详细异常信息 ==========")
+                tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+                for line in tb_lines:
+                    _write_error(f"[DEBUG] {line.rstrip()}")
+                _write_error("[DEBUG] ======================================")
+            
+            if getattr(sys, "frozen", False):
+                try:
+                    _write_error("按回车键退出...")
+                    input()
+                except Exception:
+                    time.sleep(30)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

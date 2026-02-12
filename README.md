@@ -92,6 +92,33 @@ open http://localhost:5000
 - 从此以后，常规更新只需发布 Runtime，不必每次重发 Launcher。
 - 启动器下载建议使用固定通道 `launcher-stable`（仅在启动器协议升级时更新）。
 
+## 📦 全自动依赖管理
+
+- 项目内置统一依赖管理模块：`utils/dependency_manager.py`。
+- 支持能力：
+  - 自动扫描源码导入并识别第三方依赖
+  - 自动安装缺失依赖（源码运行与 Launcher 运行时）
+  - 自动生成并更新 `config/requirements.txt`
+  - 基于源码签名缓存状态，避免重复安装
+
+### 一键执行（本地开发）
+
+```bash
+python scripts/dependency_manager.py
+```
+
+### 直接调用模块
+
+```bash
+python -m utils.dependency_manager --project-root . --json
+```
+
+### 自动触发点
+
+- 源码运行 `python main.py` 前自动执行依赖管理。
+- Launcher 安装 Runtime 依赖时自动执行依赖管理。
+- GitHub Actions 构建阶段自动执行依赖管理并同步 requirements。
+
 ## 📱 Termux 用户
 
 - Termux 安装与故障排除请查看：[`docs/TERMUX_GUIDE.md`](docs/TERMUX_GUIDE.md)

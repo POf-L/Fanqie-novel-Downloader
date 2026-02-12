@@ -118,7 +118,7 @@ def get_default_download_path():
     if not os.path.exists(downloads):
         try:
             os.makedirs(downloads, exist_ok=True)
-        except:
+        except Exception:
             downloads = home
     
     return downloads
@@ -410,7 +410,7 @@ class DownloadHistoryManager:
                 try:
                     if os.path.exists(self.history_file):
                         os.rename(self.history_file, backup_file)
-                except:
+                except Exception:
                     pass
                 return {'version': 1, 'records': {}}
         return {'version': 1, 'records': {}}
@@ -1614,7 +1614,7 @@ def api_search():
                                     if isinstance(word_count, str):
                                         try:
                                             word_count = int(word_count)
-                                        except:
+                                        except Exception:
                                             word_count = 0
                                     
                                     # 解析章节数
@@ -1622,7 +1622,7 @@ def api_search():
                                     if isinstance(chapter_count, str):
                                         try:
                                             chapter_count = int(chapter_count)
-                                        except:
+                                        except Exception:
                                             chapter_count = 0
                                     
                                     # 解析状态 (0=已完结, 1=连载中, 2=完结)
@@ -1724,7 +1724,7 @@ def api_upload_book_list():
             try:
                 file.seek(0)
                 content = file.read().decode('gbk')
-            except:
+            except Exception:
                 return jsonify({'success': False, 'message': '文件编码不支持，请使用 UTF-8 或 GBK 编码'}), 400
     else:
         # 也支持直接传递文本内容
@@ -2008,7 +2008,10 @@ def api_queue_start():
         if not isinstance(task, dict):
             continue
 
+        task_id = str(task.get('id', '')).strip()
         book_id = str(task.get('book_id', '')).strip()
+        book_name = str(task.get('book_name', '')).strip()
+        author = str(task.get('author', '')).strip()
         if not book_id:
             continue
 
@@ -2051,7 +2054,10 @@ def api_queue_start():
                 selected_chapters = None
 
         cleaned_tasks.append({
+            'id': task_id if task_id else f"task_{book_id}_{int(time.time() * 1000)}",
             'book_id': book_id,
+            'book_name': book_name,
+            'author': author,
             'save_path': save_path,
             'file_format': file_format,
             'start_chapter': start_chapter,
@@ -2370,7 +2376,7 @@ def api_config_save_path():
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     return jsonify({'path': config.get('save_path', get_default_download_path())})
-        except:
+        except Exception:
             pass
         return jsonify({'path': get_default_download_path()})
     
@@ -2700,13 +2706,13 @@ def api_download_update():
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 save_path = config.get('save_path', save_path)
-        except:
+        except Exception:
             pass
             
     if not os.path.exists(save_path):
         try:
             os.makedirs(save_path)
-        except:
+        except Exception:
             save_path = get_default_download_path()
 
     # 启动下载线程
@@ -2939,4 +2945,3 @@ if __name__ == '__main__':
     print(f'配置文件位置: {CONFIG_FILE}')
     print('Web 服务已启动')
     app.run(host='127.0.0.1', port=5000, debug=False)
-

@@ -1021,7 +1021,7 @@ const AppState = {
     },
 
     removeFromQueue(taskId) {
-        this.downloadQueue = this.downloadQueue.filter(t => t && t.id !== taskId);
+        this.downloadQueue = this.downloadQueue.filter(t => t && String(t.id) !== String(taskId));
         this.saveQueue();
         renderQueue();
     },
@@ -1439,6 +1439,13 @@ class APIClient {
                 
                 // 如果下载完成或被取消，停止轮询
                 if (!status.is_downloading) {
+                    const queueStatus = await queueManager.fetchQueueStatus();
+                    if (queueStatus) {
+                        queueManager.updateQueueUI(queueStatus);
+                        if (!queueStatus.is_running) {
+                            queueManager.stopStatusPolling();
+                        }
+                    }
                     this.stopStatusPolling();
                     AppState.setDownloading(false);
                 }
@@ -1992,7 +1999,10 @@ async function handleStartQueueDownload() {
     }
 
     const payload = tasks.map(t => ({
+        id: t.id,
         book_id: t.book_id,
+        book_name: t.book_name,
+        author: t.author,
         start_chapter: t.start_chapter,
         end_chapter: t.end_chapter,
         selected_chapters: t.selected_chapters
@@ -2004,6 +2014,7 @@ async function handleStartQueueDownload() {
         // 不立即清空队列，等待任务完成后再逐个删除
         AppState.setDownloading(true);
         api.startStatusPolling();
+        queueManager.startStatusPolling();
         return;
     }
 

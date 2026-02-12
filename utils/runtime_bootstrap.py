@@ -76,7 +76,7 @@ def apply_encoding_fixes(debug_log: Optional[Callable[[str], None]] = None):
                         errors='replace',
                         line_buffering=True
                     )
-            except:
+            except Exception:
                 pass
                 
             try:
@@ -87,7 +87,7 @@ def apply_encoding_fixes(debug_log: Optional[Callable[[str], None]] = None):
                         errors='replace',
                         line_buffering=True
                     )
-            except:
+            except Exception:
                 pass
                 
             if debug_log:
