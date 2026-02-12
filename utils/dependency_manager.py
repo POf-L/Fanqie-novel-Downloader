@@ -35,6 +35,8 @@ KNOWN_IMPORT_TO_PACKAGE: Dict[str, str] = {
 
 IGNORED_IMPORT_MODULES: Set[str] = {
     "version",
+    # Runtime 环境中不包含 launcher.py，避免误判为第三方依赖
+    "launcher",
 }
 
 

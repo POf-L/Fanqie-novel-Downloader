@@ -1164,6 +1164,106 @@ def _resolve_venv_builder_command() -> Tuple[List[str], str]:
     )
 
 
+def _repair_venv_pyvenv_cfg(venv_path: Path) -> bool:
+    cfg_path = venv_path / "pyvenv.cfg"
+    if not cfg_path.exists():
+        _write_error("[DEBUG] pyvenv.cfg not found")
+        return False
+
+    try:
+        cfg_text = cfg_path.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        _write_error(f"[DEBUG] Failed to read pyvenv.cfg: {e}")
+        return False
+
+    cfg_lines = cfg_text.splitlines()
+    home_value = None
+    for line in cfg_lines:
+        if line.strip().startswith("home"):
+            parts = line.split("=", 1)
+            if len(parts) == 2:
+                home_value = parts[1].strip()
+                break
+
+    if home_value and Path(home_value).exists():
+        _write_error(f"[DEBUG] pyvenv.cfg home path valid: {home_value}")
+        return False
+
+    _write_error(f"[DEBUG] pyvenv.cfg home path invalid: {home_value}, attempting repair")
+
+    try:
+        builder_cmd, detected_python = _resolve_venv_builder_command()
+    except RuntimeError:
+        _write_error("[DEBUG] No usable system Python found, cannot repair pyvenv.cfg")
+        return False
+
+    local_python = Path(detected_python)
+    if not local_python.exists():
+        _write_error(f"[DEBUG] Detected Python path does not exist: {detected_python}")
+        return False
+
+    local_home = str(local_python.parent)
+    _write_error(f"[DEBUG] Repairing pyvenv.cfg home to: {local_home}")
+
+    new_lines = []
+    for line in cfg_lines:
+        stripped = line.strip()
+        if stripped.startswith("home"):
+            new_lines.append(f"home = {local_home}")
+        elif stripped.startswith("executable"):
+            new_lines.append(f"executable = {detected_python}")
+        elif stripped.startswith("command"):
+            new_lines.append(f"command = {detected_python} -m venv {venv_path}")
+        else:
+            new_lines.append(line)
+
+    try:
+        cfg_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    except Exception as e:
+        _write_error(f"[DEBUG] Failed to write pyvenv.cfg: {e}")
+        return False
+
+    if sys.platform == "win32":
+        venv_python_exe = venv_path / "Scripts" / "python.exe"
+        if venv_python_exe.exists() and local_python.exists():
+            try:
+                shutil.copy2(str(local_python), str(venv_python_exe))
+                pythonw = local_python.parent / "pythonw.exe"
+                venv_pythonw = venv_path / "Scripts" / "pythonw.exe"
+                if pythonw.exists():
+                    shutil.copy2(str(pythonw), str(venv_pythonw))
+            except Exception as e:
+                _write_error(f"[DEBUG] Failed to copy Python executables: {e}")
+    else:
+        venv_python_bin = venv_path / "bin" / "python"
+        if venv_python_bin.is_symlink() or venv_python_bin.exists():
+            try:
+                venv_python_bin.unlink(missing_ok=True)
+                os.symlink(detected_python, str(venv_python_bin))
+                for name in ("python3",):
+                    link = venv_path / "bin" / name
+                    link.unlink(missing_ok=True)
+                    os.symlink(detected_python, str(link))
+            except Exception as e:
+                _write_error(f"[DEBUG] Failed to update symlinks: {e}")
+
+    py_path = _runtime_venv_python()
+    try:
+        result = subprocess.run(
+            [str(py_path), "--version"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            _write_error(f"[DEBUG] venv repair succeeded: {result.stdout.strip()}")
+            return True
+        else:
+            _write_error(f"[DEBUG] venv still broken after repair: {result.stderr}")
+            return False
+    except Exception as e:
+        _write_error(f"[DEBUG] venv verification failed after repair: {e}")
+        return False
+
+
 def _ensure_runtime_venv() -> Path:
     runtime_root = _runtime_root()
     py_path = _runtime_venv_python()
@@ -1184,14 +1284,16 @@ def _ensure_runtime_venv() -> Path:
                 return py_path
             else:
                 _write_error(f"[DEBUG] 虚拟环境不可用: {result.stderr}")
-                _write_error("[DEBUG] 将重新创建虚拟环境")
         except Exception as e:
             _write_error(f"[DEBUG] 虚拟环境测试失败: {e}")
-            _write_error("[DEBUG] 将重新创建虚拟环境")
         
-        # 删除损坏的虚拟环境
+        venv_path = runtime_root / ".venv"
+        _write_error("[DEBUG] 尝试修复 pyvenv.cfg")
+        if _repair_venv_pyvenv_cfg(venv_path):
+            return _runtime_venv_python()
+
+        _write_error("[DEBUG] 修复失败，将重新创建虚拟环境")
         try:
-            venv_path = runtime_root / ".venv"
             if venv_path.exists():
                 shutil.rmtree(venv_path)
                 _write_error("[DEBUG] 已删除损坏的虚拟环境")
@@ -1420,9 +1522,26 @@ def _ensure_runtime_dependencies() -> None:
     else:
         print("正在安装 Runtime 依赖...")
 
-    print("依赖安装进度 1/3: 升级 pip", flush=True)
-    _pip_install_with_mirrors(py_path, ["--upgrade", "pip"])
-    print("依赖安装进度 2/3: 扫描并安装缺失依赖", flush=True)
+    print("依赖安装进度 1/3: 扫描并校验依赖状态", flush=True)
+
+    pip_upgraded = False
+    install_step_announced = False
+
+    def _ensure_pip_upgraded() -> None:
+        nonlocal pip_upgraded
+        if pip_upgraded:
+            return
+        _write_error("[DEBUG] 开始升级pip（仅在需要安装依赖时执行）")
+        _pip_install_with_mirrors(py_path, ["--upgrade", "pip"])
+        pip_upgraded = True
+
+    def _install_missing_packages(pkgs: List[str]) -> None:
+        nonlocal install_step_announced
+        if not install_step_announced:
+            print("依赖安装进度 2/3: 安装缺失依赖", flush=True)
+            install_step_announced = True
+        _ensure_pip_upgraded()
+        _pip_install_with_mirrors(py_path, pkgs)
 
     installed_dynamic: List[str] = []
     if DEP_MANAGER_AVAILABLE:
@@ -1433,7 +1552,7 @@ def _ensure_runtime_dependencies() -> None:
                 python_executable=str(py_path),
                 requirements_file=requirements_path,
                 state_file=_deps_state_path(),
-                installer=lambda pkgs: _pip_install_with_mirrors(py_path, pkgs),
+                installer=_install_missing_packages,
                 extra_packages=["requests", "rich", "InquirerPy", "aiohttp"],
                 install_missing=True,
                 sync_requirements=True,
@@ -1446,6 +1565,7 @@ def _ensure_runtime_dependencies() -> None:
                     tui.show_status("依赖已就绪", "success")
                 else:
                     print("✓ 依赖已就绪")
+                print("依赖安装进度 3/3: 完成（无需安装）", flush=True)
                 return
 
             if installed_dynamic:
@@ -1453,6 +1573,8 @@ def _ensure_runtime_dependencies() -> None:
         except Exception as exc:
             _write_error(f"[DEBUG] 自动依赖管理失败，回退requirements: {exc}")
             if requirements_path.exists():
+                print("依赖安装进度 2/3: 回退安装 requirements", flush=True)
+                _ensure_pip_upgraded()
                 _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
             _write_json(
                 _deps_state_path(),
@@ -1464,6 +1586,8 @@ def _ensure_runtime_dependencies() -> None:
             )
     else:
         if requirements_path.exists():
+            print("依赖安装进度 2/3: 安装 requirements", flush=True)
+            _ensure_pip_upgraded()
             _pip_install_with_mirrors(py_path, ["-r", str(requirements_path)])
         _write_json(
             _deps_state_path(),
