@@ -3,8 +3,7 @@
 
 import sys
 import time
-import threading
-from typing import List, Optional, Callable, Tuple, Any
+from typing import List, Optional, Callable, Any
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -102,18 +101,8 @@ class LauncherTUI:
                 pass
         return None
 
-    def select_download_mode(self, options: List[DownloadOption], default: str = "3") -> str:
-        if INQUIRER_AVAILABLE:
-            choices = [
-                {"name": f"{opt.name} - {opt.description}", "value": opt.id}
-                for opt in options
-            ]
-            result = self._inquirer_select("选择下载方式:", choices, default=default)
-            if result is not None:
-                return result
-
-        if not self.use_tui:
-            print("\n请选择下载方式:")
+    def _arrow_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        if not self.use_tui or not self.console:
             for i, opt in enumerate(options, 1):
                 print(f"  {i}. {opt.name} - {opt.description}")
             try:
@@ -124,21 +113,157 @@ class LauncherTUI:
                 return options[int(choice) - 1].id
             return default
 
-        self.print("\n[bold cyan]选择下载方式[/bold cyan]")
+        if sys.platform == "win32":
+            return self._windows_arrow_select(message, options, default)
+        else:
+            return self._unix_arrow_select(message, options, default)
+
+    def _windows_arrow_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        import msvcrt
+        
+        console = Console()
+        
+        default_index = 0
+        for i, opt in enumerate(options):
+            if opt.id == default:
+                default_index = i
+                break
+        
+        current_index = default_index
+        
+        def display_options():
+            console.clear()
+            console.print(f"\n[bold cyan]{message}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            for i, opt in enumerate(options):
+                if i == current_index:
+                    console.print(f"▸ [bold green]{opt.name}[/bold green] - [dim]{opt.description}[/dim]")
+                else:
+                    console.print(f"  {opt.name} - [dim]{opt.description}[/dim]")
+        
+        display_options()
+        
+        try:
+            while True:
+                try:
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch()
+                        
+                        if key == b'\xe0':
+                            key = msvcrt.getch()
+                            if key == b'H':
+                                current_index = (current_index - 1) % len(options)
+                                display_options()
+                            elif key == b'P':
+                                current_index = (current_index + 1) % len(options)
+                                display_options()
+                        elif key == b'\r':
+                            return options[current_index].id
+                        elif key == b'\x03':
+                            raise KeyboardInterrupt()
+                            
+                except (KeyboardInterrupt, EOFError):
+                    return default
+                    
+        except Exception:
+            return self._fallback_rich_select(message, options, default)
+
+    def _unix_arrow_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        from rich.prompt import Prompt
+        from rich.console import Console
+        
+        console = Console()
+        
+        default_index = 0
+        for i, opt in enumerate(options):
+            if opt.id == default:
+                default_index = i
+                break
+        
+        current_index = default_index
+        
+        def display_options():
+            console.clear()
+            console.print(f"\n[bold cyan]{message}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            for i, opt in enumerate(options):
+                if i == current_index:
+                    console.print(f"▸ [bold green]{opt.name}[/bold green] - [dim]{opt.description}[/dim]")
+                else:
+                    console.print(f"  {opt.name} - [dim]{opt.description}[/dim]")
+        
+        display_options()
+        
+        import sys
+        import tty
+        import termios
+        
+        def get_key():
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':
+                    ch += sys.stdin.read(2)
+                return ch
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+        try:
+            while True:
+                try:
+                    key = get_key()
+                    
+                    if key == '\x1b[A':
+                        current_index = (current_index - 1) % len(options)
+                        display_options()
+                    elif key == '\x1b[B':
+                        current_index = (current_index + 1) % len(options)
+                        display_options()
+                    elif key == '\r' or key == '\n':
+                        return options[current_index].id
+                    elif key == '\x03':
+                        raise KeyboardInterrupt()
+                        
+                except (KeyboardInterrupt, EOFError):
+                    return default
+                    
+        except Exception:
+            return self._fallback_rich_select(message, options, default)
+
+    def _fallback_rich_select(self, message: str, options: List[DownloadOption], default: str = "3") -> str:
+        from rich.prompt import Prompt
+        
+        self.print(f"\n[bold cyan]{message}[/bold cyan]")
         choice_map = {}
         for i, opt in enumerate(options):
             choice_map[str(i + 1)] = opt.id
             self.print(f"  [yellow]{i + 1}[/yellow]. {opt.name} - [dim]{opt.description}[/dim]")
-        while True:
-            try:
-                choice = Prompt.ask(
-                    f"请输入选项 [1-{len(options)}]",
-                    default=default,
-                    choices=list(choice_map.keys())
-                )
-                return choice_map[choice]
-            except (EOFError, KeyboardInterrupt):
-                return default
+        
+        try:
+            choice = Prompt.ask(
+                f"请输入选项 [1-{len(options)}]",
+                default=default,
+                choices=list(choice_map.keys())
+            )
+            return choice_map[choice]
+        except (EOFError, KeyboardInterrupt):
+            return default
+
+    def select_download_mode(self, options: List[DownloadOption], default: str = "3") -> str:
+        if INQUIRER_AVAILABLE:
+            choices = [
+                {"name": f"{opt.name} - {opt.description}", "value": opt.id}
+                for opt in options
+            ]
+            result = self._inquirer_select("选择下载方式:", choices, default=default)
+            if result is not None:
+                return result
+
+        return self._arrow_select("选择下载方式:", options, default)
 
     def show_progress_test(self, title: str, items: List[Any], test_func: Callable, timeout: float = 3.0) -> List[Any]:
         deadline = time.perf_counter() + timeout + 2.0
@@ -189,17 +314,8 @@ class LauncherTUI:
 
         return results
 
-    def show_mirror_table(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
-        if INQUIRER_AVAILABLE:
-            choices = []
-            for i, mirror in enumerate(mirrors):
-                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
-                choices.append({"name": f"{mirror.name}  ({latency_str})", "value": i})
-            result = self._inquirer_select(title, choices, default=default_index)
-            if result is not None:
-                return result
-
-        if not self.use_tui:
+    def _arrow_select_mirror(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        if not self.use_tui or not self.console:
             max_name_len = max(len(m.name) for m in mirrors) if mirrors else 10
             for i, mirror in enumerate(mirrors, 1):
                 latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
@@ -216,6 +332,121 @@ class LauncherTUI:
                 idx = default_index
             return idx
 
+        if sys.platform == "win32":
+            return self._windows_arrow_select_mirror(mirrors, title, default_index)
+        else:
+            return self._unix_arrow_select_mirror(mirrors, title, default_index)
+
+    def _windows_arrow_select_mirror(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        import msvcrt
+        
+        console = Console()
+        current_index = default_index
+        
+        def display_mirrors():
+            console.clear()
+            console.print(f"\n[bold cyan]{title}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            console.print("  编号  镜像名称                        延迟")
+            console.print("  ----  ----------------------------  ----")
+            
+            for i, mirror in enumerate(mirrors):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                if i == current_index:
+                    console.print(f"▸ {i+1:>4}  [bold green]{mirror.name:<28}[/bold green]  {latency_str:>7}")
+                else:
+                    console.print(f"  {i+1:>4}  {mirror.name:<28}  {latency_str:>7}")
+        
+        display_mirrors()
+        
+        try:
+            while True:
+                try:
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch()
+                        
+                        if key == b'\xe0':
+                            key = msvcrt.getch()
+                            if key == b'H':
+                                current_index = (current_index - 1) % len(mirrors)
+                                display_mirrors()
+                            elif key == b'P':
+                                current_index = (current_index + 1) % len(mirrors)
+                                display_mirrors()
+                        elif key == b'\r':
+                            return current_index
+                        elif key == b'\x03':
+                            raise KeyboardInterrupt()
+                            
+                except (KeyboardInterrupt, EOFError):
+                    return default_index
+                    
+        except Exception:
+            return self._fallback_rich_mirror_select(mirrors, title, default_index)
+
+    def _unix_arrow_select_mirror(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        console = Console()
+        current_index = default_index
+        
+        def display_mirrors():
+            console.clear()
+            console.print(f"\n[bold cyan]{title}[/bold cyan]")
+            console.print("[dim](使用 ↑/↓ 移动, Enter 确认)[/dim]\n")
+            
+            console.print("  编号  镜像名称                        延迟")
+            console.print("  ----  ----------------------------  ----")
+            
+            for i, mirror in enumerate(mirrors):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                if i == current_index:
+                    console.print(f"▸ {i+1:>4}  [bold green]{mirror.name:<28}[/bold green]  {latency_str:>7}")
+                else:
+                    console.print(f"  {i+1:>4}  {mirror.name:<28}  {latency_str:>7}")
+        
+        display_mirrors()
+        
+        import sys
+        import tty
+        import termios
+        
+        def get_key():
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':
+                    ch += sys.stdin.read(2)
+                return ch
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+        try:
+            while True:
+                try:
+                    key = get_key()
+                    
+                    if key == '\x1b[A':
+                        current_index = (current_index - 1) % len(mirrors)
+                        display_mirrors()
+                    elif key == '\x1b[B':
+                        current_index = (current_index + 1) % len(mirrors)
+                        display_mirrors()
+                    elif key == '\r' or key == '\n':
+                        return current_index
+                    elif key == '\x03':
+                        raise KeyboardInterrupt()
+                        
+                except (KeyboardInterrupt, EOFError):
+                    return default_index
+                    
+        except Exception:
+            return self._fallback_rich_mirror_select(mirrors, title, default_index)
+
+    def _fallback_rich_mirror_select(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        from rich.prompt import Prompt
+        
         table = Table(title=title, show_header=True, header_style="bold magenta")
         table.add_column("编号", style="cyan", width=6)
         table.add_column("镜像名称", style="white")
@@ -224,18 +455,31 @@ class LauncherTUI:
             latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
             table.add_row(str(i), mirror.name, latency_str)
         self.console.print(table)
-        while True:
-            try:
-                choice = Prompt.ask(
-                    f"请选择镜像编号 [1-{len(mirrors)}]",
-                    default=str(default_index + 1)
-                )
-                idx = int(choice) - 1
-                if 0 <= idx < len(mirrors):
-                    return idx
-                self.print("[red]无效的选择，请重新输入[/red]")
-            except (EOFError, KeyboardInterrupt, ValueError):
-                return default_index
+        
+        try:
+            choice = Prompt.ask(
+                f"请选择镜像编号 [1-{len(mirrors)}]",
+                default=str(default_index + 1)
+            )
+            idx = int(choice) - 1
+            if 0 <= idx < len(mirrors):
+                return idx
+            self.print("[red]无效的选择，请重新输入[/red]")
+            return default_index
+        except (EOFError, KeyboardInterrupt, ValueError):
+            return default_index
+
+    def show_mirror_table(self, mirrors: List[MirrorInfo], title: str, default_index: int = 0) -> int:
+        if INQUIRER_AVAILABLE:
+            choices = []
+            for i, mirror in enumerate(mirrors):
+                latency_str = f"{mirror.latency:.0f}ms" if mirror.latency else "N/A"
+                choices.append({"name": f"{mirror.name}  ({latency_str})", "value": i})
+            result = self._inquirer_select(title, choices, default=default_index)
+            if result is not None:
+                return result
+
+        return self._arrow_select_mirror(mirrors, title, default_index)
 
     def show_download_progress(self, description: str, download_func: Callable, *args, **kwargs) -> Any:
         if not self.use_tui:
@@ -253,7 +497,6 @@ class LauncherTUI:
         ) as progress:
             def download_with_progress():
                 import launcher
-                # 在可能抛出的代码之前先保存全局回调，避免 finally 中访问时未定义
                 original_render = launcher._render_download_progress
                 task = progress.add_task(description, total=100)
                 progress_callback = lambda downloaded, total, start: self._update_download_progress(

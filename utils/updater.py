@@ -44,7 +44,6 @@ def parse_version(ver_str: str) -> Optional[pkg_version.Version]:
     except Exception:
         return None
 
-
 def get_latest_release(repo: str, timeout: int = 3) -> Optional[Dict]:
     """
     获取GitHub仓库的最新发布版本
@@ -94,7 +93,6 @@ def get_latest_release(repo: str, timeout: int = 3) -> Optional[Dict]:
         return None
     except Exception:
         return None
-
 
 def check_update(current_version: str, repo: str) -> Optional[Tuple[bool, Dict]]:
     """
@@ -152,19 +150,19 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
     assets = latest_info.get('assets', [])
     parsed_assets = []
     
-    print(f'[DEBUG] parse_release_assets: platform={platform}, total_assets={len(assets)}')
+
     
     for asset in assets:
         name = asset.get('name', '')
         size = asset.get('size', 0)
         download_url = asset.get('browser_download_url', '')
         
-        print(f'[DEBUG] Checking asset: name={name}, size={size}')
+
         
         # 只处理指定平台的文件
         if platform == 'windows':
             if not name.endswith('.exe'):
-                print(f'[DEBUG]   -> Skipped: not .exe')
+
                 continue
             
             # 分类 Windows 版本
@@ -172,17 +170,17 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
                 asset_type = 'standalone'
                 description = "单文件版 (推荐)"
                 recommended = True
-                print(f'[DEBUG]   -> Matched: standalone')
+
             elif 'debug' in name.lower():
                 asset_type = 'debug'
                 description = "调试版"
                 recommended = False
-                print(f'[DEBUG]   -> Matched: debug')
+
             else:
                 asset_type = 'standard'
                 description = "标准版"
                 recommended = False
-                print(f'[DEBUG]   -> Matched: standard')
+
         
         elif platform == 'linux':
             if not ('linux' in name.lower() and not name.endswith('.exe')):
@@ -213,11 +211,6 @@ def parse_release_assets(latest_info: Dict, platform: str = 'windows') -> list:
     
     # 排序: 推荐的排在前面,然后按类型排序
     parsed_assets.sort(key=lambda x: (not x['recommended'], x['type']))
-    
-    print(f'[DEBUG] Final parsed_assets count: {len(parsed_assets)}')
-    for i, a in enumerate(parsed_assets):
-        print(f'[DEBUG]   [{i}] {a["name"]} -> type={a["type"]}, recommended={a["recommended"]}')
-    
     return parsed_assets
 
 def format_update_message(latest_info: Dict) -> str:
@@ -311,30 +304,21 @@ def apply_windows_update(new_exe_path: str, current_exe_path: str = None) -> boo
     import subprocess
     import tempfile
     
-    print(f'[DEBUG] apply_windows_update called')
-    print(f'[DEBUG]   new_exe_path: {new_exe_path}')
-    print(f'[DEBUG]   current_exe_path: {current_exe_path}')
-    print(f'[DEBUG]   sys.frozen: {getattr(sys, "frozen", False)}')
-    print(f'[DEBUG]   sys.executable: {sys.executable}')
     
     # 检查是否为打包后的 exe
     if not getattr(sys, 'frozen', False):
-        print('[DEBUG] Not a frozen executable, cannot auto-update')
         print("非打包环境，不支持自动更新")
         return False
     
     # 获取当前程序路径
     if current_exe_path is None:
         current_exe_path = sys.executable
-    print(f'[DEBUG] Final current_exe_path: {current_exe_path}')
     
     # 检查新版本文件是否存在
     if not os.path.exists(new_exe_path):
-        print(f'[DEBUG] New file does not exist!')
         print(f"未找到新版本文件: {new_exe_path}")
         return False
     
-    print(f'[DEBUG] New file size: {os.path.getsize(new_exe_path)} bytes')
     
     # 获取当前进程 PID
     pid = os.getpid()
@@ -485,13 +469,11 @@ exit /b 0
     # 写入批处理文件
     try:
         bat_path = os.path.join(tempfile.gettempdir(), 'fanqie_update.bat')
-        print(f'[DEBUG] Writing update script to: {bat_path}')
         
         # 使用 utf-8 编码写入，配合 chcp 65001
         with open(bat_path, 'w', encoding='utf-8') as f:
             f.write(bat_content)
         
-        print(f'[DEBUG] Update script written successfully')
         
         # 启动批处理脚本（使用新的控制台窗口）
         # 使用 CREATE_NEW_CONSOLE 标志确保脚本在独立窗口运行
@@ -511,17 +493,14 @@ exit /b 0
             close_fds=True
         )
         
-        print(f'[DEBUG] Update script started with PID: {process.pid}')
         print("更新脚本已启动，程序即将退出并进行更新")
         return True
         
     except Exception as e:
         import traceback
-        print(f'[DEBUG] Failed to create/start update script:')
         traceback.print_exc()
         print(f"创建更新脚本失败: {e}")
         return False
-
 
 def apply_unix_update(new_binary_path: str, current_binary_path: str = None) -> bool:
     """
@@ -662,7 +641,6 @@ exit 0
         print(f"创建更新脚本失败: {e}")
         return False
 
-
 def apply_update(new_file_path: str, current_path: str = None) -> bool:
     """
     应用更新 - 自动检测平台并调用对应的更新函数
@@ -684,12 +662,10 @@ def apply_update(new_file_path: str, current_path: str = None) -> bool:
         print(f"不支持的操作系统: {sys.platform}")
         return False
 
-
 def get_update_exe_path(save_path: str, filename: str) -> str:
     """获取下载的更新文件完整路径"""
     import os
     return os.path.join(save_path, filename)
-
 
 def can_auto_update() -> bool:
     """检查当前环境是否支持自动更新"""
@@ -697,7 +673,6 @@ def can_auto_update() -> bool:
     # Windows、Linux、macOS 打包后的程序都支持自动更新
     supported_platforms = ('win32', 'linux', 'darwin')
     return sys.platform in supported_platforms and getattr(sys, 'frozen', False)
-
 
 if __name__ == '__main__':
     # 测试代码

@@ -39,26 +39,8 @@ from config.config import CONFIG, print_lock, get_headers
 from utils.watermark import apply_watermark_to_chapter
 from utils.async_logger import async_print, safe_print
 from utils.messages import t
-from core.text_utils import (
-    normalize_title as _tu_normalize_title,
-    extract_title_core as _tu_extract_title_core,
-    parse_novel_text_with_catalog as _tu_parse_novel_text_with_catalog,
-    parse_novel_text as _tu_parse_novel_text,
-    sanitize_filename as _tu_sanitize_filename,
-    generate_filename as _tu_generate_filename,
-    process_chapter_content as _tu_process_chapter_content,
-)
-from core.state_store import (
-    get_status_file_path as _ss_get_status_file_path,
-    get_content_file_path as _ss_get_content_file_path,
-    get_status_dir as _ss_get_status_dir,
-    load_status as _ss_load_status,
-    load_saved_content as _ss_load_saved_content,
-    save_status as _ss_save_status,
-    save_content as _ss_save_content,
-    clear_status as _ss_clear_status,
-    has_saved_state as _ss_has_saved_state,
-)
+from core import text_utils as _tu
+from core import state_store as _ss
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -132,62 +114,59 @@ class APIManager:
             safe_print(f"获取节点测试器结果失败: {e}")
         return None
 
-    def _get_optimal_node(self) -> str:
-        """自动优选支持批量下载的节点"""
-        api_sources = CONFIG.get("api_sources", [])
-        if not api_sources:
-            return ""
-        
-        # 优先选择支持批量下载的节点
+    @staticmethod
+    def _classify_api_sources(exclude_nodes: set = None) -> tuple:
+        """从配置中分类API节点，返回 (full_download_nodes, other_nodes)"""
         full_download_nodes = []
         other_nodes = []
-        
-        for source in api_sources:
+        exclude = exclude_nodes or set()
+        for source in CONFIG.get("api_sources", []):
             if isinstance(source, dict):
-                base_url = (source.get("base_url") or source.get("api_base_url") or "").strip().rstrip('/')
+                base = (source.get("base_url") or source.get("api_base_url") or "").strip().rstrip('/')
                 supports_full = source.get("supports_full_download", True)
-                if base_url:
-                    if supports_full:
-                        full_download_nodes.append(base_url)
-                    else:
-                        other_nodes.append(base_url)
+                if base and base not in exclude:
+                    (full_download_nodes if supports_full else other_nodes).append(base)
             elif isinstance(source, str):
-                base_url = str(source).strip().rstrip('/')
-                if base_url:
-                    other_nodes.append(base_url)
-        
-        # 优先返回支持批量下载的第一个节点
-        if full_download_nodes:
-            optimal_node = full_download_nodes[0]
-            safe_print(f"自动选择支持批量下载的节点: {optimal_node}")
-            return optimal_node
-        
-        # 如果没有支持批量下载的节点，返回第一个可用节点
+                base = str(source).strip().rstrip('/')
+                if base and base not in exclude:
+                    other_nodes.append(base)
+        return full_download_nodes, other_nodes
+
+    def _get_optimal_node(self) -> str:
+        """自动优选支持批量下载的节点"""
+        full_nodes, other_nodes = self._classify_api_sources()
+        if full_nodes:
+            safe_print(f"自动选择支持批量下载的节点: {full_nodes[0]}")
+            return full_nodes[0]
         if other_nodes:
-            optimal_node = other_nodes[0]
-            safe_print(f"选择节点: {optimal_node}")
-            return optimal_node
-        
+            safe_print(f"选择节点: {other_nodes[0]}")
+            return other_nodes[0]
         return ""
+
+    def _build_candidate_list(self, full_nodes: list, other_nodes: list) -> List[str]:
+        """将分类后的节点列表组装为候选列表（当前节点优先）"""
+        candidates: List[str] = []
+        current = (self.base_url or "").strip().rstrip('/')
+        if current:
+            if current in full_nodes:
+                candidates.append(current)
+                full_nodes.remove(current)
+            elif current in other_nodes:
+                candidates.append(current)
+                other_nodes.remove(current)
+        candidates.extend(full_nodes)
+        candidates.extend(other_nodes)
+        return candidates
 
     def _candidate_base_urls(self) -> List[str]:
         """返回候选 API 节点列表（优先支持批量下载的节点，排除故障节点）"""
-        candidates: List[str] = []
-
-        # 尝试从节点测试器获取可用节点列表
         try:
             from utils.node_manager import get_node_tester
             node_tester = get_node_tester()
             if node_tester:
                 test_results = node_tester.get_test_results()
-                failed_nodes = set()
+                failed_nodes = {url for url, r in test_results.items() if not r.get('available', False)}
 
-                # 收集故障节点
-                for node_url, result in test_results.items():
-                    if not result.get('available', False):
-                        failed_nodes.add(node_url)
-
-                # 获取健康监控的故障节点列表（如果有）
                 try:
                     from utils.node_manager import get_health_monitor
                     health_monitor = get_health_monitor()
@@ -196,105 +175,18 @@ class APIManager:
                 except Exception:
                     pass
 
-                # 过滤掉故障节点
-                api_sources = CONFIG.get("api_sources", [])
-                full_download_nodes = []
-                other_nodes = []
-
-                for source in api_sources or []:
-                    if isinstance(source, dict):
-                        base = (source.get("base_url") or source.get("api_base_url") or "").strip().rstrip('/')
-                        supports_full = source.get("supports_full_download", True)
-                        if base and base not in failed_nodes:
-                            if supports_full:
-                                full_download_nodes.append(base)
-                            else:
-                                other_nodes.append(base)
-                    else:
-                        base = str(source or "").strip().rstrip('/')
-                        if base and base not in failed_nodes:
-                            other_nodes.append(base)
-
-                # 如果没有可用节点，返回所有节点（降级处理）
-                if not full_download_nodes and not other_nodes:
-                    for source in api_sources or []:
-                        if isinstance(source, dict):
-                            base = (source.get("base_url") or source.get("api_base_url") or "").strip().rstrip('/')
-                            supports_full = source.get("supports_full_download", True)
-                            if base:
-                                if supports_full:
-                                    full_download_nodes.append(base)
-                                else:
-                                    other_nodes.append(base)
-                        else:
-                            base = str(source or "").strip().rstrip('/')
-                            if base:
-                                other_nodes.append(base)
-
-                # 当前节点优先（如果存在）
-                current = (self.base_url or "").strip().rstrip('/')
-                if current:
-                    if current in full_download_nodes:
-                        candidates.append(current)
-                        full_download_nodes.remove(current)
-                    elif current in other_nodes:
-                        candidates.append(current)
-                        other_nodes.remove(current)
-
-                # 添加支持批量下载的节点
-                candidates.extend(full_download_nodes)
-                # 添加其他节点
-                candidates.extend(other_nodes)
-
-                return candidates
-
-        except Exception as e:
-            # 如果获取节点测试器失败，降级到原始逻辑
+                full_nodes, other_nodes = self._classify_api_sources(exclude_nodes=failed_nodes)
+                if not full_nodes and not other_nodes:
+                    full_nodes, other_nodes = self._classify_api_sources()
+                return self._build_candidate_list(full_nodes, other_nodes)
+        except Exception:
             pass
 
-        # 降级逻辑：返回所有节点
-        api_sources = CONFIG.get("api_sources", [])
-        full_download_nodes = []
-        other_nodes = []
-
-        for source in api_sources or []:
-            if isinstance(source, dict):
-                base = (source.get("base_url") or source.get("api_base_url") or "").strip().rstrip('/')
-                supports_full = source.get("supports_full_download", True)
-                if base:
-                    if supports_full:
-                        full_download_nodes.append(base)
-                    else:
-                        other_nodes.append(base)
-            else:
-                base = str(source or "").strip().rstrip('/')
-                if base:
-                    other_nodes.append(base)
-
-        # 当前节点优先（如果存在）
-        current = (self.base_url or "").strip().rstrip('/')
-        if current:
-            if current in full_download_nodes:
-                candidates.append(current)
-                full_download_nodes.remove(current)
-            elif current in other_nodes:
-                candidates.append(current)
-                other_nodes.remove(current)
-
-        # 添加支持批量下载的节点
-        candidates.extend(full_download_nodes)
-        # 添加其他节点
-        candidates.extend(other_nodes)
-
-        return candidates
-
-    def _debug_enabled(self) -> bool:
-        """始终启用调试日志（所有运行默认输出到终端）"""
-        return True
+        full_nodes, other_nodes = self._classify_api_sources()
+        return self._build_candidate_list(full_nodes, other_nodes)
 
     def _debug_log(self, message: str):
-        if self._debug_enabled():
-            safe_print(f"[API DEBUG] {message}")
+        safe_print(f"[API DEBUG] {message}")
 
     def _switch_base_url(self, base_url: str):
         """切换当前生效节点"""
@@ -1267,12 +1159,12 @@ class APIManager:
 
 def _normalize_title(title: str) -> str:
     """标准化章节标题，用于模糊匹配"""
-    return _tu_normalize_title(title)
+    return _tu.normalize_title(title)
 
 
 def _extract_title_core(title: str) -> str:
     """提取标题核心部分（去掉章节号前缀）"""
-    return _tu_extract_title_core(title)
+    return _tu.extract_title_core(title)
 
 
 def parse_novel_text_with_catalog(text: str, catalog: List[Dict]) -> List[Dict]:
@@ -1285,12 +1177,12 @@ def parse_novel_text_with_catalog(text: str, catalog: List[Dict]) -> List[Dict]:
     Returns:
         带内容的章节列表 [{'title': '...', 'id': '...', 'index': ..., 'content': '...'}, ...]
     """
-    return _tu_parse_novel_text_with_catalog(text, catalog)
+    return _tu.parse_novel_text_with_catalog(text, catalog)
 
 
 def parse_novel_text(text: str) -> List[Dict]:
     """解析整本小说文本，分离章节（无目录时的降级方案）"""
-    return _tu_parse_novel_text(text)
+    return _tu.parse_novel_text(text)
 
 
 class APIManagerExt(APIManager):
@@ -1363,7 +1255,7 @@ def sanitize_filename(name: str) -> str:
     Returns:
         清理后的文件名，非法字符 (\ / : * ? " < > |) 替换为下划线
     """
-    return _tu_sanitize_filename(name)
+    return _tu.sanitize_filename(name)
 
 
 def generate_filename(book_name: str, author_name: str, extension: str) -> str:
@@ -1378,32 +1270,32 @@ def generate_filename(book_name: str, author_name: str, extension: str) -> str:
     Returns:
         格式化的文件名: "{书名} 作者：{作者名}.{扩展名}" 或 "{书名}.{扩展名}"
     """
-    return _tu_generate_filename(book_name, author_name, extension)
+    return _tu.generate_filename(book_name, author_name, extension)
 
 
 def process_chapter_content(content):
     """处理章节内容"""
-    return _tu_process_chapter_content(content, watermark_func=apply_watermark_to_chapter)
+    return _tu.process_chapter_content(content, watermark_func=apply_watermark_to_chapter)
 
 
 def _get_status_file_path(book_id: str) -> str:
     """获取下载状态文件路径（保存在临时目录，不污染小说目录）"""
-    return _ss_get_status_file_path(book_id)
+    return _ss.get_status_file_path(book_id)
 
 
 def _get_content_file_path(book_id: str) -> str:
     """获取已下载内容文件路径"""
-    return _ss_get_content_file_path(book_id)
+    return _ss.get_content_file_path(book_id)
 
 
 def _get_status_dir() -> str:
     """获取下载状态目录（临时目录）。"""
-    return _ss_get_status_dir()
+    return _ss.get_status_dir()
 
 
 def load_status(book_id: str):
     """加载下载状态（从临时目录读取）"""
-    return _ss_load_status(book_id)
+    return _ss.load_status(book_id)
 
 
 def load_saved_content(book_id: str) -> dict:
@@ -1415,13 +1307,13 @@ def load_saved_content(book_id: str) -> dict:
     Returns:
         dict: 已保存的章节内容 {index: {'title': ..., 'content': ...}}
     """
-    return _ss_load_saved_content(book_id)
+    return _ss.load_saved_content(book_id)
 
 
 def save_status(book_id: str, downloaded_ids):
     """保存下载状态（保存到临时目录）"""
     try:
-        _ss_save_status(book_id, downloaded_ids)
+        _ss.save_status(book_id, downloaded_ids)
     except Exception as e:
         with print_lock:
             print(t("dl_save_status_fail", str(e)))
@@ -1435,7 +1327,7 @@ def save_content(book_id: str, chapter_results: dict):
         chapter_results: 章节内容 {index: {'title': ..., 'content': ...}}
     """
     try:
-        _ss_save_content(book_id, chapter_results)
+        _ss.save_content(book_id, chapter_results)
     except Exception as e:
         with print_lock:
             print(f"保存章节内容失败: {str(e)}")
@@ -1444,7 +1336,7 @@ def save_content(book_id: str, chapter_results: dict):
 def clear_status(book_id: str):
     """清除下载状态（下载完成后调用）"""
     try:
-        _ss_clear_status(book_id)
+        _ss.clear_status(book_id)
     except Exception:
         pass
 
@@ -1458,7 +1350,7 @@ def has_saved_state(book_id: str) -> bool:
     Returns:
         bool: 是否有已保存的状态
     """
-    return _ss_has_saved_state(book_id)
+    return _ss.has_saved_state(book_id)
 
 
 def analyze_download_completeness(chapter_results: dict, expected_chapters: list = None, log_func=None) -> dict:
