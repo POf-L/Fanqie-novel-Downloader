@@ -495,25 +495,13 @@ class LauncherTUI:
             TimeRemainingColumn(),
             console=self.console
         ) as progress:
-            def download_with_progress():
-                import launcher
-                original_render = launcher._render_download_progress
-                task = progress.add_task(description, total=100)
-                progress_callback = lambda downloaded, total, start: self._update_download_progress(
-                    progress, task, downloaded, total, start
-                )
-                launcher._render_download_progress = progress_callback
-                try:
-                    result = download_func(*args, **kwargs)
-                finally:
-                    launcher._render_download_progress = original_render
-                progress.update(task, completed=100)
-                return result
-            return download_with_progress()
-
-    def _update_download_progress(self, progress_obj, task_id, downloaded, total, start_ts):
-        if total > 0:
-            progress_obj.update(task_id, completed=int(downloaded * 100 / total))
+            task = progress.add_task(description, total=None)
+            def _rich_progress_callback(downloaded, total, start_ts):
+                if total > 0:
+                    progress.update(task, completed=downloaded, total=total)
+                else:
+                    progress.update(task, completed=downloaded)
+            return download_func(*args, progress_callback=_rich_progress_callback, **kwargs)
 
     def show_installation_progress(self, title: str, install_func: Callable, *args, **kwargs) -> bool:
         if not self.use_tui:

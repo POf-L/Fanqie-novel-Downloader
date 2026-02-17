@@ -427,7 +427,8 @@ def _is_runtime_up_to_date(local_state: Dict, remote_manifest: Dict) -> bool:
     return (_runtime_root() / "main.py").exists()
 
 
-def _download_runtime_archive(url: str, expected_sha256: str) -> bytes:
+def _download_runtime_archive(url: str, expected_sha256: str, progress_callback=None) -> bytes:
+    _progress = progress_callback or _render_download_progress
     headers = {"User-Agent": "FanqieLauncher"}
     with _session.get(url, headers=headers, timeout=(5, 30), stream=True) as response:
         response.raise_for_status()
@@ -449,11 +450,12 @@ def _download_runtime_archive(url: str, expected_sha256: str) -> bytes:
 
             now = time.time()
             if now - last_refresh >= 0.08:
-                _render_download_progress(downloaded, total, start_ts)
+                _progress(downloaded, total, start_ts)
                 last_refresh = now
 
-        _render_download_progress(downloaded, total, start_ts)
-        print()
+        _progress(downloaded, total, start_ts)
+        if not progress_callback:
+            print()
 
         if total > 0 and downloaded != total:
             raise RuntimeError("Runtime 下载大小不完整")
