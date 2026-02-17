@@ -905,6 +905,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate launcher manifest
+        if: inputs.build_launcher == 'true' && needs.prepare-release.outputs.launcher_count != '0'
+        shell: python
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+          BUILD_TIME: ${{ needs.prepare-release.outputs.build_time }}
+        run: |
+          import json, os
+          manifest = {
+              "launcher_version": os.environ["VERSION"],
+              "build_time": os.environ["BUILD_TIME"],
+              "assets": {
+                  "windows-x64": "FanqieLauncher-windows-x64.exe",
+                  "linux-x64": "FanqieLauncher-linux-x64",
+                  "macos-x64": "FanqieLauncher-macos-x64"
+              }
+          }
+          os.makedirs("release-assets", exist_ok=True)
+          with open("release-assets/launcher-manifest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+          print(f"Generated launcher-manifest.json: {manifest}")
+
       - name: Publish launcher stable release
         if: inputs.build_launcher == 'true' && needs.prepare-release.outputs.launcher_count != '0'
         uses: softprops/action-gh-release@v2
@@ -928,5 +950,6 @@ jobs:
           make_latest: true
           files: |
             release-assets/FanqieLauncher-*
+            release-assets/launcher-manifest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -62,7 +62,11 @@ except Exception:
 
 from utils.launcher_tui import LauncherTUI, DownloadOption, MirrorInfo, get_tui, RICH_AVAILABLE
 
-LAUNCHER_VERSION = "1.0.0"
+try:
+    import version as _launcher_ver_module
+    LAUNCHER_VERSION = getattr(_launcher_ver_module, "__version__", "1.0.0")
+except Exception:
+    LAUNCHER_VERSION = "1.0.0"
 APP_DIR_NAME = "FanqieNovelDownloader"
 STATE_FILE = "launcher_state.json"
 RUNTIME_DIR = "runtime"
@@ -1467,6 +1471,108 @@ def _launch_runtime() -> None:
     )
     sys.exit(result.returncode)
 
+def _get_launcher_asset_name() -> str:
+    if sys.platform == "win32":
+        return "FanqieLauncher-windows-x64.exe"
+    if sys.platform == "darwin":
+        return "FanqieLauncher-macos-x64"
+    return "FanqieLauncher-linux-x64"
+
+
+def _check_launcher_update(repo: str) -> None:
+    if not getattr(sys, 'frozen', False):
+        return
+
+    manifest_url = f"https://github.com/{repo}/releases/download/launcher-stable/launcher-manifest.json"
+    headers = {"User-Agent": "FanqieLauncher"}
+    manifest = None
+    for url in _build_mirror_urls(manifest_url):
+        try:
+            resp = _session.get(url, headers=headers, timeout=(5, 10), allow_redirects=True)
+        except Exception:
+            continue
+        if resp.status_code != 200:
+            continue
+        try:
+            data = resp.json()
+        except ValueError:
+            continue
+        if isinstance(data, dict) and "launcher_version" in data:
+            manifest = data
+            break
+
+    if not manifest:
+        _write_error("[DEBUG] 无法获取启动器更新清单，跳过自更新检查")
+        return
+
+    remote_ver = str(manifest.get("launcher_version", ""))
+    if not remote_ver or remote_ver <= LAUNCHER_VERSION:
+        return
+
+    tui = get_tui() if RICH_AVAILABLE else None
+    msg = f"发现启动器新版本: {remote_ver} (当前: {LAUNCHER_VERSION})"
+    if tui:
+        tui.show_status(msg, "info")
+    else:
+        print(msg)
+
+    asset_name = _get_launcher_asset_name()
+    download_url = f"https://github.com/{repo}/releases/download/launcher-stable/{asset_name}"
+
+    current_exe = Path(sys.executable)
+    backup_exe = current_exe.with_suffix(current_exe.suffix + ".old")
+
+    try:
+        if backup_exe.exists():
+            backup_exe.unlink()
+    except Exception:
+        pass
+
+    new_data = None
+    for url in _build_mirror_urls(download_url):
+        try:
+            resp = _session.get(url, headers=headers, timeout=(10, 120), stream=True, allow_redirects=True)
+        except Exception:
+            continue
+        if resp.status_code != 200:
+            continue
+        new_data = resp.content
+        break
+
+    if not new_data or len(new_data) < 1024:
+        _write_error("[DEBUG] 启动器下载失败或文件过小，跳过更新")
+        return
+
+    try:
+        os.rename(current_exe, backup_exe)
+        with open(current_exe, 'wb') as f:
+            f.write(new_data)
+        if sys.platform != "win32":
+            os.chmod(current_exe, 0o755)
+    except Exception as e:
+        _write_error(f"[DEBUG] 启动器替换失败: {e}")
+        if backup_exe.exists() and not current_exe.exists():
+            try:
+                os.rename(backup_exe, current_exe)
+            except Exception:
+                pass
+        return
+
+    msg = f"启动器已更新到 {remote_ver}，正在重启..."
+    if tui:
+        tui.show_status(msg, "success")
+    else:
+        print(msg)
+
+    try:
+        if sys.platform == "win32":
+            os.execv(str(current_exe), [str(current_exe)] + sys.argv[1:])
+        else:
+            os.execv(str(current_exe), [str(current_exe)] + sys.argv[1:])
+    except Exception:
+        print("请手动重启启动器以使用新版本")
+
+
 def main() -> None:
     # 获取TUI实例
     tui = get_tui() if RICH_AVAILABLE else None
@@ -1528,6 +1634,11 @@ def main() -> None:
         
         _select_download_mode()
         _select_pip_mirror()
+        
+        # 启动器自更新检查
+        if tui:
+            tui.show_status("检查启动器更新...", "info")
+        _check_launcher_update(repo)
         
         # Runtime检查和更新
         if tui:
