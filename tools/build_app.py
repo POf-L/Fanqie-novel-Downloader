@@ -46,7 +46,7 @@ def parse_requirements(requirements_file='requirements.txt'):
         list: 包名列表
     """
     packages = []
-    req_path = Path(__file__).parent / requirements_file
+    req_path = Path(__file__).parent.parent / 'config' / requirements_file
     
     if not req_path.exists():
         return packages
@@ -121,6 +121,9 @@ PACKAGE_SUBMODULES = {
         'PIL._imaging',
     ],
     'beautifulsoup4': [
+        'bs4',
+    ],
+    'bs4': [
         'bs4',
     ],
     'fake_useragent': [
@@ -379,6 +382,10 @@ def build_executable(variant="release", executable_name=None, target_platform=No
     # 添加数据收集
     cmd.extend(["--collect-data", "fake_useragent"])
     cmd.extend(["--collect-submodules", "PIL"])
+
+    # 排除不需要的模块
+    for mod in platform_config.get('exclude_modules', []):
+        cmd.extend(["--exclude-module", mod])
     
     # 添加静态文件和模板（使用平台适配的路径分隔符）
     sep = platform_config['path_separator']

@@ -169,7 +169,8 @@ try:
     CONFIG = load_config()
 except ConfigLoadError as e:
     print(f"\n错误: {e}\n")
-    CONFIG = None
+    import sys
+    sys.exit(1)
 
 print_lock = threading.Lock()
 

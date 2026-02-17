@@ -162,7 +162,7 @@ jobs:
       - name: Generate version
         id: version
         run: |
-          VERSION="$(date -u +'%Y.%m.%d.%H%M')+$(echo '${{ github.sha }}' | cut -c1-7)"
+          VERSION="$(date -u +'%Y.%m.%d.%H%M')-$(echo '${{ github.sha }}' | cut -c1-7)"
           BUILD_TIME="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
           TAG_NAME="v${VERSION}"
           echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"

@@ -256,6 +256,8 @@ def open_web_interface(port, access_token):
                 js_api=api
             )
             
+            _window.events.closed += on_closed
+            
             # 设置最大化状态
             if restored_position.get('maximized', False):
                 api._is_maximized = True

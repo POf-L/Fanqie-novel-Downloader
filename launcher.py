@@ -60,7 +60,7 @@ except Exception:
 
 
 
-from utils.launcher_tui import LauncherTUI, DownloadOption, MirrorInfo, get_tui
+from utils.launcher_tui import LauncherTUI, DownloadOption, MirrorInfo, get_tui, RICH_AVAILABLE
 
 LAUNCHER_VERSION = "1.0.0"
 APP_DIR_NAME = "FanqieNovelDownloader"
@@ -295,7 +295,10 @@ def _fetch_latest_release(repo: str) -> Optional[Dict]:
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": "FanqieLauncher",
     }
-    response = _do_get(url, headers=headers, timeout=(3, 10))
+    try:
+        response = _do_get(url, headers=headers, timeout=(3, 10))
+    except Exception:
+        return None
     if response.status_code != 200:
         return None
     try:
@@ -342,7 +345,7 @@ def _load_platform_manifest(repo: str, platform: str) -> Optional[Dict]:
         candidates.append(latest_release)
 
     for release in _fetch_recent_releases(repo):
-        if release.get("id") == latest_release.get("id") if latest_release else False:
+        if latest_release and release.get("id") == latest_release.get("id"):
             continue
         candidates.append(release)
 
@@ -1506,13 +1509,7 @@ def main() -> None:
         # 依赖安装（直接输出 pip 实时日志，避免进度被静默）
         if tui:
             tui.show_status("安装Runtime依赖（显示实时日志）...", "info")
-            try:
-                _ensure_runtime_dependencies()
-            except Exception as dep_error:
-                _write_error(f"[DEBUG] 依赖安装失败，但继续尝试启动: {dep_error}")
-                tui.show_status("依赖安装失败，但继续尝试启动...", "warning")
-        else:
-            _ensure_runtime_dependencies()
+        _ensure_runtime_dependencies()
         
         # 启动Runtime
         if tui:
