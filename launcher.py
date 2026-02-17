@@ -369,7 +369,35 @@ def _load_platform_manifest(repo: str, platform: str) -> Optional[Dict]:
         if isinstance(data, dict):
             return data
 
+    direct_url = f"https://github.com/{repo}/releases/latest/download/{asset_name}"
+    for attempt_url in _build_mirror_urls(direct_url):
+        try:
+            response = _session.get(attempt_url, headers=headers, timeout=(5, 15), allow_redirects=True)
+        except Exception:
+            continue
+        if response.status_code != 200:
+            continue
+        try:
+            data = response.json()
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            return data
+
     return None
+
+
+def _build_mirror_urls(url: str) -> List[str]:
+    urls = []
+    if _download_mode == "mirror" and _mirror_domain:
+        urls.append(f"https://{_mirror_domain}/{url}")
+    for node in MIRROR_NODES[:10]:
+        mirror = f"https://{node}/{url}"
+        if mirror not in urls:
+            urls.append(mirror)
+    urls.append(url)
+    return urls
+
 
 
 def _is_launcher_update_required(remote_manifest: Dict) -> bool:
