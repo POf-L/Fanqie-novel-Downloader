@@ -3,7 +3,6 @@
 
 import asyncio
 import concurrent.futures
-import hashlib
 import json
 import os
 import platform
@@ -14,7 +13,6 @@ import sys
 import tempfile
 import time
 import traceback
-import zipfile
 from typing import Dict, List, Optional, Tuple, Any, Callable
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -241,155 +239,6 @@ def _write_json(path: Path, data: Dict) -> None:
     os.replace(temp_path, path)
 
 
-def _sha256_bytes(content: bytes) -> str:
-    return hashlib.sha256(content).hexdigest()
-
-
-def _format_size(size: float) -> str:
-    units = ["B", "KB", "MB", "GB", "TB"]
-    value = float(size)
-    for unit in units:
-        if value < 1024 or unit == units[-1]:
-            if unit == "B":
-                return f"{int(value)}{unit}"
-            return f"{value:.2f}{unit}"
-        value /= 1024
-
-
-def _render_download_progress(downloaded: int, total: int, start_ts: float) -> None:
-    elapsed = max(time.time() - start_ts, 1e-6)
-    speed = downloaded / elapsed
-
-    if total > 0:
-        ratio = min(downloaded / total, 1.0)
-        bar_width = 30
-        filled = int(ratio * bar_width)
-        bar = "#" * filled + "-" * (bar_width - filled)
-        print(
-            f"\r下载 Runtime: [{bar}] {ratio * 100:6.2f}% "
-            f"({_format_size(downloaded)}/{_format_size(total)}) "
-            f"{_format_size(speed)}/s",
-            end="",
-            flush=True,
-        )
-        return
-
-    print(
-        f"\r下载 Runtime: {_format_size(downloaded)} {_format_size(speed)}/s",
-        end="",
-        flush=True,
-    )
-
-
-def _do_get(url: str, **kwargs) -> requests.Response:
-    if _download_mode == "mirror" and _mirror_domain:
-        mirror_url = f"https://{_mirror_domain}/{url}"
-        try:
-            resp = _session.get(mirror_url, **kwargs)
-            if resp.status_code < 400:
-                return resp
-        except Exception:
-            pass
-    return _session.get(url, **kwargs)
-
-
-def _fetch_latest_release(repo: str) -> Optional[Dict]:
-    url = f"https://api.github.com/repos/{repo}/releases/latest"
-    headers = {
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "FanqieLauncher",
-    }
-    try:
-        response = _do_get(url, headers=headers, timeout=(3, 10))
-    except Exception:
-        return None
-    if response.status_code != 200:
-        return None
-    try:
-        data = response.json()
-    except ValueError:
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def _fetch_recent_releases(repo: str, per_page: int = 20) -> List[Dict]:
-    url = f"https://api.github.com/repos/{repo}/releases?per_page={per_page}"
-    headers = {
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "FanqieLauncher",
-    }
-    try:
-        response = _do_get(url, headers=headers, timeout=(3, 10))
-    except Exception:
-        return []
-    if response.status_code != 200:
-        return []
-    try:
-        data = response.json()
-    except ValueError:
-        return []
-    if not isinstance(data, list):
-        return []
-    return [item for item in data if isinstance(item, dict)]
-
-
-def _get_asset_url(release_data: Dict, asset_name: str) -> Optional[str]:
-    for asset in release_data.get("assets", []):
-        if asset.get("name") == asset_name:
-            return asset.get("browser_download_url")
-    return None
-
-
-def _load_platform_manifest(repo: str, platform: str) -> Optional[Dict]:
-    asset_name = f"runtime-manifest-{platform}.json"
-    candidates: List[Dict] = []
-
-    latest_release = _fetch_latest_release(repo)
-    if latest_release:
-        candidates.append(latest_release)
-
-    for release in _fetch_recent_releases(repo):
-        if latest_release and release.get("id") == latest_release.get("id"):
-            continue
-        candidates.append(release)
-
-    headers = {"User-Agent": "FanqieLauncher"}
-    for release_data in candidates:
-        manifest_url = _get_asset_url(release_data, asset_name)
-        if not manifest_url:
-            continue
-
-        try:
-            response = _do_get(manifest_url, headers=headers, timeout=(3, 10))
-        except Exception:
-            continue
-        if response.status_code != 200:
-            continue
-
-        try:
-            data = response.json()
-        except ValueError:
-            continue
-        if isinstance(data, dict):
-            return data
-
-    direct_url = f"https://github.com/{repo}/releases/latest/download/{asset_name}"
-    for attempt_url in _build_mirror_urls(direct_url):
-        try:
-            response = _session.get(attempt_url, headers=headers, timeout=(5, 15), allow_redirects=True)
-        except Exception:
-            continue
-        if response.status_code != 200:
-            continue
-        try:
-            data = response.json()
-        except ValueError:
-            continue
-        if isinstance(data, dict):
-            return data
-
-    return None
-
 
 def _build_mirror_urls(url: str) -> List[str]:
     urls = []
@@ -404,104 +253,7 @@ def _build_mirror_urls(url: str) -> List[str]:
 
 
 
-def _is_launcher_update_required(remote_manifest: Dict) -> bool:
-    min_launcher_version = str(remote_manifest.get("min_launcher_version", "")).strip()
-    if not min_launcher_version:
-        return False
-    return min_launcher_version != LAUNCHER_VERSION
 
-
-def _is_runtime_up_to_date(local_state: Dict, remote_manifest: Dict) -> bool:
-    if not local_state:
-        return False
-
-    local_ver = str(local_state.get("runtime_version", ""))
-    local_sha = str(local_state.get("runtime_sha256", "")).lower()
-    remote_ver = str(remote_manifest.get("runtime_version", ""))
-    remote_sha = str(remote_manifest.get("runtime_archive_sha256", "")).lower()
-
-    if local_ver != remote_ver:
-        return False
-    if local_sha != remote_sha:
-        return False
-    return (_runtime_root() / "main.py").exists()
-
-
-def _download_runtime_archive(url: str, expected_sha256: str, progress_callback=None) -> bytes:
-    _progress = progress_callback or _render_download_progress
-    headers = {"User-Agent": "FanqieLauncher"}
-    with _session.get(url, headers=headers, timeout=(5, 30), stream=True) as response:
-        response.raise_for_status()
-        total = int(response.headers.get("Content-Length", "0") or "0")
-
-        start_ts = time.time()
-        last_refresh = 0.0
-        downloaded = 0
-        chunks = []
-        hasher = hashlib.sha256()
-
-        for chunk in response.iter_content(chunk_size=1024 * 256):
-            if not chunk:
-                continue
-
-            chunks.append(chunk)
-            hasher.update(chunk)
-            downloaded += len(chunk)
-
-            now = time.time()
-            if now - last_refresh >= 0.08:
-                _progress(downloaded, total, start_ts)
-                last_refresh = now
-
-        _progress(downloaded, total, start_ts)
-        if not progress_callback:
-            print()
-
-        if total > 0 and downloaded != total:
-            raise RuntimeError("Runtime 下载大小不完整")
-
-        content = b"".join(chunks)
-
-    current_sha = hasher.hexdigest()
-    if current_sha != expected_sha256.lower():
-        raise ValueError("Runtime 压缩包 sha256 校验失败")
-    return content
-
-
-def _replace_runtime_archive(content: bytes) -> None:
-    runtime_root = _runtime_root()
-    backup_root = _runtime_backup_root()
-    temp_extract = Path(tempfile.mkdtemp(prefix="fanqie_runtime_"))
-
-    try:
-        zip_path = temp_extract / "runtime.zip"
-        zip_path.write_bytes(content)
-        with zipfile.ZipFile(zip_path, "r") as zip_obj:
-            zip_obj.extractall(temp_extract / "new_runtime")
-
-        new_runtime_root = temp_extract / "new_runtime"
-        if not (new_runtime_root / "main.py").exists():
-            if (new_runtime_root / "runtime" / "main.py").exists():
-                new_runtime_root = new_runtime_root / "runtime"
-            else:
-                raise ValueError("Runtime 包结构无效，缺少 main.py")
-
-        if backup_root.exists():
-            shutil.rmtree(backup_root, ignore_errors=True)
-
-        if runtime_root.exists():
-            os.replace(runtime_root, backup_root)
-
-        shutil.copytree(new_runtime_root, runtime_root)
-
-        if backup_root.exists():
-            shutil.rmtree(backup_root, ignore_errors=True)
-    except Exception:
-        if backup_root.exists() and not runtime_root.exists():
-            os.replace(backup_root, runtime_root)
-        raise
-    finally:
-        shutil.rmtree(temp_extract, ignore_errors=True)
 
 
 def _bundled_python_path() -> Optional[Path]:
@@ -1298,130 +1050,24 @@ def _select_download_mode() -> None:
 
 
 def _ensure_runtime(repo: str) -> None:
-    global _mirror_domain
-    platform = _platform_name()
-    state_path = _state_path()
-    local_state = _read_json(state_path) or {}
-    
-    # 获取TUI实例
     tui = get_tui() if RICH_AVAILABLE else None
-
-    remote_manifest = _load_platform_manifest(repo, platform)
-    if not remote_manifest:
-        runtime_root = _runtime_root()
-        runtime_ok = (
-            (runtime_root / "main.py").exists()
-            and (runtime_root / "utils" / "runtime_bootstrap.py").exists()
-            and (runtime_root / "config" / "config.py").exists()
-        )
-        if runtime_ok:
-            if tui:
-                tui.show_status("无法获取远程 Runtime 清单，使用本地 Runtime", "warning")
-            else:
-                print("无法获取远程 Runtime 清单，使用本地 Runtime")
-            return
-        raise RuntimeError(
-            "无法获取远程 Runtime 清单，且本地 Runtime 不可用或不完整。\n"
-            f"请检查网络连接，或删除 {runtime_root} 目录后重试"
-        )
-
-    if _is_runtime_up_to_date(local_state, remote_manifest):
-        if tui:
-            tui.show_status("Runtime 已是最新", "success")
-        else:
-            print("✓ Runtime 已是最新")
-        return
-
-    if _is_launcher_update_required(remote_manifest):
-        raise RuntimeError(
-            "远程运行时要求更高版本启动器，请更新 Launcher 后重试"
-        )
-
-    runtime_url = str(remote_manifest.get("runtime_archive_url", ""))
-    runtime_sha = str(remote_manifest.get("runtime_archive_sha256", "")).lower()
-    runtime_version = str(remote_manifest.get("runtime_version", ""))
-    if not runtime_url or len(runtime_sha) != 64:
-        raise RuntimeError("远程 Runtime 清单缺少必要字段")
-
-    if tui:
-        tui.show_status(f"正在更新 Runtime: {runtime_version}", "info")
-    else:
-        print(f"正在更新 Runtime: {runtime_version}")
-    
-    def _download_with_progress(target_url: str) -> bytes:
-        if tui and tui.use_tui:
-            return tui.show_download_progress(
-                f"下载 Runtime ({runtime_version})",
-                _download_runtime_archive,
-                target_url, runtime_sha
-            )
-        return _download_runtime_archive(target_url, runtime_sha)
-
-    archive_bytes: Optional[bytes] = None
-    mirror_errors: List[str] = []
-
-    # 下载 Runtime：全自动策略
-    # 1) 若启用镜像，按测速结果依次尝试镜像
-    # 2) 全部失败后自动回退直连
-    if _download_mode == "mirror":
-        mirror_candidates: List[str] = []
-        if _mirror_domain:
-            mirror_candidates.append(_mirror_domain)
-        for domain, _ in _available_runtime_mirrors:
-            if domain not in mirror_candidates:
-                mirror_candidates.append(domain)
-
-        for idx, domain in enumerate(mirror_candidates, 1):
-            mirror_url = f"https://{domain}/{runtime_url}"
-            try:
-                if idx == 1:
-                    if tui:
-                        tui.show_status(f"尝试镜像下载: {domain}", "info")
-                    else:
-                        print(f"尝试镜像下载: {domain}")
-                else:
-                    if tui:
-                        tui.show_status(f"镜像重试({idx}/{len(mirror_candidates)}): {domain}", "warning")
-                    else:
-                        print(f"镜像重试({idx}/{len(mirror_candidates)}): {domain}")
-                archive_bytes = _download_with_progress(mirror_url)
-                _mirror_domain = domain
-                break
-            except Exception as exc:
-                mirror_errors.append(f"{domain}: {exc}")
-                _write_error(f"[DEBUG] 镜像下载失败: {domain}, {exc}")
-                continue
-
-        if archive_bytes is None:
-            if tui:
-                tui.show_status("镜像均失败，自动回退直连下载", "warning")
-            else:
-                print("镜像均失败，自动回退直连下载")
-
-    if archive_bytes is None:
-        try:
-            archive_bytes = _download_with_progress(runtime_url)
-        except Exception as exc:
-            detail = "; ".join(mirror_errors) if mirror_errors else "无镜像失败记录"
-            raise RuntimeError(f"Runtime 下载失败（直连失败，镜像错误: {detail}）: {exc}")
-    
-    _replace_runtime_archive(archive_bytes)
-
-    _write_json(
-        state_path,
-        {
-            "launcher_version": LAUNCHER_VERSION,
-            "platform": platform,
-            "runtime_version": runtime_version,
-            "runtime_sha256": runtime_sha,
-            "runtime_updated_at": int(__import__("time").time()),
-        },
+    runtime_root = _runtime_root()
+    runtime_ok = (
+        (runtime_root / "main.py").exists()
+        and (runtime_root / "utils" / "runtime_bootstrap.py").exists()
+        and (runtime_root / "config" / "config.py").exists()
     )
-    
-    if tui:
-        tui.show_status("Runtime 更新完成", "success")
-    else:
-        print("✓ Runtime 更新完成")
+    if runtime_ok:
+        if tui:
+            tui.show_status("Runtime 已就绪", "success")
+        else:
+            print("\u2713 Runtime 已就绪")
+        return
+    raise RuntimeError(
+        "本地 Runtime 不可用或不完整。\n"
+        f"请检查 {runtime_root} 目录，或重新下载 Runtime"
+    )
+
 
 
 def _launch_runtime() -> None:
@@ -1642,9 +1288,7 @@ def main() -> None:
             tui.show_status("检查启动器更新...", "info")
         _check_launcher_update(repo)
         
-        # Runtime检查和更新
-        if tui:
-            tui.show_status("检查Runtime更新...", "info")
+        # 检查本地Runtime
         _ensure_runtime(repo)
         
         # 依赖安装（直接输出 pip 实时日志，避免进度被静默）
