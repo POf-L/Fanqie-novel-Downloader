@@ -3,12 +3,16 @@ name: Build and Release
 on:
   workflow_dispatch:
     inputs:
-      build_launcher:
-        description: "是否重新构建 Launcher（通常为 false）"
+      source_ref:
+        description: "私有源码分支 / Tag / Commit"
         required: true
-        default: "false"
-        type: choice
-        options: ["false", "true"]
+        default: "main"
+        type: string
+      publish_release:
+        description: "是否创建 GitHub Release"
+        required: true
+        default: true
+        type: boolean
       platform_windows_x64:
         description: "编译 Windows x64"
         required: false
@@ -24,11 +28,6 @@ on:
         required: false
         default: true
         type: boolean
-      platform_termux_arm64:
-        description: "编译 Termux ARM64"
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: write
@@ -39,917 +38,203 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.11"
-  STANDALONE_PYTHON_VERSION: "3.11.14"
-  STANDALONE_PYTHON_TAG: "20260211"
+  PRIVATE_SOURCE_REPOSITORY: "POf-L/Fanqie-novel-Downloader-actions"
+  PRIVATE_SOURCE_PATH: "private-src"
   PYTHONUTF8: "1"
-  PYTHONIOENCODING: utf-8
+  PYTHONIOENCODING: "utf-8"
 
 jobs:
-  prepare-release:
+  prepare:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.VERSION }}
-      build_time: ${{ steps.version.outputs.BUILD_TIME }}
-      tag_name: ${{ steps.version.outputs.TAG_NAME }}
-      platforms: ${{ steps.platforms.outputs.platforms }}
-      launcher_matrix: ${{ steps.platforms.outputs.launcher_matrix }}
-      runtime_matrix: ${{ steps.platforms.outputs.runtime_matrix }}
-      launcher_count: ${{ steps.platforms.outputs.launcher_count }}
-      runtime_count: ${{ steps.platforms.outputs.runtime_count }}
-      termux_enabled: ${{ steps.platforms.outputs.termux_enabled }}
+      build_matrix: ${{ steps.platforms.outputs.build_matrix }}
+      build_count: ${{ steps.platforms.outputs.build_count }}
+      source_commit: ${{ steps.meta.outputs.source_commit }}
+      source_ref: ${{ steps.meta.outputs.source_ref }}
+      version: ${{ steps.meta.outputs.version }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set build platforms
-        id: platforms
+      - name: Validate private source token
         env:
-          P_WIN: ${{ inputs.platform_windows_x64 }}
-          P_LIN: ${{ inputs.platform_linux_x64 }}
-          P_MAC: ${{ inputs.platform_macos_x64 }}
-          P_TERMUX: ${{ inputs.platform_termux_arm64 }}
+          PRIVATE_SOURCE_TOKEN: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
         run: |
-          python3 << 'PY'
+          if [ -z "$PRIVATE_SOURCE_TOKEN" ]; then
+            echo "Missing repository secret: PRIVATE_SOURCE_TOKEN"
+            exit 1
+          fi
+
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ github.event.inputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
+
+      - name: Select build platforms
+        id: platforms
+        shell: python
+        env:
+          P_WIN: ${{ github.event.inputs.platform_windows_x64 }}
+          P_LIN: ${{ github.event.inputs.platform_linux_x64 }}
+          P_MAC: ${{ github.event.inputs.platform_macos_x64 }}
+        run: |
           import json
           import os
 
-          def _to_bool(name: str) -> bool:
-              value = str(os.environ.get(name, "")).strip().lower()
-              return value in {"1", "true", "yes", "on"}
+          def to_bool(value: str) -> bool:
+              return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
-          selected = []
-          if _to_bool("P_WIN"):
-              selected.append("windows-x64")
-          if _to_bool("P_LIN"):
-              selected.append("linux-x64")
-          if _to_bool("P_MAC"):
-              selected.append("macos-x64")
-          if _to_bool("P_TERMUX"):
-              selected.append("termux-arm64")
-
-          if not selected:
-              print("ERROR: 请至少勾选一个要编译的平台")
-              raise SystemExit(1)
-
-          launcher_defs = {
-              "windows-x64": {
+          matrix = []
+          if to_bool(os.environ.get("P_WIN", "")):
+              matrix.append({
                   "os": "windows-latest",
                   "platform": "windows-x64",
-                  "launcher_name": "FanqieLauncher-windows-x64.exe",
-                  "sep": ";",
-                  "icon_arg": "--icon=assets/icons/icon.ico",
-              },
-              "linux-x64": {
+                  "binary_name": "TomatoNovelDownloader-windows-x64",
+                  "artifact_name": "client-windows-x64",
+                  "extension": ".exe",
+              })
+          if to_bool(os.environ.get("P_LIN", "")):
+              matrix.append({
                   "os": "ubuntu-latest",
                   "platform": "linux-x64",
-                  "launcher_name": "FanqieLauncher-linux-x64",
-                  "sep": ":",
-                  "icon_arg": "",
-              },
-              "macos-x64": {
+                  "binary_name": "TomatoNovelDownloader-linux-x64",
+                  "artifact_name": "client-linux-x64",
+                  "extension": "",
+              })
+          if to_bool(os.environ.get("P_MAC", "")):
+              matrix.append({
                   "os": "macos-latest",
                   "platform": "macos-x64",
-                  "launcher_name": "FanqieLauncher-macos-x64",
-                  "sep": ":",
-                  "icon_arg": "",
-              },
-          }
+                  "binary_name": "TomatoNovelDownloader-macos-x64",
+                  "artifact_name": "client-macos-x64",
+                  "extension": "",
+              })
 
-          runtime_defs = {
-              "windows-x64": {
-                  "os": "windows-latest",
-                  "platform": "windows-x64",
-                  "runtime_name": "runtime-windows-x64.zip",
-                  "python_triple": "x86_64-pc-windows-msvc",
-              },
-              "linux-x64": {
-                  "os": "ubuntu-latest",
-                  "platform": "linux-x64",
-                  "runtime_name": "runtime-linux-x64.zip",
-                  "python_triple": "x86_64-unknown-linux-gnu",
-              },
-              "macos-x64": {
-                  "os": "macos-latest",
-                  "platform": "macos-x64",
-                  "runtime_name": "runtime-macos-x64.zip",
-                  "python_triple": "x86_64-apple-darwin",
-              },
-          }
+          if not matrix:
+              raise SystemExit("请至少选择一个编译平台")
 
-          launcher_include = [launcher_defs[p] for p in selected if p in launcher_defs]
-          runtime_include = [runtime_defs[p] for p in selected if p in runtime_defs]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"build_matrix={json.dumps({'include': matrix}, ensure_ascii=False, separators=(',', ':'))}\n")
+              fh.write(f"build_count={len(matrix)}\n")
 
-          outputs = {
-              "platforms": json.dumps(selected, ensure_ascii=False, separators=(",", ":")),
-              "launcher_matrix": json.dumps({"include": launcher_include}, ensure_ascii=False, separators=(",", ":")),
-              "runtime_matrix": json.dumps({"include": runtime_include}, ensure_ascii=False, separators=(",", ":")),
-              "launcher_count": str(len(launcher_include)),
-              "runtime_count": str(len(runtime_include)),
-              "termux_enabled": "true" if "termux-arm64" in selected else "false",
-          }
-
-          output_file = os.environ["GITHUB_OUTPUT"]
-          with open(output_file, "a", encoding="utf-8") as f:
-              for key, value in outputs.items():
-                  f.write(f"{key}={value}\n")
-
-          print("Selected platforms:", outputs["platforms"])
-          print("Launcher matrix:", outputs["launcher_matrix"])
-          print("Runtime matrix:", outputs["runtime_matrix"])
-          PY
-
-      - name: Generate version
-        id: version
+      - name: Build metadata
+        id: meta
+        shell: python
+        env:
+          SOURCE_REF: ${{ github.event.inputs.source_ref }}
         run: |
-          VERSION="$(date -u +'%Y.%m.%d.%H%M')-$(echo '${{ github.sha }}' | cut -c1-7)"
-          BUILD_TIME="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-          TAG_NAME="v${VERSION}"
-          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "BUILD_TIME=${BUILD_TIME}" >> "$GITHUB_OUTPUT"
-          echo "TAG_NAME=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          import os
+          import subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path
 
-  build-launcher:
-    needs: [prepare-release]
-    if: inputs.build_launcher == 'true' && needs.prepare-release.outputs.launcher_count != '0'
+          source_path = Path(os.environ.get("PRIVATE_SOURCE_PATH", "private-src"))
+          source_commit = subprocess.check_output(
+              ["git", "-C", str(source_path), "rev-parse", "--short", "HEAD"],
+              text=True,
+          ).strip()
+          version = datetime.now(timezone.utc).strftime("%Y.%m.%d.%H%M") + f"-{source_commit}"
+          tag_name = f"v{version}"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"source_commit={source_commit}\n")
+              fh.write(f"source_ref={os.environ['SOURCE_REF']}\n")
+              fh.write(f"version={version}\n")
+              fh.write(f"tag_name={tag_name}\n")
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.build_count != '0'
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare-release.outputs.launcher_matrix) }}
+      matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}
     runs-on: ${{ matrix.os }}
-    name: Build Launcher (${{ matrix.platform }})
+    name: Build ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ needs.prepare.outputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
 
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: |
-            config/requirements.txt
-            config/requirements-termux.txt
+            ${{ env.PRIVATE_SOURCE_PATH }}/config/requirements.txt
 
-      - name: Install build dependencies
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libheif1 libheif-dev
+
+      - name: Install Python dependencies
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller
+          python -m pip install --prefer-binary pyinstaller
+          python -m pip install --prefer-binary -r config/requirements.txt
 
-      - name: Auto manage dependencies
-        shell: python
+      - name: Build executable
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         run: |
-          import subprocess
-          import sys
+          python tools/build_app.py --variant release --name "${{ matrix.binary_name }}"
 
-          subprocess.check_call([
-              sys.executable,
-              "-m",
-              "utils.dependency_manager",
-              "--project-root",
-              ".",
-              "--targets",
-              "launcher.py",
-              "main.py",
-              "core",
-              "utils",
-              "web",
-              "config",
-              "--state-file",
-              ".deps_state_ci_launcher.json",
-              "--extra-package",
-              "pyinstaller",
-              "--extra-package",
-              "requests",
-              "--extra-package",
-              "rich",
-              "--extra-package",
-              "InquirerPy",
-              "--extra-package",
-              "aiohttp",
-              "--no-skip-if-unchanged",
-              "--json",
-          ])
-
-      - name: Generate version.py
-        shell: python
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-          BUILD_TIME: ${{ needs.prepare-release.outputs.build_time }}
-          GITHUB_REPO: ${{ github.repository }}
-        run: |
-          import os
-          import textwrap
-
-          content = f'''# -*- coding: utf-8 -*-
-          """版本信息文件 - GitHub Actions 自动生成"""
-
-          __version__ = "{os.environ['VERSION']}"
-          __author__ = "Tomato Novel Downloader"
-          __description__ = "A modern novel downloader with GitHub auto-update support"
-          __github_repo__ = "{os.environ['GITHUB_REPO']}"
-          __build_time__ = "{os.environ['BUILD_TIME']}"
-          __build_channel__ = "launcher-stable"
-          '''
-
-          with open("version.py", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent(content))
-          print("Generated version.py for launcher build")
-
-      - name: Build launcher executable (auto dependency discovery)
-        shell: python
-        env:
-          LAUNCHER_NAME: ${{ matrix.launcher_name }}
-          SEP: ${{ matrix.sep }}
-          ICON_ARG: ${{ matrix.icon_arg }}
-        run: |
-          import ast
-          import os
-          import subprocess
-          import sys
-          from pathlib import Path
-          import importlib.metadata as metadata
-
-          project_roots = [Path("."), Path("core"), Path("utils"), Path("config")]
-          imported_modules = set()
-
-          def collect_imports(py_file: Path):
-              try:
-                  tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
-              except Exception:
-                  return
-              for node in ast.walk(tree):
-                  if isinstance(node, ast.Import):
-                      for alias in node.names:
-                          root = alias.name.split(".", 1)[0]
-                          if root:
-                              imported_modules.add(root)
-                  elif isinstance(node, ast.ImportFrom) and node.module:
-                      root = node.module.split(".", 1)[0]
-                      if root:
-                          imported_modules.add(root)
-
-          for root in project_roots:
-              if root.is_file() and root.suffix == ".py":
-                  collect_imports(root)
-              elif root.is_dir():
-                  for py in root.rglob("*.py"):
-                      collect_imports(py)
-
-          import_to_distribution = {}
-          for dist in metadata.distributions():
-              dist_name = dist.metadata.get("Name")
-              if not dist_name:
-                  continue
-
-              top_level = dist.read_text("top_level.txt") or ""
-              for item in top_level.splitlines():
-                  item = item.strip()
-                  if item:
-                      import_to_distribution[item] = dist_name
-
-              normalized = dist_name.replace("-", "_")
-              import_to_distribution.setdefault(normalized, dist_name)
-
-          required_imports = set()
-          for module in imported_modules:
-              if module in import_to_distribution:
-                  required_imports.add(module)
-
-          # 补充动态导入/构建期生成模块
-          required_imports.update({"version", "rich", "InquirerPy", "aiohttp", "requests"})
-
-          ignore_collect = {
-              "os", "sys", "re", "json", "time", "pathlib", "typing", "hashlib", "subprocess",
-              "platform", "tempfile", "traceback", "zipfile", "concurrent", "asyncio", "dataclasses",
-          }
-
-          cmd = [
-              sys.executable,
-              "-m",
-              "PyInstaller",
-              "--onefile",
-              f"--name={os.environ['LAUNCHER_NAME']}",
-              "--console",
-              "--add-data",
-              f"assets{os.environ['SEP']}assets",
-          ]
-
-          icon_arg = os.environ.get("ICON_ARG", "").strip()
-          if icon_arg:
-              cmd.append(icon_arg)
-
-          for mod in sorted(required_imports):
-              cmd.extend(["--hidden-import", mod])
-              if mod not in ignore_collect and mod != "version":
-                  cmd.extend(["--collect-all", mod])
-
-          cmd.append("launcher.py")
-
-          print("Detected third-party imports:")
-          for mod in sorted(required_imports):
-              print(f"- {mod}")
-
-          print("Running:", " ".join(cmd))
-          subprocess.check_call(cmd)
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: launcher-${{ matrix.platform }}
-          path: dist/${{ matrix.launcher_name }}
+          name: ${{ matrix.artifact_name }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/dist/${{ matrix.binary_name }}${{ matrix.extension }}
           if-no-files-found: error
+          retention-days: 30
 
-  build-runtime:
-    needs: [prepare-release]
-    if: needs.prepare-release.outputs.runtime_count != '0'
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare-release.outputs.runtime_matrix) }}
-    runs-on: ${{ matrix.os }}
-    name: Build Runtime (${{ matrix.platform }})
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: |
-            config/requirements.txt
-            config/requirements-termux.txt
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install requests rich InquirerPy aiohttp
-
-      - name: Auto manage dependencies
-        shell: python
-        run: |
-          import subprocess
-          import sys
-          import os
-
-          # 确保依赖已安装
-          required_packages = ["requests", "rich", "InquirerPy", "aiohttp"]
-          for package in required_packages:
-              try:
-                  __import__(package)
-                  print(f"✓ {package} already available")
-              except ImportError:
-                  print(f"Installing {package}...")
-                  subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
-          # 检查 dependency_manager 是否存在
-          if not os.path.exists("utils/dependency_manager.py"):
-              print("WARNING: utils/dependency_manager.py not found, skipping auto dependency management")
-              sys.exit(0)
-
-          dep_script = r'''
-          import subprocess
-          import sys
-
-          subprocess.check_call([
-              sys.executable,
-              "-m",
-              "utils.dependency_manager",
-              "--project-root",
-              ".",
-              "--targets",
-              "main.py",
-              "core",
-              "utils",
-              "web",
-              "config",
-              "--state-file",
-              ".deps_state_runtime_venv.json",
-              "--extra-package",
-              "requests",
-              "--extra-package",
-              "rich",
-              "--extra-package",
-              "InquirerPy",
-              "--extra-package",
-              "aiohttp",
-              "--no-skip-if-unchanged",
-          ])
-          '''
-          subprocess.check_call([sys.executable, "-c", dep_script])
-
-      - name: Generate version.py
-        shell: python
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-          BUILD_TIME: ${{ needs.prepare-release.outputs.build_time }}
-          GITHUB_REPO: ${{ github.repository }}
-        run: |
-          import os
-          content = f'''# -*- coding: utf-8 -*-
-          """版本信息文件 - GitHub Actions 自动生成"""
-
-          __version__ = "{os.environ['VERSION']}"
-          __author__ = "Tomato Novel Downloader"
-          __description__ = "A modern novel downloader with GitHub auto-update support"
-          __github_repo__ = "{os.environ['GITHUB_REPO']}"
-          __build_time__ = "{os.environ['BUILD_TIME']}"
-          __build_channel__ = "launcher-runtime"
-          '''
-          import textwrap
-          with open("version.py", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent(content))
-          print("Generated version.py")
-
-      - name: Build runtime package
-        shell: python
-        env:
-          RUNTIME_NAME: ${{ matrix.runtime_name }}
-          RUNNER_OS: ${{ runner.os }}
-          PYTHON_TRIPLE: ${{ matrix.python_triple }}
-          STANDALONE_PYTHON_VERSION: ${{ env.STANDALONE_PYTHON_VERSION }}
-          STANDALONE_PYTHON_TAG: ${{ env.STANDALONE_PYTHON_TAG }}
-        run: |
-          import os, shutil, subprocess, sys, tarfile, zipfile
-          from pathlib import Path
-          from urllib.request import urlretrieve
-
-          print("=== 开始打包 Runtime ===")
-          
-          dirs_to_copy = ["assets", "config", "core", "utils", "web"]
-          files_to_copy = ["main.py"]
-          if Path("version.py").exists():
-              files_to_copy.append("version.py")
-
-          for d in dirs_to_copy:
-              if not Path(d).is_dir():
-                  print(f"ERROR: required directory '{d}' not found")
-                  sys.exit(1)
-              print(f"✓ 目录 '{d}' 存在")
-          for f in files_to_copy:
-              if not Path(f).is_file():
-                  print(f"ERROR: required file '{f}' not found")
-                  sys.exit(1)
-              print(f"✓ 文件 '{f}' 存在")
-
-          runtime = Path("runtime")
-          if runtime.exists():
-              shutil.rmtree(runtime)
-          runtime.mkdir()
-
-          for d in dirs_to_copy:
-              shutil.copytree(d, runtime / d)
-              print(f"✓ 复制目录 '{d}'")
-          for f in files_to_copy:
-              shutil.copy2(f, runtime / f)
-              print(f"✓ 复制文件 '{f}'")
-
-          py_ver = os.environ["STANDALONE_PYTHON_VERSION"]
-          py_tag = os.environ["STANDALONE_PYTHON_TAG"]
-          py_triple = os.environ["PYTHON_TRIPLE"]
-          archive_file = f"cpython-{py_ver}+{py_tag}-{py_triple}-install_only_stripped.tar.gz"
-          url = f"https://github.com/astral-sh/python-build-standalone/releases/download/{py_tag}/{archive_file}"
-
-          print(f"下载独立 Python: {archive_file}")
-          urlretrieve(url, archive_file)
-          print(f"✓ 下载完成 ({Path(archive_file).stat().st_size:,} bytes)")
-
-          print("解压独立 Python 到 runtime/python/ ...")
-          with tarfile.open(archive_file) as tar:
-              tar.extractall(str(runtime))
-          print("✓ 解压完成")
-
-          python_dir = runtime / "python"
-          if not python_dir.exists():
-              print("ERROR: 解压后未找到 python/ 目录")
-              sys.exit(1)
-
-          if os.environ["RUNNER_OS"] == "Windows":
-              bundled_python = str(python_dir / "python.exe")
-          else:
-              bundled_python = str(python_dir / "bin" / "python3")
-
-          print(f"内置 Python 路径: {bundled_python}")
-          subprocess.check_call([bundled_python, "--version"])
-
-          print("安装依赖到内置 Python ...")
-          subprocess.check_call([bundled_python, "-m", "pip", "install", "--upgrade", "pip", "--quiet"])
-
-          req_file = runtime / "config" / "requirements.txt"
-          if req_file.exists():
-              subprocess.check_call([bundled_python, "-m", "pip", "install", "--prefer-binary", "-r", str(req_file)])
-              print("✓ requirements.txt 安装完成")
-          else:
-              subprocess.check_call([bundled_python, "-m", "pip", "install", "--prefer-binary",
-                  "requests", "rich", "InquirerPy", "aiohttp", "Flask", "flask-cors",
-                  "fake-useragent", "EbookLib", "tqdm", "packaging", "urllib3", "pywebview"])
-              print("✓ 依赖安装完成（手动列表）")
-
-          print("清理缓存以减小体积...")
-          for cache in python_dir.rglob("__pycache__"):
-              shutil.rmtree(cache, ignore_errors=True)
-          pip_cache = python_dir / "lib" if os.environ["RUNNER_OS"] != "Windows" else python_dir / "Lib"
-          for p in pip_cache.rglob("*.dist-info"):
-              installer = p / "INSTALLER"
-              record = p / "RECORD"
-              for f in [installer, record]:
-                  if f.exists():
-                      f.unlink()
-
-          print("创建 runtime 压缩包...")
-          archive_name = os.environ["RUNTIME_NAME"]
-          with zipfile.ZipFile(archive_name, "w", zipfile.ZIP_DEFLATED) as zf:
-              for root, _, files in os.walk(runtime):
-                  for file in files:
-                      full = Path(root) / file
-                      rel = full.relative_to(runtime)
-                      zf.write(full, rel)
-          
-          archive_size = Path(archive_name).stat().st_size
-          print(f"✓ Runtime archive created: {archive_name} ({archive_size:,} bytes)")
-
-      - name: Generate runtime manifest
-        shell: python
-        env:
-          RUNTIME_NAME: ${{ matrix.runtime_name }}
-          PLATFORM: ${{ matrix.platform }}
-          TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
-          REPO_NAME: ${{ github.repository }}
-        run: |
-          import hashlib, json, os, sys
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          print("=== 生成 Runtime Manifest ===")
-          
-          runtime_path = Path(os.environ["RUNTIME_NAME"])
-          print(f"检查 runtime 文件: {runtime_path}")
-          
-          if not runtime_path.exists():
-              print(f"ERROR: Runtime file not found: {runtime_path}")
-              sys.exit(1)
-          
-          file_size = runtime_path.stat().st_size
-          print(f"Runtime 文件大小: {file_size:,} bytes")
-          
-          print("计算 SHA256...")
-          hasher = hashlib.sha256()
-          with runtime_path.open("rb") as f:
-              while chunk := f.read(1 << 20):
-                  hasher.update(chunk)
-          
-          sha256_hash = hasher.hexdigest()
-          print(f"SHA256: {sha256_hash}")
-
-          manifest = {
-              "manifest_version": "1",
-              "platform": os.environ["PLATFORM"],
-              "runtime_version": os.environ["TAG_NAME"],
-              "runtime_archive_name": runtime_path.name,
-              "runtime_archive_url": (
-                  f"https://github.com/{os.environ['REPO_NAME']}"
-                  f"/releases/download/{os.environ['TAG_NAME']}/{runtime_path.name}"
-              ),
-              "runtime_archive_sha256": sha256_hash,
-              "runtime_archive_size": file_size,
-              "min_launcher_version": "1.0.0",
-              "generated_at": datetime.now(timezone.utc).isoformat(),
-          }
-
-          output = f"runtime-manifest-{os.environ['PLATFORM']}.json"
-          print(f"写入 manifest 文件: {output}")
-          
-          with open(output, "w", encoding="utf-8") as f:
-              json.dump(manifest, f, ensure_ascii=False, indent=2)
-          
-          # 验证 manifest 文件
-          with open(output, "r", encoding="utf-8") as f:
-              loaded_manifest = json.load(f)
-              print(f"✓ Manifest 验证成功，包含 {len(loaded_manifest)} 个字段")
-          
-          print(f"✓ Generated manifest: {output}")
-          print(f"Manifest 内容预览:")
-          print(f"  - Platform: {manifest['platform']}")
-          print(f"  - Runtime Version: {manifest['runtime_version']}")
-          print(f"  - Archive Size: {manifest['runtime_archive_size']:,} bytes")
-          print(f"  - Archive URL: {manifest['runtime_archive_url']}")
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: runtime-${{ matrix.platform }}
-          path: |
-            ${{ matrix.runtime_name }}
-            runtime-manifest-${{ matrix.platform }}.json
-          if-no-files-found: error
-
-      - name: Verify upload
-        shell: python
-        env:
-          RUNTIME_NAME: ${{ matrix.runtime_name }}
-          PLATFORM: ${{ matrix.platform }}
-        run: |
-          import os
-          import sys
-          from pathlib import Path
-          
-          runtime_file = Path(os.environ["RUNTIME_NAME"])
-          manifest_file = Path(f"runtime-manifest-{os.environ['PLATFORM']}.json")
-          
-          print("=== 验证上传文件 ===")
-          print(f"Runtime 文件: {runtime_file}")
-          print(f"  - 存在: {runtime_file.exists()}")
-          if runtime_file.exists():
-              print(f"  - 大小: {runtime_file.stat().st_size:,} bytes")
-          
-          print(f"Manifest 文件: {manifest_file}")
-          print(f"  - 存在: {manifest_file.exists()}")
-          if manifest_file.exists():
-              print(f"  - 大小: {manifest_file.stat().st_size:,} bytes")
-              # 显示 manifest 内容
-              import json
-              with open(manifest_file, 'r', encoding='utf-8') as f:
-                  manifest = json.load(f)
-                  print(f"  - 平台: {manifest.get('platform', 'N/A')}")
-                  print(f"  - 版本: {manifest.get('runtime_version', 'N/A')}")
-                  print(f"  - SHA256: {manifest.get('runtime_archive_sha256', 'N/A')[:16]}...")
-          
-          if not (runtime_file.exists() and manifest_file.exists()):
-              print("ERROR: 必需文件缺失，上传可能失败")
-              sys.exit(1)
-          
-          print("✓ 所有文件准备就绪，上传完成")
-
-  build-runtime-termux:
-    needs: [prepare-release]
-    if: needs.prepare-release.outputs.termux_enabled == 'true'
-    runs-on: ubuntu-latest
-    name: Build Runtime (termux-arm64)
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Generate version.py
-        shell: python
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-          BUILD_TIME: ${{ needs.prepare-release.outputs.build_time }}
-          GITHUB_REPO: ${{ github.repository }}
-        run: |
-          import os, textwrap
-          content = f'''# -*- coding: utf-8 -*-
-          """版本信息文件 - GitHub Actions 自动生成"""
-
-          __version__ = "{os.environ['VERSION']}"
-          __author__ = "Tomato Novel Downloader"
-          __description__ = "A modern novel downloader with GitHub auto-update support"
-          __github_repo__ = "{os.environ['GITHUB_REPO']}"
-          __build_time__ = "{os.environ['BUILD_TIME']}"
-          __build_channel__ = "launcher-runtime-termux"
-          '''
-          with open("version.py", "w", encoding="utf-8") as f:
-              f.write(textwrap.dedent(content))
-          print("Generated version.py")
-
-      - name: Build termux runtime
-        uses: uraimo/run-on-arch-action@v2
-        with:
-          arch: aarch64
-          distro: ubuntu22.04
-          githubToken: ${{ github.token }}
-          dockerRunArgs: |
-            --volume "${{ github.workspace }}:/workspace"
-          install: |
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update -q
-            apt-get install -y python3 python3-pip python3-venv python3-dev \
-              build-essential libffi-dev libssl-dev libjpeg-dev zlib1g-dev \
-              libxml2-dev libxslt-dev zip
-          run: |
-            cd /workspace
-            rm -rf runtime-termux
-            mkdir -p runtime-termux
-
-            for d in assets config core utils web; do
-              cp -r "$d" runtime-termux/
-            done
-            cp main.py runtime-termux/
-            [ -f version.py ] && cp version.py runtime-termux/
-
-            python3 -m venv runtime-termux/.venv
-            runtime-termux/.venv/bin/python -m pip install --upgrade pip
-            runtime-termux/.venv/bin/python -m pip install \
-              --default-timeout=3600 --prefer-binary \
-              -r config/requirements-termux.txt
-
-            cd runtime-termux
-            zip -r ../runtime-termux-arm64.zip .
-
-      - name: Generate termux manifest
-        shell: python
-        env:
-          TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
-          REPO_NAME: ${{ github.repository }}
-        run: |
-          import hashlib, json, os, sys
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          print("=== 生成 Termux Runtime Manifest ===")
-          
-          runtime_path = Path("runtime-termux-arm64.zip")
-          print(f"检查 runtime 文件: {runtime_path}")
-          
-          if not runtime_path.exists():
-              print(f"ERROR: Runtime file not found: {runtime_path}")
-              sys.exit(1)
-          
-          file_size = runtime_path.stat().st_size
-          print(f"Runtime 文件大小: {file_size:,} bytes")
-          
-          print("计算 SHA256...")
-          hasher = hashlib.sha256()
-          with runtime_path.open("rb") as f:
-              while chunk := f.read(1 << 20):
-                  hasher.update(chunk)
-
-          sha256_hash = hasher.hexdigest()
-          print(f"SHA256: {sha256_hash}")
-
-          manifest = {
-              "manifest_version": "1",
-              "platform": "termux-arm64",
-              "runtime_version": os.environ["TAG_NAME"],
-              "runtime_archive_name": runtime_path.name,
-              "runtime_archive_url": (
-                  f"https://github.com/{os.environ['REPO_NAME']}"
-                  f"/releases/download/{os.environ['TAG_NAME']}/{runtime_path.name}"
-              ),
-              "runtime_archive_sha256": sha256_hash,
-              "runtime_archive_size": file_size,
-              "min_launcher_version": "1.0.0",
-              "generated_at": datetime.now(timezone.utc).isoformat(),
-          }
-
-          output = "runtime-manifest-termux-arm64.json"
-          print(f"写入 manifest 文件: {output}")
-          
-          with open(output, "w", encoding="utf-8") as f:
-              json.dump(manifest, f, ensure_ascii=False, indent=2)
-          
-          # 验证 manifest 文件
-          with open(output, "r", encoding="utf-8") as f:
-              loaded_manifest = json.load(f)
-              print(f"✓ Manifest 验证成功，包含 {len(loaded_manifest)} 个字段")
-          
-          print(f"✓ Generated termux manifest: {output}")
-          print(f"Manifest 内容预览:")
-          print(f"  - Platform: {manifest['platform']}")
-          print(f"  - Runtime Version: {manifest['runtime_version']}")
-          print(f"  - Archive Size: {manifest['runtime_archive_size']:,} bytes")
-          print(f"  - Archive URL: {manifest['runtime_archive_url']}")
-
-      - name: Prepare termux launcher
-        run: |
-          if [ -f "scripts/termux_launcher.sh" ]; then
-            cp scripts/termux_launcher.sh TomatoNovelDownloader-termux-arm64
-          else
-            printf '#!/bin/bash\necho "Please manually activate the virtual environment"\n' \
-              > TomatoNovelDownloader-termux-arm64
-          fi
-          chmod +x TomatoNovelDownloader-termux-arm64
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: runtime-termux-arm64
-          path: |
-            TomatoNovelDownloader-termux-arm64
-            runtime-termux-arm64.zip
-            runtime-manifest-termux-arm64.json
-          if-no-files-found: error
-
-  finalize-release:
-    name: Finalize Release
-    if: >-
-      always() &&
-      needs.prepare-release.result == 'success' &&
-      (needs.build-runtime.result == 'success' || needs.build-runtime.result == 'skipped') &&
-      (needs.build-runtime-termux.result == 'success' || needs.build-runtime-termux.result == 'skipped') &&
-      (needs.build-launcher.result == 'success' || needs.build-launcher.result == 'skipped')
-    needs: [prepare-release, build-runtime, build-runtime-termux, build-launcher]
+  release:
+    needs: [prepare, build]
+    if: ${{ github.event.inputs.publish_release == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download runtime artifacts
+      - name: Download built artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: runtime-*
           path: release-assets
+          pattern: client-*
           merge-multiple: true
 
-      - name: Download launcher artifacts
-        if: inputs.build_launcher == 'true' && needs.prepare-release.outputs.launcher_count != '0'
-        uses: actions/download-artifact@v4
-        with:
-          pattern: launcher-*
-          path: release-assets
-          merge-multiple: true
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          LATEST_TAG=$(curl -fsSL \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" \
-            2>/dev/null || true)
-
-          if [ -n "$LATEST_TAG" ]; then
-            RANGE="${LATEST_TAG}..${{ github.sha }}"
-          else
-            RANGE="HEAD~50..HEAD"
-          fi
-
-          CHANGELOG=$(git log "$RANGE" --pretty=format:'- `%h` %s' 2>/dev/null || echo "- No commit log available")
-
-          echo "latest_tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
-          {
-            echo "content<<EOF"
-            echo "$CHANGELOG"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Publish versioned release (Runtime)
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
-          name: Runtime ${{ needs.prepare-release.outputs.tag_name }}
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          name: Fanqie Client ${{ needs.prepare.outputs.version }}
+          generate_release_notes: true
+          files: release-assets/*
           body: |
-            ## Runtime 更新包（由 Launcher 自动下载，无需手动操作）
+            Built from private source repository `${{ env.PRIVATE_SOURCE_REPOSITORY }}`.
 
-            首次使用请下载 [Launcher Stable](https://github.com/${{ github.repository }}/releases/tag/launcher-stable)
+            - Source ref: `${{ needs.prepare.outputs.source_ref }}`
+            - Source commit: `${{ needs.prepare.outputs.source_commit }}`
+            - Public workflow run: `${{ github.run_id }}`
 
-            ### 更新内容
-            ${{ steps.changelog.outputs.content }}
-
-            | 项目 | 详情 |
-            | :--- | :--- |
-            | 构建时间 | ${{ needs.prepare-release.outputs.build_time }} |
-            | Commit | `${{ github.sha }}` |
-          files: |
-            release-assets/runtime-*
-          draft: false
-          prerelease: true
-          make_latest: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate launcher manifest
-        if: inputs.build_launcher == 'true' && needs.prepare-release.outputs.launcher_count != '0'
-        shell: python
-        env:
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-          BUILD_TIME: ${{ needs.prepare-release.outputs.build_time }}
+  summary:
+    needs: [prepare, build, release]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Workflow summary
         run: |
-          import json, os
-          manifest = {
-              "launcher_version": os.environ["VERSION"],
-              "build_time": os.environ["BUILD_TIME"],
-              "assets": {
-                  "windows-x64": "FanqieLauncher-windows-x64.exe",
-                  "linux-x64": "FanqieLauncher-linux-x64",
-                  "macos-x64": "FanqieLauncher-macos-x64"
-              }
-          }
-          os.makedirs("release-assets", exist_ok=True)
-          with open("release-assets/launcher-manifest.json", "w") as f:
-              json.dump(manifest, f, indent=2)
-          print(f"Generated launcher-manifest.json: {manifest}")
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Build Summary
 
-      - name: Publish launcher stable release
-        if: inputs.build_launcher == 'true' && needs.prepare-release.outputs.launcher_count != '0'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: launcher-stable
-          name: FanqieLauncher Stable
-          body: |
-            ## FanqieLauncher Stable
-
-            ### 快速开始
-            1. 下载对应平台的 Launcher（无需安装 Python）
-            2. 运行 Launcher，自动下载最新 Runtime
-            3. 享受完整的小说下载功能
-
-            ### 下载说明
-            - **Windows**: `FanqieLauncher-windows-x64.exe`
-            - **Linux**: `FanqieLauncher-linux-x64`
-            - **macOS**: `FanqieLauncher-macos-x64`
-          draft: false
-          prerelease: false
-          make_latest: true
-          files: |
-            release-assets/FanqieLauncher-*
-            release-assets/launcher-manifest.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          - Private source repo: `${{ env.PRIVATE_SOURCE_REPOSITORY }}`
+          - Source ref: `${{ needs.prepare.outputs.source_ref }}`
+          - Source commit: `${{ needs.prepare.outputs.source_commit }}`
+          - Version: `${{ needs.prepare.outputs.version }}`
+          - Tag: `${{ needs.prepare.outputs.tag_name }}`
+          - Publish release: `${{ github.event.inputs.publish_release }}`
+          EOF
