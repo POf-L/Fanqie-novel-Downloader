@@ -91,7 +91,7 @@ jobs:
               matrix.append({
                   "os": "windows-latest",
                   "platform": "windows-x64",
-                  "binary_name": "TomatoNovelDownloader-windows-x64",
+                  "binary_name": "TomatoNovelDownloader-Standalone-windows-x64",
                   "artifact_name": "client-windows-x64",
                   "extension": ".exe",
               })
@@ -135,7 +135,7 @@ jobs:
               ["git", "-C", str(source_path), "rev-parse", "--short", "HEAD"],
               text=True,
           ).strip()
-          version = datetime.now(timezone.utc).strftime("%Y.%m.%d.%H%M") + f"-{source_commit}"
+          version = datetime.now(timezone.utc).strftime("%Y.%m.%d.%H%M")
           tag_name = f"v{version}"
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
@@ -181,6 +181,24 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --prefer-binary pyinstaller
           python -m pip install --prefer-binary -r config/requirements.txt
+
+      - name: Inject build version metadata
+        shell: python
+        env:
+          BUILD_VERSION: ${{ needs.prepare.outputs.version }}
+          PUBLIC_REPOSITORY: ${{ github.repository }}
+        run: |
+          from pathlib import Path
+          import os
+
+          source_path = Path(os.environ.get("PRIVATE_SOURCE_PATH", "private-src"))
+          version_py = source_path / "version.py"
+          version_py.write_text(
+              f"__version__ = \"{os.environ['BUILD_VERSION']}\"\n"
+              f"__github_repo__ = \"{os.environ['PUBLIC_REPOSITORY']}\"\n",
+              encoding="utf-8",
+          )
+          print(f"Injected {version_py}")
 
       - name: Build executable
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
