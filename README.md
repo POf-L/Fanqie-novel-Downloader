@@ -1,37 +1,66 @@
-# Fanqie-novel-Downloader
+# 番茄小说下载器
 
-这个公开仓库现在仅用于：
+[![GitHub release](https://img.shields.io/github/release/POf-L/Fanqie-novel-Downloader.svg)](https://github.com/POf-L/Fanqie-novel-Downloader/releases)
+[![GitHub stars](https://img.shields.io/github/stars/POf-L/Fanqie-novel-Downloader.svg)](https://github.com/POf-L/Fanqie-novel-Downloader)
+[![Build Status](https://github.com/POf-L/Fanqie-novel-Downloader/workflows/Build%20and%20Release/badge.svg)](https://github.com/POf-L/Fanqie-novel-Downloader/actions)
 
-- 保留项目公开入口与 Star
-- 承载 GitHub Actions 构建与发布流程
-- 发布编译后的客户端产物
+一个现代化、高效的番茄小说下载器。
 
-应用源码已迁移到私有仓库，不再在这里公开展示。
+当前版本统一通过 Tomato Gateway 提供图书搜索、详情获取与正文下载能力，并提供简洁、响应式的本地 Web 界面，支持打包为 Windows、Linux、macOS 客户端直接使用。
 
-## 当前用途
+## ✨ 功能特性
 
-- 触发 `.github/workflows/build-release.yml`
-- 由 Actions 拉取私有源码仓库后进行编译
-- 将编译结果上传为 GitHub Artifacts / Releases
+- 🔎 **图书搜索**：支持按书名、作者等关键字快速检索小说
+- 📚 **书籍详情**：查看作品信息、章节数据与下载目标
+- 📥 **小说下载**：稳定获取正文内容并保存到本地
+- 📦 **批量下载**：支持一次下载多本图书并显示任务进度
+- 📄 **多格式导出**：支持导出为 **TXT** 和 **EPUB**
+- 🖼️ **封面嵌入**：自动获取封面并写入 EPUB 文件
+- 📑 **章节控制**：支持整本下载、章节范围下载与手动选章
+- 🌐 **图形界面**：提供本地 Web UI，可在浏览器或内嵌窗口中使用
+- 🖥️ **跨平台运行**：支持 Windows、Linux、macOS 多平台发布
 
-## 需要配置的 Secret
+## 🚀 如何使用
 
-在当前公开仓库的 `Settings -> Secrets and variables -> Actions` 中添加：
+普通用户请直接前往 Releases 下载客户端：
 
-- `PRIVATE_SOURCE_TOKEN`：用于读取私有仓库 `POf-L/Fanqie-novel-Downloader-actions`
+- 下载地址：<https://github.com/POf-L/Fanqie-novel-Downloader/releases>
+- 选择适合你系统的构建产物
+- 下载后直接运行程序即可启动界面
 
-建议该 token 使用 Fine-grained PAT，并仅授予私有源码仓库 `Contents: Read-only` 权限。
+典型使用流程：
 
-## 工作流说明
+1. 启动客户端
+2. 输入书名或作者进行搜索
+3. 选择目标书籍
+4. 选择导出格式（TXT / EPUB）
+5. 按需选择整本、章节范围或手动选章
+6. 开始下载并等待完成
 
-默认工作流会从以下私有仓库拉取源码：
+## 🧩 当前实现形态
 
-- `POf-L/Fanqie-novel-Downloader-actions`
+当前版本的核心体验包括：
 
-如需构建其他分支，可在手动触发 workflow 时填写 `source_ref`。
+- 本地启动 Web 服务并自动打开图形界面
+- 支持浏览器模式与内嵌窗口模式
+- 搜索、详情、下载能力统一由 Tomato Gateway 提供
+- 发布流程由 GitHub Actions 自动打包并上传产物
 
-## 安全说明
+## 📦 适合哪些场景
 
-- 公开仓库中不保存客户端源码
-- 公开仓库中不保存网关地址与 Bearer Token 等敏感配置
-- 敏感信息应仅保存在私有源码仓库或 GitHub Secrets 中
+- 想快速搜索并下载番茄小说
+- 需要批量整理 TXT / EPUB 小说文件
+- 希望在本地以图形界面方式操作
+- 需要直接下载现成客户端，而不是自行搭建源码环境
+
+## 📌 仓库说明
+
+这个公开仓库展示的是 **番茄小说下载器** 项目本身。
+
+目前公开仓库主要承担以下职责：
+
+- 对外展示项目功能
+- 提供 Releases 下载入口
+- 承载 GitHub Actions 打包与发布流程
+
+实际业务源码在私有仓库维护；公开仓库中的说明文档会按私有源码当前能力同步更新。
