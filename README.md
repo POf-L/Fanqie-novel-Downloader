@@ -26,6 +26,7 @@
 
 - 下载地址：<https://github.com/POf-L/Fanqie-novel-Downloader/releases>
 - 选择适合你系统的构建产物
+- Windows 提供两种构建：`Standalone`（内置 WebView2，体积更大）和 `Slim`（不内置 WebView2，体积更小）
 - 下载后直接运行程序即可启动界面
 
 典型使用流程：
@@ -43,6 +44,7 @@
 
 - 本地启动 Web 服务并优先通过 PyWebview 打开图形界面
 - Windows 独立版内置 WebView2 Runtime，无需系统额外安装
+- Windows 同时提供 `Standalone` 与 `Slim` 两种发布形态，GitHub Actions 会并行构建以缩短等待时间
 - 搜索、详情、下载能力统一由 Tomato Gateway 提供
 - 发布流程由 GitHub Actions 自动打包并上传产物
 

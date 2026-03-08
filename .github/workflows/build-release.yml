@@ -91,9 +91,20 @@ jobs:
           if to_bool(os.environ.get("P_WIN", "")):
               matrix.append({
                   "os": "windows-latest",
-                  "platform": "windows-x64",
+                  "platform": "windows-x64-standalone",
                   "binary_name": "TomatoNovelDownloader-Standalone-windows-x64",
-                  "artifact_name": "client-windows-x64",
+                  "artifact_name": "client-windows-x64-standalone",
+                  "bundle_webview2": True,
+                  "variant_label": "Standalone",
+                  "extension": ".exe",
+              })
+              matrix.append({
+                  "os": "windows-latest",
+                  "platform": "windows-x64-slim",
+                  "binary_name": "TomatoNovelDownloader-windows-x64",
+                  "artifact_name": "client-windows-x64-slim",
+                  "bundle_webview2": False,
+                  "variant_label": "Slim",
                   "extension": ".exe",
               })
           if to_bool(os.environ.get("P_LIN", "")):
@@ -102,6 +113,8 @@ jobs:
                   "platform": "linux-x64",
                   "binary_name": "TomatoNovelDownloader-linux-x64",
                   "artifact_name": "client-linux-x64",
+                  "bundle_webview2": False,
+                  "variant_label": "Linux",
                   "extension": "",
               })
           if to_bool(os.environ.get("P_MAC", "")):
@@ -110,6 +123,8 @@ jobs:
                   "platform": "macos-x64",
                   "binary_name": "TomatoNovelDownloader-macos-x64",
                   "artifact_name": "client-macos-x64",
+                  "bundle_webview2": False,
+                  "variant_label": "macOS",
                   "extension": "",
               })
 
@@ -150,6 +165,7 @@ jobs:
     if: needs.prepare.outputs.build_count != '0'
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}
     runs-on: ${{ matrix.os }}
     name: Build ${{ matrix.platform }}
@@ -202,7 +218,7 @@ jobs:
           print(f"Injected {version_py}")
 
       - name: Prepare bundled WebView2 runtime
-        if: runner.os == 'Windows'
+        if: ${{ runner.os == 'Windows' && matrix.bundle_webview2 }}
         run: |
           python private-src/tools/fetch_webview2_runtime.py --output-dir private-src/webview2_runtime --version "${{ env.WINDOWS_WEBVIEW2_RUNTIME_VERSION }}"
 
