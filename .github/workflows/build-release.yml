@@ -38,6 +38,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.11"
+  WINDOWS_WEBVIEW2_RUNTIME_VERSION: "145.0.3800.97"
   PRIVATE_SOURCE_REPOSITORY: "POf-L/Fanqie-novel-Downloader-actions"
   PRIVATE_SOURCE_PATH: "private-src"
   PYTHONUTF8: "1"
@@ -199,6 +200,11 @@ jobs:
               encoding="utf-8",
           )
           print(f"Injected {version_py}")
+
+      - name: Prepare bundled WebView2 runtime
+        if: runner.os == 'Windows'
+        run: |
+          python private-src/tools/fetch_webview2_runtime.py --output-dir private-src/webview2_runtime --version "${{ env.WINDOWS_WEBVIEW2_RUNTIME_VERSION }}"
 
       - name: Build executable
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
