@@ -37,6 +37,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   PYTHON_VERSION: "3.11"
   WINDOWS_WEBVIEW2_RUNTIME_VERSION: "145.0.3800.97"
   PRIVATE_SOURCE_REPOSITORY: "POf-L/Fanqie-novel-Downloader-actions"
