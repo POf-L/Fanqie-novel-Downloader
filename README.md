@@ -1,4 +1,4 @@
-# 番茄小说下载器（受到投诉遂无限期停止维护服务）
+# 番茄小说下载器（受到投诉遂无限期停止维护）
 
 [![GitHub release](https://img.shields.io/github/release/POf-L/Fanqie-novel-Downloader.svg)](https://github.com/POf-L/Fanqie-novel-Downloader/releases)
 [![GitHub stars](https://img.shields.io/github/stars/POf-L/Fanqie-novel-Downloader.svg)](https://github.com/POf-L/Fanqie-novel-Downloader)
