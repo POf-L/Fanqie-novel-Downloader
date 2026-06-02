@@ -223,6 +223,17 @@ jobs:
           mkdir -p release
           if [[ "${{ matrix.archive_name }}" == *.zip ]]; then
             7z a "release/${{ matrix.archive_name }}" "./build/bin/${{ matrix.binary_name }}*"
+          elif [[ "${{ matrix.platform }}" == macos-* ]]; then
+            (
+              cd build/bin
+              matches=( *.app )
+              if [[ ${#matches[@]} -eq 0 || "${matches[0]}" == "*.app" ]]; then
+                echo "No macOS app bundle found in build/bin"
+                find . -maxdepth 3 -type f -o -type d
+                exit 1
+              fi
+              tar -czf "../../release/${{ matrix.archive_name }}" "${matches[@]}"
+            )
           else
             (
               cd build/bin
