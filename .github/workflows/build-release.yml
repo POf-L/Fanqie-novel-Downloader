@@ -14,17 +14,17 @@ on:
         default: true
         type: boolean
       platform_windows_x64:
-        description: "编译 Windows x64"
+        description: "编译 Windows x64 桌面版"
         required: false
         default: true
         type: boolean
       platform_linux_x64:
-        description: "编译 Linux x64"
+        description: "编译 Linux x64 桌面版"
         required: false
         default: true
         type: boolean
       platform_macos_x64:
-        description: "编译 macOS x64"
+        description: "编译 macOS x64 桌面版"
         required: false
         default: true
         type: boolean
@@ -38,12 +38,9 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  PYTHON_VERSION: "3.11"
-  WINDOWS_WEBVIEW2_RUNTIME_VERSION: "145.0.3800.97"
+  GO_VERSION: "1.24.x"
   PRIVATE_SOURCE_REPOSITORY: "POf-L/Fanqie-novel-Downloader-actions"
   PRIVATE_SOURCE_PATH: "private-src"
-  PYTHONUTF8: "1"
-  PYTHONIOENCODING: "utf-8"
 
 jobs:
   prepare:
@@ -85,48 +82,39 @@ jobs:
           import json
           import os
 
-          def to_bool(value: str) -> bool:
+          def enabled(value: str) -> bool:
               return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
           matrix = []
-          if to_bool(os.environ.get("P_WIN", "")):
+          if enabled(os.environ.get("P_WIN", "")):
               matrix.append({
                   "os": "windows-latest",
-                  "platform": "windows-x64-standalone",
-                  "binary_name": "TomatoNovelDownloader-Standalone-windows-x64",
-                  "artifact_name": "client-windows-x64-standalone",
-                  "bundle_webview2": True,
-                  "variant_label": "Standalone",
-                  "extension": ".exe",
+                  "platform": "windows-x64",
+                  "wails_platform": "windows/amd64",
+                  "binary_name": "FanqieNovelDownloader-desktop-windows-x64.exe",
+                  "archive_name": "FanqieNovelDownloader-desktop-windows-x64.zip",
+                  "artifact_name": "desktop-windows-x64",
+                  "ldflags": "-s -w -H windowsgui",
               })
+          if enabled(os.environ.get("P_LIN", "")):
               matrix.append({
-                  "os": "windows-latest",
-                  "platform": "windows-x64-slim",
-                  "binary_name": "TomatoNovelDownloader-windows-x64",
-                  "artifact_name": "client-windows-x64-slim",
-                  "bundle_webview2": False,
-                  "variant_label": "Slim",
-                  "extension": ".exe",
-              })
-          if to_bool(os.environ.get("P_LIN", "")):
-              matrix.append({
-                  "os": "ubuntu-latest",
+                  "os": "ubuntu-22.04",
                   "platform": "linux-x64",
-                  "binary_name": "TomatoNovelDownloader-linux-x64",
-                  "artifact_name": "client-linux-x64",
-                  "bundle_webview2": False,
-                  "variant_label": "Linux",
-                  "extension": "",
+                  "wails_platform": "linux/amd64",
+                  "binary_name": "FanqieNovelDownloader-desktop-linux-x64",
+                  "archive_name": "FanqieNovelDownloader-desktop-linux-x64.tar.gz",
+                  "artifact_name": "desktop-linux-x64",
+                  "ldflags": "-s -w",
               })
-          if to_bool(os.environ.get("P_MAC", "")):
+          if enabled(os.environ.get("P_MAC", "")):
               matrix.append({
-                  "os": "macos-latest",
+                  "os": "macos-13",
                   "platform": "macos-x64",
-                  "binary_name": "TomatoNovelDownloader-macos-x64",
-                  "artifact_name": "client-macos-x64",
-                  "bundle_webview2": False,
-                  "variant_label": "macOS",
-                  "extension": "",
+                  "wails_platform": "darwin/amd64",
+                  "binary_name": "FanqieNovelDownloader-desktop-macos-x64",
+                  "archive_name": "FanqieNovelDownloader-desktop-macos-x64.tar.gz",
+                  "artifact_name": "desktop-macos-x64",
+                  "ldflags": "-s -w",
               })
 
           if not matrix:
@@ -153,7 +141,7 @@ jobs:
               text=True,
           ).strip()
           version = datetime.now(timezone.utc).strftime("%Y.%m.%d.%H%M")
-          tag_name = f"v{version}"
+          tag_name = f"desktop-v{version}"
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"source_commit={source_commit}\n")
@@ -166,7 +154,7 @@ jobs:
     if: needs.prepare.outputs.build_count != '0'
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 3
       matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}
     runs-on: ${{ matrix.os }}
     name: Build ${{ matrix.platform }}
@@ -180,59 +168,54 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-go@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: |
-            ${{ env.PRIVATE_SOURCE_PATH }}/config/requirements.txt
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: ${{ env.PRIVATE_SOURCE_PATH }}/go.sum
 
-      - name: Install Linux system dependencies
+      - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y libheif1 libheif-dev
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev
 
-      - name: Install Python dependencies
+      - name: Run Go tests
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --prefer-binary pyinstaller
-          python -m pip install --prefer-binary -r config/requirements.txt
+        run: go test ./...
 
-      - name: Inject build version metadata
-        shell: python
-        env:
-          BUILD_VERSION: ${{ needs.prepare.outputs.version }}
-          PUBLIC_REPOSITORY: ${{ github.repository }}
-        run: |
-          from pathlib import Path
-          import os
-
-          source_path = Path(os.environ.get("PRIVATE_SOURCE_PATH", "private-src"))
-          version_py = source_path / "version.py"
-          version_py.write_text(
-              f"__version__ = \"{os.environ['BUILD_VERSION']}\"\n"
-              f"__github_repo__ = \"{os.environ['PUBLIC_REPOSITORY']}\"\n",
-              encoding="utf-8",
-          )
-          print(f"Injected {version_py}")
-
-      - name: Prepare bundled WebView2 runtime
-        if: ${{ runner.os == 'Windows' && matrix.bundle_webview2 }}
-        run: |
-          python private-src/tools/fetch_webview2_runtime.py --output-dir private-src/webview2_runtime --version "${{ env.WINDOWS_WEBVIEW2_RUNTIME_VERSION }}"
-
-      - name: Build executable
+      - name: Run frontend model tests
+        if: matrix.platform == 'windows-x64'
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        run: node tests/test_web_view_model.js
+
+      - name: Build desktop executable
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
         run: |
-          python tools/build_app.py --variant release --name "${{ matrix.binary_name }}"
+          go run github.com/wailsapp/wails/v2/cmd/wails@v2.12.0 build \
+            -clean \
+            -platform "${{ matrix.wails_platform }}" \
+            -tags "desktop,production" \
+            -ldflags "${{ matrix.ldflags }} -X main.version=${{ needs.prepare.outputs.version }}" \
+            -o "${{ matrix.binary_name }}"
+
+      - name: Package artifact
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        run: |
+          mkdir -p release
+          if [[ "${{ matrix.archive_name }}" == *.zip ]]; then
+            7z a "release/${{ matrix.archive_name }}" "./build/bin/${{ matrix.binary_name }}*"
+          else
+            tar -czf "release/${{ matrix.archive_name }}" -C build/bin "${{ matrix.binary_name }}"*
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ env.PRIVATE_SOURCE_PATH }}/dist/${{ matrix.binary_name }}${{ matrix.extension }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/release/${{ matrix.archive_name }}
           if-no-files-found: error
           retention-days: 30
 
@@ -245,14 +228,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-          pattern: client-*
+          pattern: desktop-*
           merge-multiple: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag_name }}
-          name: Fanqie Client ${{ needs.prepare.outputs.version }}
+          name: Fanqie Desktop ${{ needs.prepare.outputs.version }}
           generate_release_notes: true
           files: release-assets/*
           body: |
@@ -261,6 +244,8 @@ jobs:
             - Source ref: `${{ needs.prepare.outputs.source_ref }}`
             - Source commit: `${{ needs.prepare.outputs.source_commit }}`
             - Public workflow run: `${{ github.run_id }}`
+
+            Windows 版本依赖 WebView2 Runtime；Linux 版本依赖系统 WebKitGTK 运行库。
 
   summary:
     needs: [prepare, build, release]
