@@ -29,7 +29,8 @@
 
 - `FanqieNovelDownloader-desktop-windows-x64.zip`
 - `FanqieNovelDownloader-desktop-linux-x64.tar.gz`
-- `FanqieNovelDownloader-desktop-macos-x64.tar.gz`
+- `FanqieNovelDownloader-desktop-macos-arm64.tar.gz`
+- `FanqieNovelDownloader-desktop-macos-x64.tar.gz`（可选 Intel 构建）
 
 Windows 用户解压后运行 `FanqieNovelDownloader-desktop-windows-x64.exe` 即可。
 
@@ -52,7 +53,8 @@ Linux / macOS 用户解压后运行对应平台的桌面客户端文件。如遇
 - `publish_release`：是否自动创建 GitHub Release
 - `platform_windows_x64`：是否构建 Windows x64
 - `platform_linux_x64`：是否构建 Linux x64
-- `platform_macos_x64`：是否构建 macOS x64
+- `platform_macos_arm64`：是否构建 macOS arm64
+- `platform_macos_x64`：是否构建 macOS Intel x64
 
 构建完成后，产物会上传为 Actions Artifact；如果开启发布，会自动创建 Release。
 
