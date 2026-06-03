@@ -268,6 +268,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
           ARCHIVE_NAME: ${{ matrix.archive_name }}
         run: |
@@ -278,11 +279,14 @@ jobs:
     if: needs.prepare.outputs.build_count != '0'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Create release shell
         if: ${{ github.event.inputs.publish_release == 'true' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
           RELEASE_NAME: Fanqie Desktop ${{ needs.prepare.outputs.version }}
         run: |
