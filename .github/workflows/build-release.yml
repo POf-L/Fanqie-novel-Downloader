@@ -205,6 +205,14 @@ jobs:
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         run: node tests/test_web_view_model.js
 
+      - name: Prepare Wails app icon
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        run: |
+          mkdir -p build
+          cp desktop/static/icon.png build/appicon.png
+          test -s build/appicon.png
+
       - name: Build desktop executable
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
