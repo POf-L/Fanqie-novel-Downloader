@@ -19,7 +19,7 @@
 - TXT / EPUB 下载
 - 下载历史记录
 - 桌面客户端自动更新
-- Windows、Linux、macOS 桌面端构建
+- 支持 Windows、Linux、macOS
 
 ## 下载使用
 
@@ -30,7 +30,7 @@
 - `FanqieNovelDownloader-desktop-windows-x64.zip`
 - `FanqieNovelDownloader-desktop-linux-x64.tar.gz`
 - `FanqieNovelDownloader-desktop-macos-arm64.tar.gz`
-- `FanqieNovelDownloader-desktop-macos-x64.tar.gz`（可选 Intel 构建）
+- `FanqieNovelDownloader-desktop-macos-x64.tar.gz`（Intel 芯片 Mac 可用）
 
 Windows 用户解压后运行 `FanqieNovelDownloader-desktop-windows-x64.exe` 即可。
 
@@ -42,21 +42,6 @@ Linux / macOS 用户解压后运行对应平台的桌面客户端文件。如遇
 - 如果章节下载速度不稳定，可以适当降低单次请求章节数量。
 - 如果书籍信息显示异常，可以在详情页清除缓存后重新加载。
 - 遇到网络波动时，可以稍后重试，避免短时间内反复高频请求。
-
-## 手动构建
-
-维护者可以在 GitHub Actions 中手动运行 `Build and Release` 工作流。
-
-可选参数：
-
-- `source_ref`：指定构建使用的分支、Tag 或 Commit
-- `publish_release`：是否自动创建 GitHub Release
-- `platform_windows_x64`：是否构建 Windows x64
-- `platform_linux_x64`：是否构建 Linux x64
-- `platform_macos_arm64`：是否构建 macOS arm64
-- `platform_macos_x64`：是否构建 macOS Intel x64
-
-构建完成后，产物会上传为 Actions Artifact；如果开启发布，会自动创建 Release。
 
 ## 问题反馈
 
