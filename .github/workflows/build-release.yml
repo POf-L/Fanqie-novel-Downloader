@@ -262,26 +262,17 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  release:
-    needs: [prepare, build]
-    if: ${{ github.event.inputs.publish_release == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download built artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          pattern: desktop-*
-          merge-multiple: true
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag_name }}
-          name: Fanqie Desktop ${{ needs.prepare.outputs.version }}
-          generate_release_notes: true
-          files: release-assets/*
-          body: |
+      - name: Publish platform asset
+        if: ${{ github.event.inputs.publish_release == 'true' }}
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_NAME: Fanqie Desktop ${{ needs.prepare.outputs.version }}
+          ARCHIVE_NAME: ${{ matrix.archive_name }}
+        run: |
+          cat > release-notes.md <<'EOF'
             Built from private source repository `${{ env.PRIVATE_SOURCE_REPOSITORY }}`.
 
             - Source ref: `${{ needs.prepare.outputs.source_ref }}`
@@ -290,9 +281,28 @@ jobs:
 
             Windows 版本依赖 WebView2 Runtime；Linux 版本依赖系统 WebKitGTK 运行库。
             macOS 默认构建 arm64 版本；如需 Intel x64，可在工作流输入中额外勾选。
+          EOF
+
+          for attempt in {1..10}; do
+            if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+              break
+            fi
+            if gh release create "$TAG_NAME" \
+              --title "$RELEASE_NAME" \
+              --notes-file release-notes.md; then
+              break
+            fi
+            if [[ "$attempt" -eq 10 ]]; then
+              echo "Unable to create or find release: $TAG_NAME"
+              exit 1
+            fi
+            sleep 3
+          done
+
+          gh release upload "$TAG_NAME" "release/$ARCHIVE_NAME" --clobber
 
   summary:
-    needs: [prepare, build, release]
+    needs: [prepare, build]
     if: always()
     runs-on: ubuntu-latest
     steps:
