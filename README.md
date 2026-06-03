@@ -25,6 +25,10 @@
 
 普通用户建议直接前往本仓库的 Releases 页面下载对应平台的压缩包。
 
+发布下载地址：
+
+https://github.com/POf-L/Fanqie-novel-Downloader/releases
+
 当前发布产物包括：
 
 - `FanqieNovelDownloader-desktop-windows-x64.zip`
