@@ -29,9 +29,9 @@ on:
         default: true
         type: boolean
       platform_macos_x64:
-        description: "编译 macOS Intel x64 桌面版（队列可能较慢）"
+        description: "编译 macOS Intel x64 桌面版"
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -298,7 +298,7 @@ jobs:
           - Public workflow run: `${{ github.run_id }}`
 
           Windows 版本依赖 WebView2 Runtime；Linux 版本依赖系统 WebKitGTK 运行库。
-          macOS 默认构建 arm64 版本；如需 Intel x64，可在工作流输入中额外勾选。
+          macOS 默认同时构建 arm64 (Apple Silicon) 与 x64 (Intel) 版本。
           EOF
 
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
