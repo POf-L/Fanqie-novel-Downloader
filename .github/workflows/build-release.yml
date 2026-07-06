@@ -124,7 +124,7 @@ jobs:
               })
           if enabled(os.environ.get("P_MAC_X64", "")):
               matrix.append({
-                  "os": "macos-13",
+                  "os": "macos-latest",
                   "platform": "macos-x64",
                   "wails_platform": "darwin/amd64",
                   "binary_name": "FanqieNovelDownloader-desktop-macos-x64",
