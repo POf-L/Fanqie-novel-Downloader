@@ -19,7 +19,12 @@ on:
         default: true
         type: boolean
       platform_linux_x64:
-        description: "编译 Linux x64 桌面版"
+        description: "编译 Linux x64 桌面版 (WebKitGTK 4.0, 适用于 Ubuntu 22.04 / Debian 12 等旧系统)"
+        required: false
+        default: true
+        type: boolean
+      platform_linux_x64_gtk41:
+        description: "编译 Linux x64 桌面版 (WebKitGTK 4.1, 适用于 Ubuntu 24.04 / Fedora 40+ / Debian 13+ 等新系统)"
         required: false
         default: true
         type: boolean
@@ -82,6 +87,7 @@ jobs:
         env:
           P_WIN: ${{ github.event.inputs.platform_windows_x64 }}
           P_LIN: ${{ github.event.inputs.platform_linux_x64 }}
+          P_LIN_GTK41: ${{ github.event.inputs.platform_linux_x64_gtk41 }}
           P_MAC_ARM: ${{ github.event.inputs.platform_macos_arm64 }}
           P_MAC_X64: ${{ github.event.inputs.platform_macos_x64 }}
         run: |
@@ -101,6 +107,8 @@ jobs:
                   "archive_name": "FanqieNovelDownloader-desktop-windows-x64.zip",
                   "artifact_name": "desktop-windows-x64",
                   "ldflags": "-s -w -H windowsgui",
+                  "webkit_pkg": "",
+                  "build_tags": "desktop,production",
               })
           if enabled(os.environ.get("P_LIN", "")):
               matrix.append({
@@ -111,6 +119,20 @@ jobs:
                   "archive_name": "FanqieNovelDownloader-desktop-linux-x64.tar.gz",
                   "artifact_name": "desktop-linux-x64",
                   "ldflags": "-s -w",
+                  "webkit_pkg": "libwebkit2gtk-4.0-dev",
+                  "build_tags": "desktop,production",
+              })
+          if enabled(os.environ.get("P_LIN_GTK41", "")):
+              matrix.append({
+                  "os": "ubuntu-24.04",
+                  "platform": "linux-x64-gtk41",
+                  "wails_platform": "linux/amd64",
+                  "binary_name": "FanqieNovelDownloader-desktop-linux-x64-gtk41",
+                  "archive_name": "FanqieNovelDownloader-desktop-linux-x64-gtk41.tar.gz",
+                  "artifact_name": "desktop-linux-x64-gtk41",
+                  "ldflags": "-s -w",
+                  "webkit_pkg": "libwebkit2gtk-4.1-dev",
+                  "build_tags": "webkit2_41,desktop,production",
               })
           if enabled(os.environ.get("P_MAC_ARM", "")):
               matrix.append({
@@ -121,6 +143,8 @@ jobs:
                   "archive_name": "FanqieNovelDownloader-desktop-macos-arm64.tar.gz",
                   "artifact_name": "desktop-macos-arm64",
                   "ldflags": "-s -w",
+                  "webkit_pkg": "",
+                  "build_tags": "desktop,production",
               })
           if enabled(os.environ.get("P_MAC_X64", "")):
               matrix.append({
@@ -131,6 +155,8 @@ jobs:
                   "archive_name": "FanqieNovelDownloader-desktop-macos-x64.tar.gz",
                   "artifact_name": "desktop-macos-x64",
                   "ldflags": "-s -w",
+                  "webkit_pkg": "",
+                  "build_tags": "desktop,production",
               })
 
           if not matrix:
@@ -194,7 +220,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev ${{ matrix.webkit_pkg }}
 
       - name: Run Go tests
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
@@ -220,7 +246,7 @@ jobs:
           go run github.com/wailsapp/wails/v2/cmd/wails@v2.12.0 build \
             -clean \
             -platform "${{ matrix.wails_platform }}" \
-            -tags "desktop,production" \
+            -tags "${{ matrix.build_tags }}" \
             -ldflags "${{ matrix.ldflags }} -X main.version=${{ needs.prepare.outputs.version }}" \
             -o "${{ matrix.binary_name }}"
 
@@ -298,6 +324,7 @@ jobs:
           - Public workflow run: `${{ github.run_id }}`
 
           Windows 版本依赖 WebView2 Runtime；Linux 版本依赖系统 WebKitGTK 运行库。
+          Linux 4.0 版适用于 Ubuntu 22.04 / Debian 12 等旧系统，4.1 版适用于 Ubuntu 24.04 / Fedora 40+ / Debian 13+ 等新系统。
           macOS 默认同时构建 arm64 (Apple Silicon) 与 x64 (Intel) 版本。
           EOF
 
@@ -326,7 +353,8 @@ jobs:
           - Tag: `${{ needs.prepare.outputs.tag_name }}`
           - Publish release: `${{ github.event.inputs.publish_release }}`
           - Windows x64: `${{ github.event.inputs.platform_windows_x64 }}`
-          - Linux x64: `${{ github.event.inputs.platform_linux_x64 }}`
+          - Linux x64 (GTK 4.0): `${{ github.event.inputs.platform_linux_x64 }}`
+          - Linux x64 (GTK 4.1): `${{ github.event.inputs.platform_linux_x64_gtk41 }}`
           - macOS arm64: `${{ github.event.inputs.platform_macos_arm64 }}`
           - macOS Intel x64: `${{ github.event.inputs.platform_macos_x64 }}`
           EOF
