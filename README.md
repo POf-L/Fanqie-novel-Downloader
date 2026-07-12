@@ -32,13 +32,16 @@ https://github.com/POf-L/Fanqie-novel-Downloader/releases
 当前发布产物包括：
 
 - `FanqieNovelDownloader-desktop-windows-x64.zip`
-- `FanqieNovelDownloader-desktop-linux-x64.tar.gz`
+- `FanqieNovelDownloader-desktop-windows-arm64.zip`
+- `FanqieNovelDownloader-desktop-linux-x64.tar.gz`（WebKitGTK 4.0，适用于 Ubuntu 22.04 / Debian 12 等旧系统）
+- `FanqieNovelDownloader-desktop-linux-x64-gtk41.tar.gz`（WebKitGTK 4.1，适用于 Ubuntu 24.04 / Fedora 40+ / Debian 13+ 等新系统）
+- `FanqieNovelDownloader-desktop-linux-arm64.tar.gz`（ARM64，WebKitGTK 4.1）
 - `FanqieNovelDownloader-desktop-macos-arm64.tar.gz`
 - `FanqieNovelDownloader-desktop-macos-x64.tar.gz`（Intel 芯片 Mac 可用）
 
-Windows 用户解压后运行 `FanqieNovelDownloader-desktop-windows-x64.exe` 即可。
+Windows 用户应按 CPU 架构选择 x64 或 ARM64 压缩包，解压后运行其中的 `.exe` 文件。
 
-Linux / macOS 用户解压后运行对应平台的桌面客户端文件。如遇到系统安全提示，请按照系统提示允许应用运行。
+Linux 用户除 CPU 架构外，还需按系统提供的 WebKitGTK 版本选择压缩包。Linux / macOS 用户解压后运行对应平台的桌面客户端文件；如遇到系统安全提示，请按照系统提示允许应用运行。
 
 ## 使用建议
 

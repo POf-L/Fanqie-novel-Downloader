@@ -1,5 +1,8 @@
 name: Build and Release
 
+# GitHub 不允许公开仓库直接调用私有仓库中的 reusable workflow。
+# 因此调度与打包步骤必须保留在公开仓库；核心源码仍通过只读 Token
+# 在运行时检出，不会进入公开仓库。
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +24,7 @@ on:
       platform_windows_arm64:
         description: "编译 Windows arm64 桌面版（队列可能较慢）"
         required: false
-        default: false
+        default: true
         type: boolean
       platform_linux_x64:
         description: "编译 Linux x64 桌面版 (WebKitGTK 4.0, 适用于 Ubuntu 22.04 / Debian 12 等旧系统)"
@@ -56,18 +59,359 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  GO_VERSION: "1.25.x"
+  WAILS_VERSION: "v2.13.0"
+  PRIVATE_SOURCE_REPOSITORY: "POf-L/Fanqie-novel-Downloader-actions"
+  PRIVATE_SOURCE_PATH: "private-src"
+
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      build_matrix: ${{ steps.platforms.outputs.build_matrix }}
+      build_count: ${{ steps.platforms.outputs.build_count }}
+      source_commit: ${{ steps.meta.outputs.source_commit }}
+      source_ref: ${{ steps.meta.outputs.source_ref }}
+      version: ${{ steps.meta.outputs.version }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+    steps:
+      - name: Validate private source token
+        env:
+          PRIVATE_SOURCE_TOKEN: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+        run: |
+          if [ -z "$PRIVATE_SOURCE_TOKEN" ]; then
+            echo "Missing repository secret: PRIVATE_SOURCE_TOKEN"
+            exit 1
+          fi
+
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
+
+      - name: Select build platforms
+        id: platforms
+        shell: python
+        env:
+          P_WIN: ${{ inputs.platform_windows_x64 }}
+          P_WIN_ARM: ${{ inputs.platform_windows_arm64 }}
+          P_LIN: ${{ inputs.platform_linux_x64 }}
+          P_LIN_GTK41: ${{ inputs.platform_linux_x64_gtk41 }}
+          P_LIN_ARM: ${{ inputs.platform_linux_arm64 }}
+          P_MAC_ARM: ${{ inputs.platform_macos_arm64 }}
+          P_MAC_X64: ${{ inputs.platform_macos_x64 }}
+        run: |
+          import json
+          import os
+
+          def enabled(value: str) -> bool:
+              return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+          matrix = []
+          if enabled(os.environ.get("P_WIN", "")):
+              matrix.append({
+                  "os": "windows-latest",
+                  "platform": "windows-x64",
+                  "wails_platform": "windows/amd64",
+                  "binary_name": "FanqieNovelDownloader-desktop-windows-x64.exe",
+                  "archive_name": "FanqieNovelDownloader-desktop-windows-x64.zip",
+                  "artifact_name": "desktop-windows-x64",
+                  "ldflags": "-s -w -H windowsgui",
+                  "webkit_pkg": "",
+                  "build_tags": "desktop,production",
+              })
+          if enabled(os.environ.get("P_WIN_ARM", "")):
+              matrix.append({
+                  "os": "windows-11-arm",
+                  "platform": "windows-arm64",
+                  "wails_platform": "windows/arm64",
+                  "binary_name": "FanqieNovelDownloader-desktop-windows-arm64.exe",
+                  "archive_name": "FanqieNovelDownloader-desktop-windows-arm64.zip",
+                  "artifact_name": "desktop-windows-arm64",
+                  "ldflags": "-s -w -H windowsgui",
+                  "webkit_pkg": "",
+                  "build_tags": "desktop,production",
+              })
+          if enabled(os.environ.get("P_LIN", "")):
+              matrix.append({
+                  "os": "ubuntu-22.04",
+                  "platform": "linux-x64",
+                  "wails_platform": "linux/amd64",
+                  "binary_name": "FanqieNovelDownloader-desktop-linux-x64",
+                  "archive_name": "FanqieNovelDownloader-desktop-linux-x64.tar.gz",
+                  "artifact_name": "desktop-linux-x64",
+                  "ldflags": "-s -w",
+                  "webkit_pkg": "libwebkit2gtk-4.0-dev",
+                  "build_tags": "desktop,production",
+              })
+          if enabled(os.environ.get("P_LIN_GTK41", "")):
+              matrix.append({
+                  "os": "ubuntu-24.04",
+                  "platform": "linux-x64-gtk41",
+                  "wails_platform": "linux/amd64",
+                  "binary_name": "FanqieNovelDownloader-desktop-linux-x64-gtk41",
+                  "archive_name": "FanqieNovelDownloader-desktop-linux-x64-gtk41.tar.gz",
+                  "artifact_name": "desktop-linux-x64-gtk41",
+                  "ldflags": "-s -w",
+                  "webkit_pkg": "libwebkit2gtk-4.1-dev",
+                  "build_tags": "webkit2_41,desktop,production",
+              })
+          if enabled(os.environ.get("P_LIN_ARM", "")):
+              matrix.append({
+                  "os": "ubuntu-24.04-arm",
+                  "platform": "linux-arm64",
+                  "wails_platform": "linux/arm64",
+                  "binary_name": "FanqieNovelDownloader-desktop-linux-arm64",
+                  "archive_name": "FanqieNovelDownloader-desktop-linux-arm64.tar.gz",
+                  "artifact_name": "desktop-linux-arm64",
+                  "ldflags": "-s -w",
+                  "webkit_pkg": "libwebkit2gtk-4.1-dev",
+                  "build_tags": "webkit2_41,desktop,production",
+              })
+          if enabled(os.environ.get("P_MAC_ARM", "")):
+              matrix.append({
+                  "os": "macos-latest",
+                  "platform": "macos-arm64",
+                  "wails_platform": "darwin/arm64",
+                  "binary_name": "FanqieNovelDownloader-desktop-macos-arm64",
+                  "archive_name": "FanqieNovelDownloader-desktop-macos-arm64.tar.gz",
+                  "artifact_name": "desktop-macos-arm64",
+                  "ldflags": "-s -w",
+                  "webkit_pkg": "",
+                  "build_tags": "desktop,production",
+              })
+          if enabled(os.environ.get("P_MAC_X64", "")):
+              matrix.append({
+                  "os": "macos-latest",
+                  "platform": "macos-x64",
+                  "wails_platform": "darwin/amd64",
+                  "binary_name": "FanqieNovelDownloader-desktop-macos-x64",
+                  "archive_name": "FanqieNovelDownloader-desktop-macos-x64.tar.gz",
+                  "artifact_name": "desktop-macos-x64",
+                  "ldflags": "-s -w",
+                  "webkit_pkg": "",
+                  "build_tags": "desktop,production",
+              })
+
+          if not matrix:
+              raise SystemExit("请至少选择一个编译平台")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"build_matrix={json.dumps({'include': matrix}, ensure_ascii=False, separators=(',', ':'))}\n")
+              fh.write(f"build_count={len(matrix)}\n")
+
+      - name: Build metadata
+        id: meta
+        shell: python
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          import os
+          import subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          source_path = Path(os.environ.get("PRIVATE_SOURCE_PATH", "private-src"))
+          source_commit = subprocess.check_output(
+              ["git", "-C", str(source_path), "rev-parse", "--short", "HEAD"],
+              text=True,
+          ).strip()
+          version = datetime.now(timezone.utc).strftime("%Y.%m.%d.%H%M")
+          tag_name = f"desktop-v{version}"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"source_commit={source_commit}\n")
+              fh.write(f"source_ref={os.environ['SOURCE_REF']}\n")
+              fh.write(f"version={version}\n")
+              fh.write(f"tag_name={tag_name}\n")
+
   build:
-    uses: POf-L/Fanqie-novel-Downloader-actions/.github/workflows/reusable-build-desktop.yml@main
-    with:
-      source_ref: ${{ inputs.source_ref }}
-      publish_release: ${{ inputs.publish_release }}
-      platform_windows_x64: ${{ inputs.platform_windows_x64 }}
-      platform_windows_arm64: ${{ inputs.platform_windows_arm64 }}
-      platform_linux_x64: ${{ inputs.platform_linux_x64 }}
-      platform_linux_x64_gtk41: ${{ inputs.platform_linux_x64_gtk41 }}
-      platform_linux_arm64: ${{ inputs.platform_linux_arm64 }}
-      platform_macos_arm64: ${{ inputs.platform_macos_arm64 }}
-      platform_macos_x64: ${{ inputs.platform_macos_x64 }}
-    secrets:
-      PRIVATE_SOURCE_TOKEN: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+    needs: [prepare, release_bootstrap]
+    if: needs.prepare.outputs.build_count != '0'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}
+    runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.platform }}
+    steps:
+      - name: Checkout private source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ needs.prepare.outputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: ${{ env.PRIVATE_SOURCE_PATH }}/go.sum
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev ${{ matrix.webkit_pkg }}
+
+      - name: Run Go tests
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        run: go test ./...
+
+      - name: Run frontend tests
+        if: matrix.platform == 'windows-x64'
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        run: |
+          node tests/test_i18n.js
+          node tests/test_web_view_model.js
+
+      - name: Prepare Wails app icon
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        run: |
+          mkdir -p build
+          cp desktop/static/icon.png build/appicon.png
+          test -s build/appicon.png
+
+      - name: Build desktop executable
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        run: |
+          go run github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }} build \
+            -clean \
+            -platform "${{ matrix.wails_platform }}" \
+            -tags "${{ matrix.build_tags }}" \
+            -ldflags "${{ matrix.ldflags }} -X main.version=${{ needs.prepare.outputs.version }}" \
+            -o "${{ matrix.binary_name }}"
+
+      - name: Package artifact
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        run: |
+          mkdir -p release
+          if [[ "${{ matrix.archive_name }}" == *.zip ]]; then
+            7z a "release/${{ matrix.archive_name }}" "./build/bin/${{ matrix.binary_name }}*"
+          elif [[ "${{ matrix.platform }}" == macos-* ]]; then
+            (
+              cd build/bin
+              matches=( *.app )
+              if [[ ${#matches[@]} -eq 0 || "${matches[0]}" == "*.app" ]]; then
+                echo "No macOS app bundle found in build/bin"
+                find . -maxdepth 3 \( -type f -o -type d \)
+                exit 1
+              fi
+              tar -czf "../../release/${{ matrix.archive_name }}" "${matches[@]}"
+            )
+          else
+            (
+              cd build/bin
+              matches=( "${{ matrix.binary_name }}"* )
+              if [[ ${#matches[@]} -eq 0 || "${matches[0]}" == "${{ matrix.binary_name }}*" ]]; then
+                echo "No packaged files matched: ${{ matrix.binary_name }}*"
+                exit 1
+              fi
+              tar -czf "../../release/${{ matrix.archive_name }}" "${matches[@]}"
+            )
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/release/${{ matrix.archive_name }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish platform asset
+        if: ${{ inputs.publish_release == true }}
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          ARCHIVE_NAME: ${{ matrix.archive_name }}
+        run: |
+          gh release upload "$TAG_NAME" "release/$ARCHIVE_NAME" --clobber
+
+  release_bootstrap:
+    needs: prepare
+    if: needs.prepare.outputs.build_count != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout private source for release notes
+        if: ${{ inputs.publish_release == true }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ needs.prepare.outputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 0
+
+      - name: Generate release notes from private repo config
+        if: ${{ inputs.publish_release == true }}
+        shell: bash
+        run: |
+          pip install pyyaml
+          cd ${{ env.PRIVATE_SOURCE_PATH }}
+          python3 .github/scripts/generate_release_notes.py \
+            --config .github/release-config.yml \
+            --template desktop_body_template \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --build-time "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+            --commit-sha "${{ needs.prepare.outputs.source_commit }}" \
+            --output ../release-notes.md
+          cat ../release-notes.md
+
+      - name: Create release shell
+        if: ${{ inputs.publish_release == true }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_NAME: Fanqie Desktop ${{ needs.prepare.outputs.version }}
+        run: |
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release already exists: $TAG_NAME"
+          else
+            gh release create "$TAG_NAME" \
+              --title "$RELEASE_NAME" \
+              --notes-file release-notes.md
+          fi
+
+  summary:
+    needs: [prepare, release_bootstrap, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Workflow summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Build Summary
+
+          - Private source repo: \`${{ env.PRIVATE_SOURCE_REPOSITORY }}\`
+          - Source ref: \`${{ needs.prepare.outputs.source_ref }}\`
+          - Source commit: \`${{ needs.prepare.outputs.source_commit }}\`
+          - Version: \`${{ needs.prepare.outputs.version }}\`
+          - Tag: \`${{ needs.prepare.outputs.tag_name }}\`
+          - Publish release: \`${{ inputs.publish_release }}\`
+          - Windows x64: \`${{ inputs.platform_windows_x64 }}\`
+          - Windows arm64: \`${{ inputs.platform_windows_arm64 }}\`
+          - Linux x64 (GTK 4.0): \`${{ inputs.platform_linux_x64 }}\`
+          - Linux x64 (GTK 4.1): \`${{ inputs.platform_linux_x64_gtk41 }}\`
+          - Linux arm64: \`${{ inputs.platform_linux_arm64 }}\`
+          - macOS arm64: \`${{ inputs.platform_macos_arm64 }}\`
+          - macOS Intel x64: \`${{ inputs.platform_macos_x64 }}\`
+          EOF
