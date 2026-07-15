@@ -1,6 +1,6 @@
 # 番茄小说下载器
 
-番茄小说下载器是一款面向普通用户的桌面客户端，用于搜索小说、查看书籍信息、管理书架，并将小说内容下载到本地阅读。
+番茄小说下载器是一款基于 Rust + Tauri v2 的全平台客户端，用于搜索小说、查看书籍信息、管理书架，并将小说内容下载到本地阅读。
 
 项目目标是尽量做到打开即用，减少命令行和复杂配置，让不熟悉开发环境的用户也能直接使用。
 
@@ -18,30 +18,32 @@
 - 书架管理
 - TXT / EPUB 下载
 - 下载历史记录
-- 桌面客户端自动更新
-- 支持 Windows、Linux、macOS
+- 桌面客户端签名自动更新
+- 支持 Windows、Linux、macOS、Android、iOS
+- Android 可导出并通过系统应用打开 TXT / EPUB
+- iOS 可通过系统分享面板保存或分享 TXT / EPUB，并可在“文件”中访问导出目录
 
 ## 下载使用
 
-普通用户建议直接前往本仓库的 Releases 页面下载对应平台的压缩包。
+普通用户建议直接前往本仓库的 Releases 页面下载对应平台的安装包。
 
 发布下载地址：
 
 https://github.com/POf-L/Fanqie-novel-Downloader/releases
 
-当前发布产物包括：
+当前工作流可以生成：
 
-- `FanqieNovelDownloader-desktop-windows-x64.zip`
-- `FanqieNovelDownloader-desktop-windows-arm64.zip`
-- `FanqieNovelDownloader-desktop-linux-x64.tar.gz`（WebKitGTK 4.0，适用于 Ubuntu 22.04 / Debian 12 等旧系统）
-- `FanqieNovelDownloader-desktop-linux-x64-gtk41.tar.gz`（WebKitGTK 4.1，适用于 Ubuntu 24.04 / Fedora 40+ / Debian 13+ 等新系统）
-- `FanqieNovelDownloader-desktop-linux-arm64.tar.gz`（ARM64，WebKitGTK 4.1）
-- `FanqieNovelDownloader-desktop-macos-arm64.tar.gz`
-- `FanqieNovelDownloader-desktop-macos-x64.tar.gz`（Intel 芯片 Mac 可用）
+- Windows x64 / ARM64：NSIS 安装程序
+- Linux x64 / ARM64：DEB 与 AppImage（需要 WebKitGTK 4.1）
+- macOS Intel / Apple Silicon：APP 与 DMG
+- Android：包含 arm64-v8a、armeabi-v7a、x86、x86_64 的通用 APK，以及 AAB
+- iOS ARM64：配置 Apple 正式签名后生成 IPA
 
-Windows 用户应按 CPU 架构选择 x64 或 ARM64 压缩包，解压后运行其中的 `.exe` 文件。
+发布文件统一使用 `FanqieNovelDownloader-tauri-` 前缀。Windows 用户应按 CPU 架构选择 x64 或 ARM64 安装程序；Linux 用户可按发行版选择 DEB 或 AppImage；macOS 用户应区分 Intel 与 Apple Silicon。
 
-Linux 用户除 CPU 架构外，还需按系统提供的 WebKitGTK 版本选择压缩包。Linux / macOS 用户解压后运行对应平台的桌面客户端文件；如遇到系统安全提示，请按照系统提示允许应用运行。
+Android 普通用户下载 APK 即可，AAB 主要用于应用商店。iOS IPA 需要有效的 Apple 签名；是否提供取决于对应 Release 的构建配置。
+
+桌面端稳定 Release 会同时发布签名更新包及 `latest.json`，客户端可直接使用“一键更新”。标记为 prerelease 的版本不会进入稳定版自动更新通道。
 
 ## 使用建议
 

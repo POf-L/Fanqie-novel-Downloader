@@ -1,55 +1,64 @@
-name: Build and Release
+name: Build and Release Tauri
 
-# GitHub 不允许公开仓库直接调用私有仓库中的 reusable workflow。
-# 因此调度与打包步骤必须保留在公开仓库；核心源码仍通过只读 Token
-# 在运行时检出，不会进入公开仓库。
+# 公开仓库只负责调度、打包和发布；核心源码在运行时从私有 Tauri
+# 仓库只读检出，不会提交到本仓库。
 on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: "私有源码分支 / Tag / Commit"
+        description: "私有 Tauri 源码分支 / Tag / Commit"
         required: true
         default: "main"
         type: string
       publish_release:
-        description: "是否创建 GitHub Release"
+        description: "创建 GitHub Release"
         required: true
         default: true
         type: boolean
+      prerelease:
+        description: "标记为预发布（预发布不会被稳定版自动更新检测到）"
+        required: true
+        default: false
+        type: boolean
       platform_windows_x64:
-        description: "编译 Windows x64 桌面版"
+        description: "Windows x64"
         required: false
         default: true
         type: boolean
       platform_windows_arm64:
-        description: "编译 Windows arm64 桌面版（队列可能较慢）"
+        description: "Windows ARM64"
         required: false
         default: true
         type: boolean
       platform_linux_x64:
-        description: "编译 Linux x64 桌面版 (WebKitGTK 4.0, 适用于 Ubuntu 22.04 / Debian 12 等旧系统)"
-        required: false
-        default: true
-        type: boolean
-      platform_linux_x64_gtk41:
-        description: "编译 Linux x64 桌面版 (WebKitGTK 4.1, 适用于 Ubuntu 24.04 / Fedora 40+ / Debian 13+ 等新系统)"
+        description: "Linux x64"
         required: false
         default: true
         type: boolean
       platform_linux_arm64:
-        description: "编译 Linux arm64 桌面版 (WebKitGTK 4.1)"
-        required: false
-        default: true
-        type: boolean
-      platform_macos_arm64:
-        description: "编译 macOS arm64 桌面版"
+        description: "Linux ARM64"
         required: false
         default: true
         type: boolean
       platform_macos_x64:
-        description: "编译 macOS Intel x64 桌面版"
+        description: "macOS Intel"
         required: false
         default: true
+        type: boolean
+      platform_macos_arm64:
+        description: "macOS Apple Silicon"
+        required: false
+        default: true
+        type: boolean
+      platform_android:
+        description: "Android 通用 APK + AAB"
+        required: false
+        default: true
+        type: boolean
+      platform_ios:
+        description: "iOS ARM64 IPA（发布时必须配置 Apple 签名）"
+        required: false
+        default: false
         type: boolean
 
 permissions:
@@ -61,32 +70,40 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  GO_VERSION: "1.25.x"
-  WAILS_VERSION: "v2.13.0"
-  PRIVATE_SOURCE_REPOSITORY: "POf-L/Fanqie-novel-Downloader-actions"
+  PRIVATE_SOURCE_REPOSITORY: "POf-L/Fanqie-novel-Downloader-tauri"
   PRIVATE_SOURCE_PATH: "private-src"
+  TAURI_CLI_VERSION: "2.11.4"
+  ANDROID_API_LEVEL: "36"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+  ANDROID_NDK_VERSION: "27.2.12479018"
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      build_matrix: ${{ steps.platforms.outputs.build_matrix }}
-      build_count: ${{ steps.platforms.outputs.build_count }}
+      desktop_matrix: ${{ steps.platforms.outputs.desktop_matrix }}
+      desktop_count: ${{ steps.platforms.outputs.desktop_count }}
+      android_enabled: ${{ steps.platforms.outputs.android_enabled }}
+      ios_enabled: ${{ steps.platforms.outputs.ios_enabled }}
+      selected_platforms: ${{ steps.platforms.outputs.selected_platforms }}
       source_commit: ${{ steps.meta.outputs.source_commit }}
       source_ref: ${{ steps.meta.outputs.source_ref }}
       version: ${{ steps.meta.outputs.version }}
       tag_name: ${{ steps.meta.outputs.tag_name }}
+      updater_signing: ${{ steps.secrets.outputs.updater_signing }}
+      android_signing: ${{ steps.secrets.outputs.android_signing }}
+      ios_signing: ${{ steps.secrets.outputs.ios_signing }}
     steps:
       - name: Validate private source token
         env:
           PRIVATE_SOURCE_TOKEN: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
         run: |
-          if [ -z "$PRIVATE_SOURCE_TOKEN" ]; then
+          if [[ -z "${PRIVATE_SOURCE_TOKEN}" ]]; then
             echo "Missing repository secret: PRIVATE_SOURCE_TOKEN"
             exit 1
           fi
 
-      - name: Checkout private source
+      - name: Checkout private Tauri source
         uses: actions/checkout@v4
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
@@ -99,114 +116,86 @@ jobs:
         id: platforms
         shell: python
         env:
-          P_WIN: ${{ inputs.platform_windows_x64 }}
-          P_WIN_ARM: ${{ inputs.platform_windows_arm64 }}
-          P_LIN: ${{ inputs.platform_linux_x64 }}
-          P_LIN_GTK41: ${{ inputs.platform_linux_x64_gtk41 }}
-          P_LIN_ARM: ${{ inputs.platform_linux_arm64 }}
-          P_MAC_ARM: ${{ inputs.platform_macos_arm64 }}
-          P_MAC_X64: ${{ inputs.platform_macos_x64 }}
+          WINDOWS_X64: ${{ inputs.platform_windows_x64 }}
+          WINDOWS_ARM64: ${{ inputs.platform_windows_arm64 }}
+          LINUX_X64: ${{ inputs.platform_linux_x64 }}
+          LINUX_ARM64: ${{ inputs.platform_linux_arm64 }}
+          MACOS_X64: ${{ inputs.platform_macos_x64 }}
+          MACOS_ARM64: ${{ inputs.platform_macos_arm64 }}
+          ANDROID: ${{ inputs.platform_android }}
+          IOS: ${{ inputs.platform_ios }}
         run: |
           import json
           import os
 
-          def enabled(value: str) -> bool:
-              return str(value).strip().lower() in {"1", "true", "yes", "on"}
+          def enabled(name: str) -> bool:
+              return os.environ.get(name, "").strip().lower() in {
+                  "1", "true", "yes", "on"
+              }
 
-          matrix = []
-          if enabled(os.environ.get("P_WIN", "")):
-              matrix.append({
+          candidates = [
+              ("WINDOWS_X64", {
                   "os": "windows-latest",
                   "platform": "windows-x64",
-                  "wails_platform": "windows/amd64",
-                  "binary_name": "FanqieNovelDownloader-desktop-windows-x64.exe",
-                  "archive_name": "FanqieNovelDownloader-desktop-windows-x64.zip",
-                  "artifact_name": "desktop-windows-x64",
-                  "ldflags": "-s -w -H windowsgui",
-                  "webkit_pkg": "",
-                  "build_tags": "desktop,production",
-              })
-          if enabled(os.environ.get("P_WIN_ARM", "")):
-              matrix.append({
+                  "target": "x86_64-pc-windows-msvc",
+                  "bundles": "nsis",
+              }),
+              ("WINDOWS_ARM64", {
                   "os": "windows-11-arm",
                   "platform": "windows-arm64",
-                  "wails_platform": "windows/arm64",
-                  "binary_name": "FanqieNovelDownloader-desktop-windows-arm64.exe",
-                  "archive_name": "FanqieNovelDownloader-desktop-windows-arm64.zip",
-                  "artifact_name": "desktop-windows-arm64",
-                  "ldflags": "-s -w -H windowsgui",
-                  "webkit_pkg": "",
-                  "build_tags": "desktop,production",
-              })
-          if enabled(os.environ.get("P_LIN", "")):
-              matrix.append({
+                  "target": "aarch64-pc-windows-msvc",
+                  "bundles": "nsis",
+              }),
+              ("LINUX_X64", {
                   "os": "ubuntu-22.04",
                   "platform": "linux-x64",
-                  "wails_platform": "linux/amd64",
-                  "binary_name": "FanqieNovelDownloader-desktop-linux-x64",
-                  "archive_name": "FanqieNovelDownloader-desktop-linux-x64.tar.gz",
-                  "artifact_name": "desktop-linux-x64",
-                  "ldflags": "-s -w",
-                  "webkit_pkg": "libwebkit2gtk-4.0-dev",
-                  "build_tags": "desktop,production",
-              })
-          if enabled(os.environ.get("P_LIN_GTK41", "")):
-              matrix.append({
-                  "os": "ubuntu-24.04",
-                  "platform": "linux-x64-gtk41",
-                  "wails_platform": "linux/amd64",
-                  "binary_name": "FanqieNovelDownloader-desktop-linux-x64-gtk41",
-                  "archive_name": "FanqieNovelDownloader-desktop-linux-x64-gtk41.tar.gz",
-                  "artifact_name": "desktop-linux-x64-gtk41",
-                  "ldflags": "-s -w",
-                  "webkit_pkg": "libwebkit2gtk-4.1-dev",
-                  "build_tags": "webkit2_41,desktop,production",
-              })
-          if enabled(os.environ.get("P_LIN_ARM", "")):
-              matrix.append({
+                  "target": "x86_64-unknown-linux-gnu",
+                  "bundles": "deb,appimage",
+              }),
+              ("LINUX_ARM64", {
                   "os": "ubuntu-24.04-arm",
                   "platform": "linux-arm64",
-                  "wails_platform": "linux/arm64",
-                  "binary_name": "FanqieNovelDownloader-desktop-linux-arm64",
-                  "archive_name": "FanqieNovelDownloader-desktop-linux-arm64.tar.gz",
-                  "artifact_name": "desktop-linux-arm64",
-                  "ldflags": "-s -w",
-                  "webkit_pkg": "libwebkit2gtk-4.1-dev",
-                  "build_tags": "webkit2_41,desktop,production",
-              })
-          if enabled(os.environ.get("P_MAC_ARM", "")):
-              matrix.append({
+                  "target": "aarch64-unknown-linux-gnu",
+                  "bundles": "deb,appimage",
+              }),
+              ("MACOS_X64", {
+                  "os": "macos-15-intel",
+                  "platform": "macos-x64",
+                  "target": "x86_64-apple-darwin",
+                  "bundles": "app,dmg",
+              }),
+              ("MACOS_ARM64", {
                   "os": "macos-latest",
                   "platform": "macos-arm64",
-                  "wails_platform": "darwin/arm64",
-                  "binary_name": "FanqieNovelDownloader-desktop-macos-arm64",
-                  "archive_name": "FanqieNovelDownloader-desktop-macos-arm64.tar.gz",
-                  "artifact_name": "desktop-macos-arm64",
-                  "ldflags": "-s -w",
-                  "webkit_pkg": "",
-                  "build_tags": "desktop,production",
-              })
-          if enabled(os.environ.get("P_MAC_X64", "")):
-              matrix.append({
-                  "os": "macos-latest",
-                  "platform": "macos-x64",
-                  "wails_platform": "darwin/amd64",
-                  "binary_name": "FanqieNovelDownloader-desktop-macos-x64",
-                  "archive_name": "FanqieNovelDownloader-desktop-macos-x64.tar.gz",
-                  "artifact_name": "desktop-macos-x64",
-                  "ldflags": "-s -w",
-                  "webkit_pkg": "",
-                  "build_tags": "desktop,production",
-              })
+                  "target": "aarch64-apple-darwin",
+                  "bundles": "app,dmg",
+              }),
+          ]
+          desktop = [entry for name, entry in candidates if enabled(name)]
+          android = enabled("ANDROID")
+          ios = enabled("IOS")
+          selected = [entry["platform"] for entry in desktop]
+          if android:
+              selected.append("android")
+          if ios:
+              selected.append("ios")
+          if not selected:
+              raise SystemExit("请至少选择一个目标平台")
 
-          if not matrix:
-              raise SystemExit("请至少选择一个编译平台")
+          outputs = {
+              "desktop_matrix": json.dumps(
+                  {"include": desktop}, separators=(",", ":")
+              ),
+              "desktop_count": str(len(desktop)),
+              "android_enabled": str(android).lower(),
+              "ios_enabled": str(ios).lower(),
+              "selected_platforms": ", ".join(selected),
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              for key, value in outputs.items():
+                  output.write(f"{key}={value}\n")
 
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"build_matrix={json.dumps({'include': matrix}, ensure_ascii=False, separators=(',', ':'))}\n")
-              fh.write(f"build_count={len(matrix)}\n")
-
-      - name: Build metadata
+      - name: Generate release metadata
         id: meta
         shell: python
         env:
@@ -214,34 +203,83 @@ jobs:
         run: |
           import os
           import subprocess
-          from datetime import datetime, timezone
           from pathlib import Path
 
-          source_path = Path(os.environ.get("PRIVATE_SOURCE_PATH", "private-src"))
+          source = Path(os.environ["PRIVATE_SOURCE_PATH"])
           source_commit = subprocess.check_output(
-              ["git", "-C", str(source_path), "rev-parse", "--short", "HEAD"],
+              ["git", "-C", str(source), "rev-parse", "--short=12", "HEAD"],
               text=True,
           ).strip()
-          version = datetime.now(timezone.utc).strftime("%Y.%m.%d.%H%M")
-          tag_name = f"desktop-v{version}"
+          version = f"0.1.{int(os.environ['GITHUB_RUN_NUMBER'])}"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"source_commit={source_commit}\n")
+              output.write(f"source_ref={os.environ['SOURCE_REF']}\n")
+              output.write(f"version={version}\n")
+              output.write(f"tag_name=v{version}\n")
 
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"source_commit={source_commit}\n")
-              fh.write(f"source_ref={os.environ['SOURCE_REF']}\n")
-              fh.write(f"version={version}\n")
-              fh.write(f"tag_name={tag_name}\n")
+      - name: Validate optional signing secrets
+        id: secrets
+        shell: bash
+        env:
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          ANDROID_ENABLED: ${{ steps.platforms.outputs.android_enabled }}
+          IOS_ENABLED: ${{ steps.platforms.outputs.ios_enabled }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+        run: |
+          updater=false
+          android=false
+          ios=false
+          if [[ -n "${TAURI_SIGNING_PRIVATE_KEY}" &&
+                -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD}" ]]; then
+            updater=true
+          fi
+          if [[ -n "${ANDROID_KEYSTORE_BASE64}" &&
+                -n "${ANDROID_KEY_ALIAS}" &&
+                -n "${ANDROID_KEYSTORE_PASSWORD}" &&
+                -n "${ANDROID_KEY_PASSWORD}" ]]; then
+            android=true
+          fi
+          if [[ -n "${IOS_CERTIFICATE}" &&
+                -n "${IOS_CERTIFICATE_PASSWORD}" &&
+                -n "${IOS_MOBILE_PROVISION}" &&
+                -n "${APPLE_DEVELOPMENT_TEAM}" ]]; then
+            ios=true
+          fi
 
-  build:
-    needs: [prepare, release_bootstrap]
-    if: needs.prepare.outputs.build_count != '0'
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}
-    runs-on: ${{ matrix.os }}
-    name: Build ${{ matrix.platform }}
+          echo "updater_signing=${updater}" >> "${GITHUB_OUTPUT}"
+          echo "android_signing=${android}" >> "${GITHUB_OUTPUT}"
+          echo "ios_signing=${ios}" >> "${GITHUB_OUTPUT}"
+
+          if [[ "${PUBLISH_RELEASE}" == "true" && "${updater}" != "true" &&
+                "${{ steps.platforms.outputs.desktop_count }}" != "0" ]]; then
+            echo "Desktop publishing requires TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD."
+            exit 1
+          fi
+          if [[ "${PUBLISH_RELEASE}" == "true" &&
+                "${ANDROID_ENABLED}" == "true" && "${android}" != "true" ]]; then
+            echo "Android publishing requires all four Android signing secrets."
+            exit 1
+          fi
+          if [[ "${PUBLISH_RELEASE}" == "true" &&
+                "${IOS_ENABLED}" == "true" && "${ios}" != "true" ]]; then
+            echo "iOS publishing requires IOS_CERTIFICATE, IOS_CERTIFICATE_PASSWORD, IOS_MOBILE_PROVISION and APPLE_DEVELOPMENT_TEAM."
+            exit 1
+          fi
+
+  verify:
+    needs: prepare
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout private source
+      - name: Checkout private Tauri source
         uses: actions/checkout@v4
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
@@ -250,168 +288,461 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
-      - uses: actions/setup-go@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-          cache-dependency-path: ${{ env.PRIVATE_SOURCE_PATH }}/go.sum
+          components: rustfmt,clippy
 
-      - name: Install Linux desktop dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y build-essential pkg-config libgtk-3-dev ${{ matrix.webkit_pkg }}
-
-      - name: Run Go tests
-        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
-        run: go test ./...
-
-      - name: Run frontend tests
-        if: matrix.platform == 'windows-x64'
-        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
-        run: |
-          node tests/test_i18n.js
-          node tests/test_web_view_model.js
-
-      - name: Prepare Wails app icon
-        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
-        shell: bash
-        run: |
-          mkdir -p build
-          cp desktop/static/icon.png build/appicon.png
-          test -s build/appicon.png
-
-      - name: Build desktop executable
-        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
-        shell: bash
-        run: |
-          go run github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }} build \
-            -clean \
-            -platform "${{ matrix.wails_platform }}" \
-            -tags "${{ matrix.build_tags }}" \
-            -ldflags "${{ matrix.ldflags }} -X main.version=${{ needs.prepare.outputs.version }}" \
-            -o "${{ matrix.binary_name }}"
-
-      - name: Package artifact
-        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
-        shell: bash
-        run: |
-          mkdir -p release
-          if [[ "${{ matrix.archive_name }}" == *.zip ]]; then
-            7z a "release/${{ matrix.archive_name }}" "./build/bin/${{ matrix.binary_name }}*"
-          elif [[ "${{ matrix.platform }}" == macos-* ]]; then
-            (
-              cd build/bin
-              matches=( *.app )
-              if [[ ${#matches[@]} -eq 0 || "${matches[0]}" == "*.app" ]]; then
-                echo "No macOS app bundle found in build/bin"
-                find . -maxdepth 3 \( -type f -o -type d \)
-                exit 1
-              fi
-              tar -czf "../../release/${{ matrix.archive_name }}" "${matches[@]}"
-            )
-          else
-            (
-              cd build/bin
-              matches=( "${{ matrix.binary_name }}"* )
-              if [[ ${#matches[@]} -eq 0 || "${matches[0]}" == "${{ matrix.binary_name }}*" ]]; then
-                echo "No packaged files matched: ${{ matrix.binary_name }}*"
-                exit 1
-              fi
-              tar -czf "../../release/${{ matrix.archive_name }}" "${matches[@]}"
-            )
-          fi
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ env.PRIVATE_SOURCE_PATH }}/release/${{ matrix.archive_name }}
-          if-no-files-found: error
-          retention-days: 30
+          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
 
-      - name: Publish platform asset
-        if: ${{ inputs.publish_release == true }}
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Test and lint Tauri source
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo test --manifest-path src-tauri/Cargo.toml
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          node --test tests/*.js
+          node --check web/static/app.js
+          git diff --check
+
+  release-bootstrap:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        if: inputs.publish_release == true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
-          ARCHIVE_NAME: ${{ matrix.archive_name }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+          PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          gh release upload "$TAG_NAME" "release/$ARCHIVE_NAME" --clobber
+          cat > release-notes.md <<EOF
+          ## Fanqie Novel Downloader ${VERSION}
 
-  release_bootstrap:
-    needs: prepare
-    if: needs.prepare.outputs.build_count != '0'
-    runs-on: ubuntu-latest
+          基于 Rust + Tauri v2 的全平台版本。
+
+          - 私有源码引用：\`${SOURCE_REF}\`
+          - 私有源码提交：\`${SOURCE_COMMIT}\`
+          - 构建平台：${PLATFORMS}
+          - 桌面端支持签名自动更新
+          - Android 提供通用 APK 与 AAB
+          - iOS 在配置 Apple 签名后提供 IPA
+          EOF
+
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Release already exists: ${TAG_NAME}"
+          elif [[ "${PRERELEASE}" == "true" ]]; then
+            gh release create "${TAG_NAME}" \
+              --title "Fanqie Novel Downloader ${VERSION}" \
+              --notes-file release-notes.md \
+              --target "${GITHUB_SHA}" \
+              --draft \
+              --prerelease
+          else
+            gh release create "${TAG_NAME}" \
+              --title "Fanqie Novel Downloader ${VERSION}" \
+              --notes-file release-notes.md \
+              --target "${GITHUB_SHA}" \
+              --draft
+          fi
+
+  desktop:
+    needs: [prepare, verify, release-bootstrap]
+    if: needs.prepare.outputs.desktop_count != '0'
+    strategy:
+      fail-fast: false
+      # tauri-action 会逐步合并并上传 latest.json；串行可避免矩阵竞争覆盖。
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.prepare.outputs.desktop_matrix) }}
+    runs-on: ${{ matrix.os }}
+    name: Desktop ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Checkout private source for release notes
-        if: ${{ inputs.publish_release == true }}
+      - name: Checkout private Tauri source
         uses: actions/checkout@v4
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
           token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
           path: ${{ env.PRIVATE_SOURCE_PATH }}
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Generate release notes from private repo config
-        if: ${{ inputs.publish_release == true }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
+          key: ${{ matrix.target }}
+
+      - name: Install Tauri Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Create release build config
+        shell: python
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.updater_signing }}
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["PRIVATE_SOURCE_PATH"]) / "src-tauri" / "tauri.release.conf.json"
+          path.write_text(
+              json.dumps({
+                  "version": os.environ["APP_VERSION"],
+                  "bundle": {
+                      "createUpdaterArtifacts":
+                          os.environ["CREATE_UPDATER_ARTIFACTS"] == "true"
+                  },
+              }, ensure_ascii=False),
+              encoding="utf-8",
+          )
+
+      - name: Build, sign updater artifacts and upload
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
+          args: >-
+            --target ${{ matrix.target }}
+            --bundles ${{ matrix.bundles }}
+            --config src-tauri/tauri.release.conf.json
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-[bundle]
+          releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
+          tagName: ${{ inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
+          releaseName: Fanqie Novel Downloader ${{ needs.prepare.outputs.version }}
+          releaseBody: Rust + Tauri v2 全平台正式构建。
+          releaseDraft: true
+          prerelease: ${{ inputs.prerelease }}
+
+  android:
+    needs: [prepare, verify, release-bootstrap]
+    if: needs.prepare.outputs.android_enabled == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout private Tauri source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ needs.prepare.outputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            aarch64-linux-android,
+            armv7-linux-androideabi,
+            i686-linux-android,
+            x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
+          key: android-all-abis
+
+      - name: Install Android SDK, NDK and Tauri CLI
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+          cargo install tauri-cli --version "${TAURI_CLI_VERSION}" --locked
+
+      - name: Configure Android version and optional signing
+        id: signing
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          VERSION_CODE: ${{ github.run_number }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          FANQIE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          FANQIE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FANQIE_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          Path("src-tauri/tauri.android.release.conf.json").write_text(
+              json.dumps({"version": os.environ["APP_VERSION"]}, ensure_ascii=False),
+              encoding="utf-8",
+          )
+          PY
+          echo "FANQIE_ANDROID_VERSION_NAME=${APP_VERSION}" >> "${GITHUB_ENV}"
+          echo "FANQIE_ANDROID_VERSION_CODE=$((100000 + VERSION_CODE))" >> "${GITHUB_ENV}"
+          if [[ "${{ needs.prepare.outputs.android_signing }}" == "true" ]]; then
+            KEYSTORE_PATH="${RUNNER_TEMP}/fanqie-android-release.p12"
+            printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
+            chmod 600 "${KEYSTORE_PATH}"
+            echo "FANQIE_ANDROID_KEYSTORE=${KEYSTORE_PATH}" >> "${GITHUB_ENV}"
+            echo "FANQIE_ANDROID_KEY_ALIAS=${FANQIE_ANDROID_KEY_ALIAS}" >> "${GITHUB_ENV}"
+            echo "FANQIE_ANDROID_KEYSTORE_PASSWORD=${FANQIE_ANDROID_KEYSTORE_PASSWORD}" >> "${GITHUB_ENV}"
+            echo "FANQIE_ANDROID_KEY_PASSWORD=${FANQIE_ANDROID_KEY_PASSWORD}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Build universal APK and AAB
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.ANDROID_NDK_VERSION }}
+        run: >-
+          cargo tauri android build
+          --target aarch64 armv7 i686 x86_64
+          --apk
+          --aab
+          --ci
+          --config src-tauri/tauri.android.release.conf.json
+
+      - name: Collect and verify Android artifacts
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
         run: |
-          pip install pyyaml
-          cd ${{ env.PRIVATE_SOURCE_PATH }}
-          python3 .github/scripts/generate_release_notes.py \
-            --config .github/release-config.yml \
-            --template desktop_body_template \
-            --version "${{ needs.prepare.outputs.version }}" \
-            --build-time "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
-            --commit-sha "${{ needs.prepare.outputs.source_commit }}" \
-            --output ../release-notes.md
-          cat ../release-notes.md
+          mkdir -p dist/android
+          while IFS= read -r file; do
+            base="$(basename "$file")"
+            cp "$file" "dist/android/FanqieNovelDownloader-${FANQIE_ANDROID_VERSION_NAME}-${base}"
+          done < <(
+            find src-tauri/gen/android/app/build/outputs \
+              -type f \( -name '*.apk' -o -name '*.aab' \) | sort
+          )
+          test -n "$(find dist/android -type f -name '*.apk' -print -quit)"
+          test -n "$(find dist/android -type f -name '*.aab' -print -quit)"
+          if [[ "${{ needs.prepare.outputs.android_signing }}" == "true" ]]; then
+            APKSIGNER="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner"
+            while IFS= read -r apk; do
+              "${APKSIGNER}" verify --verbose --print-certs "$apk"
+            done < <(find dist/android -type f -name '*.apk' | sort)
+          fi
+          sha256sum dist/android/* > dist/android/SHA256SUMS-android.txt
 
-      - name: Create release shell
-        if: ${{ inputs.publish_release == true }}
+      - name: Upload Android workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FanqieNovelDownloader-tauri-android-all-abis
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/dist/android/*
+          if-no-files-found: error
+
+      - name: Upload Android release assets
+        if: inputs.publish_release == true
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
-          RELEASE_NAME: Fanqie Desktop ${{ needs.prepare.outputs.version }}
-        run: |
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Release already exists: $TAG_NAME"
-          else
-            gh release create "$TAG_NAME" \
-              --title "$RELEASE_NAME" \
-              --notes-file release-notes.md
-          fi
+        run: gh release upload "${TAG_NAME}" dist/android/* --clobber
 
-  summary:
-    needs: [prepare, release_bootstrap, build]
-    if: always()
+  ios:
+    needs: [prepare, verify, release-bootstrap]
+    if: needs.prepare.outputs.ios_enabled == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout private Tauri source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ needs.prepare.outputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
+          key: ios-arm64
+
+      - name: Install XcodeGen and Tauri CLI
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          cargo install tauri-cli --version "${TAURI_CLI_VERSION}" --locked
+
+      - name: Configure and validate iOS project
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          Path("src-tauri/tauri.ios.release.conf.json").write_text(
+              json.dumps({"version": os.environ["APP_VERSION"]}, ensure_ascii=False),
+              encoding="utf-8",
+          )
+          PY
+          plutil -lint src-tauri/gen/apple/fanqie-novel-downloader-tauri_iOS/Info.plist
+          /usr/libexec/PlistBuddy \
+            -c "Print :UIFileSharingEnabled" \
+            src-tauri/gen/apple/fanqie-novel-downloader-tauri_iOS/Info.plist
+          grep -q "fanqie_present_file_share_sheet" \
+            src-tauri/gen/apple/Sources/fanqie-novel-downloader-tauri/main.mm
+
+      - name: Build unsigned iOS IPA
+        if: needs.prepare.outputs.ios_signing != 'true'
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        run: >-
+          cargo tauri ios build
+          --target aarch64
+          --ci
+          --no-sign
+          --config src-tauri/tauri.ios.release.conf.json
+
+      - name: Build signed App Store IPA
+        if: needs.prepare.outputs.ios_signing == 'true'
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+        run: >-
+          cargo tauri ios build
+          --target aarch64
+          --ci
+          --export-method app-store-connect
+          --config src-tauri/tauri.ios.release.conf.json
+
+      - name: Collect iOS IPA
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        run: |
+          mkdir -p dist/ios
+          while IFS= read -r file; do
+            cp "$file" "dist/ios/FanqieNovelDownloader-${{ needs.prepare.outputs.version }}-$(basename "$file")"
+          done < <(find src-tauri/gen/apple -type f -name '*.ipa' | sort)
+          test -n "$(find dist/ios -type f -name '*.ipa' -print -quit)"
+          shasum -a 256 dist/ios/*.ipa > dist/ios/SHA256SUMS-ios.txt
+
+      - name: Upload iOS workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FanqieNovelDownloader-tauri-ios-arm64
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/dist/ios/*
+          if-no-files-found: error
+
+      - name: Upload iOS release assets
+        if: inputs.publish_release == true
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        run: gh release upload "${TAG_NAME}" dist/ios/* --clobber
+
+  finalize:
+    needs: [prepare, verify, release-bootstrap, desktop, android, ios]
+    if: >-
+      always() &&
+      inputs.publish_release == true &&
+      needs.prepare.result == 'success' &&
+      needs.verify.result == 'success' &&
+      needs.release-bootstrap.result == 'success' &&
+      (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') &&
+      (needs.android.result == 'success' || needs.android.result == 'skipped') &&
+      (needs.ios.result == 'success' || needs.ios.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
-      - name: Workflow summary
+      - name: Verify release metadata and publish draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          DESKTOP_COUNT: ${{ needs.prepare.outputs.desktop_count }}
+        run: |
+          mkdir -p release-check
+          gh release download "${TAG_NAME}" --dir release-check
+          find release-check -maxdepth 1 -type f -printf '%f\n' | sort
+
+          if [[ "${DESKTOP_COUNT}" != "0" ]]; then
+            test -s release-check/latest.json
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("release-check/latest.json").read_text(encoding="utf-8"))
+          platforms = payload.get("platforms") or {}
+          if not platforms:
+              raise SystemExit("latest.json does not contain updater platforms")
+          for name, item in platforms.items():
+              if not item.get("url") or not item.get("signature"):
+                  raise SystemExit(f"invalid updater entry: {name}")
+          print("Updater platforms:", ", ".join(sorted(platforms)))
+          PY
+          fi
+
+          (
+            cd release-check
+            find . -maxdepth 1 -type f \
+              ! -name 'SHA256SUMS-release.txt' \
+              -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS-release.txt
+          )
+          gh release upload "${TAG_NAME}" \
+            release-check/SHA256SUMS-release.txt \
+            --clobber
+          gh release edit "${TAG_NAME}" --draft=false
+
+      - name: Release summary
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          ## Build Summary
+          ## Tauri Release
 
-          - Private source repo: \`${{ env.PRIVATE_SOURCE_REPOSITORY }}\`
-          - Source ref: \`${{ needs.prepare.outputs.source_ref }}\`
-          - Source commit: \`${{ needs.prepare.outputs.source_commit }}\`
           - Version: \`${{ needs.prepare.outputs.version }}\`
           - Tag: \`${{ needs.prepare.outputs.tag_name }}\`
-          - Publish release: \`${{ inputs.publish_release }}\`
-          - Windows x64: \`${{ inputs.platform_windows_x64 }}\`
-          - Windows arm64: \`${{ inputs.platform_windows_arm64 }}\`
-          - Linux x64 (GTK 4.0): \`${{ inputs.platform_linux_x64 }}\`
-          - Linux x64 (GTK 4.1): \`${{ inputs.platform_linux_x64_gtk41 }}\`
-          - Linux arm64: \`${{ inputs.platform_linux_arm64 }}\`
-          - macOS arm64: \`${{ inputs.platform_macos_arm64 }}\`
-          - macOS Intel x64: \`${{ inputs.platform_macos_x64 }}\`
+          - Private source: \`${{ env.PRIVATE_SOURCE_REPOSITORY }}@${{ needs.prepare.outputs.source_commit }}\`
+          - Platforms: ${{ needs.prepare.outputs.selected_platforms }}
+          - Prerelease: \`${{ inputs.prerelease }}\`
+          - Updater metadata: \`${{ needs.prepare.outputs.desktop_count != '0' }}\`
           EOF
