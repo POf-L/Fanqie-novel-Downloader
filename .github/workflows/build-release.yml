@@ -490,17 +490,12 @@ jobs:
             "ndk;${ANDROID_NDK_VERSION}"
           cargo install tauri-cli --version "${TAURI_CLI_VERSION}" --locked
 
-      - name: Configure Android version and optional signing
-        id: signing
+      - name: Configure Android version
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           VERSION_CODE: ${{ github.run_number }}
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          FANQIE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          FANQIE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          FANQIE_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           python - <<'PY'
           import json
@@ -514,15 +509,25 @@ jobs:
           PY
           echo "FANQIE_ANDROID_VERSION_NAME=${APP_VERSION}" >> "${GITHUB_ENV}"
           echo "FANQIE_ANDROID_VERSION_CODE=$((100000 + VERSION_CODE))" >> "${GITHUB_ENV}"
-          if [[ "${{ needs.prepare.outputs.android_signing }}" == "true" ]]; then
-            KEYSTORE_PATH="${RUNNER_TEMP}/fanqie-android-release.p12"
-            printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
-            chmod 600 "${KEYSTORE_PATH}"
-            echo "FANQIE_ANDROID_KEYSTORE=${KEYSTORE_PATH}" >> "${GITHUB_ENV}"
-            echo "FANQIE_ANDROID_KEY_ALIAS=${FANQIE_ANDROID_KEY_ALIAS}" >> "${GITHUB_ENV}"
-            echo "FANQIE_ANDROID_KEYSTORE_PASSWORD=${FANQIE_ANDROID_KEYSTORE_PASSWORD}" >> "${GITHUB_ENV}"
-            echo "FANQIE_ANDROID_KEY_PASSWORD=${FANQIE_ANDROID_KEY_PASSWORD}" >> "${GITHUB_ENV}"
-          fi
+
+      - name: Ensure Android signing (official secrets or CI-internal keystore)
+        id: signing
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          FANQIE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          FANQIE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FANQIE_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x scripts/ci-ensure-android-signing.sh
+          ./scripts/ci-ensure-android-signing.sh
+
+      - name: Require official signing for published Android release
+        if: inputs.publish_release == true && steps.signing.outputs.mode != 'release-secret'
+        run: |
+          echo "Publishing Android requires ANDROID_KEYSTORE_BASE64 and related secrets."
+          exit 1
 
       - name: Build universal APK and AAB
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
@@ -536,10 +541,11 @@ jobs:
           --ci
           --config src-tauri/tauri.android.release.conf.json
 
-      - name: Collect and verify Android artifacts
+      - name: Collect and verify signed Android artifacts
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist/android
           while IFS= read -r file; do
             base="$(basename "$file")"
@@ -550,12 +556,16 @@ jobs:
           )
           test -n "$(find dist/android -type f -name '*.apk' -print -quit)"
           test -n "$(find dist/android -type f -name '*.aab' -print -quit)"
-          if [[ "${{ needs.prepare.outputs.android_signing }}" == "true" ]]; then
-            APKSIGNER="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner"
-            while IFS= read -r apk; do
-              "${APKSIGNER}" verify --verbose --print-certs "$apk"
-            done < <(find dist/android -type f -name '*.apk' | sort)
-          fi
+          APKSIGNER="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner"
+          while IFS= read -r apk; do
+            echo "Verifying signature: ${apk}"
+            "${APKSIGNER}" verify --verbose --print-certs "$apk"
+          done < <(find dist/android -type f -name '*.apk' | sort)
+          {
+            echo "signing_mode=${FANQIE_ANDROID_SIGNING_MODE}"
+            echo "verified_with=apksigner"
+            echo "installable=true"
+          } > dist/android/SIGNING.txt
           sha256sum dist/android/* > dist/android/SHA256SUMS-android.txt
 
       - name: Upload Android workflow artifact
