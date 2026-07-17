@@ -75,6 +75,12 @@ https://999554.xyz/register?aff=Xf2p
 
 也诚招赞助与推广合作。想要做推广的，也可以通过 Issues 留言、邮箱等方式联系我。
 
+## 仓库结构
+
+- **本仓库（公开）**：Releases、Issues 与 GitHub Actions 打包调度；**不包含**业务源码。
+- **私有核心源码**：[`POf-L/Fanqie-novel-Downloader-tauri`](https://github.com/POf-L/Fanqie-novel-Downloader-tauri)（Rust + Tauri v2）。
+- 历史 Go/Wails 私有仓 `Fanqie-novel-Downloader-actions` 已由 Tauri 版完全替代并下线。
+
 ## 说明
 
 请合理使用本工具，并遵守相关平台规则与当地法律法规。
