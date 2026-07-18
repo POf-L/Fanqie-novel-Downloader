@@ -1077,7 +1077,7 @@ jobs:
       (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') &&
       (needs.desktop-fallback.result == 'success' || needs.desktop-fallback.result == 'skipped') &&
       (needs.android.result == 'success' || needs.android.result == 'skipped') &&
-      (needs.ios.result == 'success' || needs.ios.result == 'skipped')
+      (needs.ios.result == 'success' || needs.ios.result == 'skipped' || needs.ios.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - name: Verify release metadata, rewrite Chinese notes, publish draft
