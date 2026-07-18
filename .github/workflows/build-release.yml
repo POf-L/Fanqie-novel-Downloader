@@ -82,7 +82,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       desktop_matrix: ${{ steps.platforms.outputs.desktop_matrix }}
+      desktop_fallback_matrix: ${{ steps.platforms.outputs.desktop_fallback_matrix }}
       desktop_count: ${{ steps.platforms.outputs.desktop_count }}
+      desktop_fallback_count: ${{ steps.platforms.outputs.desktop_fallback_count }}
       android_enabled: ${{ steps.platforms.outputs.android_enabled }}
       ios_enabled: ${{ steps.platforms.outputs.ios_enabled }}
       selected_platforms: ${{ steps.platforms.outputs.selected_platforms }}
@@ -133,45 +135,78 @@ jobs:
                   "1", "true", "yes", "on"
               }
 
+          # allow_fallback: scarce runners may OOM / queue-fail; a second job
+          # cross-compiles on a more available runner when release assets are missing.
           candidates = [
               ("WINDOWS_X64", {
                   "os": "windows-latest",
                   "platform": "windows-x64",
                   "target": "x86_64-pc-windows-msvc",
                   "bundles": "nsis",
+                  "allow_fallback": False,
+                  "asset_substr": "windows-x64",
               }),
               ("WINDOWS_ARM64", {
                   "os": "windows-11-arm",
                   "platform": "windows-arm64",
                   "target": "aarch64-pc-windows-msvc",
                   "bundles": "nsis",
+                  "allow_fallback": True,
+                  "fallback_os": "windows-latest",
+                  "fallback_bundles": "nsis",
+                  "asset_substr": "windows-arm64",
               }),
               ("LINUX_X64", {
                   "os": "ubuntu-22.04",
                   "platform": "linux-x64",
                   "target": "x86_64-unknown-linux-gnu",
                   "bundles": "deb,appimage",
+                  "allow_fallback": False,
+                  "asset_substr": "linux-amd64",
               }),
               ("LINUX_ARM64", {
                   "os": "ubuntu-24.04-arm",
                   "platform": "linux-arm64",
                   "target": "aarch64-unknown-linux-gnu",
                   "bundles": "deb,appimage",
+                  # Cross AppImage is impractical; fallback only builds .deb.
+                  "allow_fallback": True,
+                  "fallback_os": "ubuntu-22.04",
+                  "fallback_bundles": "deb",
+                  "asset_substr": "linux-arm64",
               }),
               ("MACOS_X64", {
                   "os": "macos-15-intel",
                   "platform": "macos-x64",
                   "target": "x86_64-apple-darwin",
                   "bundles": "app,dmg",
+                  "allow_fallback": True,
+                  "fallback_os": "macos-latest",
+                  "fallback_bundles": "app,dmg",
+                  "asset_substr": "darwin-x64",
               }),
               ("MACOS_ARM64", {
                   "os": "macos-latest",
                   "platform": "macos-arm64",
                   "target": "aarch64-apple-darwin",
                   "bundles": "app,dmg",
+                  "allow_fallback": False,
+                  "asset_substr": "darwin-aarch64",
               }),
           ]
           desktop = [entry for name, entry in candidates if enabled(name)]
+          fallback = [
+              {
+                  "os": entry["fallback_os"],
+                  "platform": entry["platform"],
+                  "target": entry["target"],
+                  "bundles": entry["fallback_bundles"],
+                  "asset_substr": entry["asset_substr"],
+                  "native_os": entry["os"],
+              }
+              for entry in desktop
+              if entry.get("allow_fallback")
+          ]
           android = enabled("ANDROID")
           ios = enabled("IOS")
           selected = [entry["platform"] for entry in desktop]
@@ -186,7 +221,11 @@ jobs:
               "desktop_matrix": json.dumps(
                   {"include": desktop}, separators=(",", ":")
               ),
+              "desktop_fallback_matrix": json.dumps(
+                  {"include": fallback}, separators=(",", ":")
+              ),
               "desktop_count": str(len(desktop)),
+              "desktop_fallback_count": str(len(fallback)),
               "android_enabled": str(android).lower(),
               "ios_enabled": str(ios).lower(),
               "selected_platforms": ", ".join(selected),
@@ -449,6 +488,9 @@ jobs:
       max-parallel: 1
       matrix: ${{ fromJSON(needs.prepare.outputs.desktop_matrix) }}
     runs-on: ${{ matrix.os }}
+    # Scarce ARM/Intel runners may fail; continue so desktop-fallback can cross-build.
+    continue-on-error: ${{ matrix.allow_fallback == true }}
+    timeout-minutes: 90
     name: Desktop ${{ matrix.platform }}
     steps:
       - name: Checkout private Tauri source
@@ -520,6 +562,140 @@ jobs:
           tagName: ${{ inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
           releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
           releaseBody: Rust + Tauri v2 全平台正式构建。
+          releaseDraft: true
+          prerelease: ${{ inputs.prerelease }}
+
+  # When scarce native runners fail (resource pressure / OOM / unavailable),
+  # cross-compile the same targets on more available x64/arm64 runners.
+  desktop-fallback:
+    needs: [prepare, verify, release-bootstrap, desktop]
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.verify.result == 'success' &&
+      needs.release-bootstrap.result == 'success' &&
+      needs.prepare.outputs.desktop_fallback_count != '0' &&
+      needs.desktop.result != 'cancelled'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.prepare.outputs.desktop_fallback_matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    name: Desktop fallback ${{ matrix.platform }} (cross on ${{ matrix.os }})
+    steps:
+      - name: Check whether native build already uploaded assets
+        id: need
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          ASSET_SUBSTR: ${{ matrix.asset_substr }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+        run: |
+          set -euo pipefail
+          if [[ "${PUBLISH_RELEASE}" != "true" ]]; then
+            # Without a release, always attempt fallback if this job ran
+            # (native may have failed without artifacts).
+            echo "run=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "run=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          assets="$(gh release view "${TAG_NAME}" --json assets -q '.assets[].name' || true)"
+          if printf '%s\n' "${assets}" | grep -F "${ASSET_SUBSTR}" >/dev/null 2>&1; then
+            echo "Native (or prior) assets already present for ${ASSET_SUBSTR}; skip cross fallback."
+            echo "run=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Missing release assets matching ${ASSET_SUBSTR}; starting cross fallback."
+            echo "run=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Checkout private Tauri source
+        if: steps.need.outputs.run == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ needs.prepare.outputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
+
+      - name: Install Rust toolchain (cross target)
+        if: steps.need.outputs.run == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.need.outputs.run == 'true'
+        with:
+          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
+          key: fallback-${{ matrix.target }}
+
+      - name: Install Linux host deps and ARM64 cross linker
+        if: steps.need.outputs.run == 'true' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "${GITHUB_ENV}"
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> "${GITHUB_ENV}"
+          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> "${GITHUB_ENV}"
+          # WebKit pkg-config is host-only; deb packaging still needs host tools.
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> "${GITHUB_ENV}"
+
+      - name: Create release build config
+        if: steps.need.outputs.run == 'true'
+        shell: python
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.updater_signing }}
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["PRIVATE_SOURCE_PATH"]) / "src-tauri" / "tauri.release.conf.json"
+          path.write_text(
+              json.dumps({
+                  "version": os.environ["APP_VERSION"],
+                  "bundle": {
+                      "createUpdaterArtifacts":
+                          os.environ["CREATE_UPDATER_ARTIFACTS"] == "true"
+                  },
+              }, ensure_ascii=False),
+              encoding="utf-8",
+          )
+
+      - name: Cross-build, sign updater artifacts and upload
+        if: steps.need.outputs.run == 'true'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
+          args: >-
+            --target ${{ matrix.target }}
+            --bundles ${{ matrix.bundles }}
+            --config src-tauri/tauri.release.conf.json
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-fallback-[bundle]
+          releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
+          tagName: ${{ inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
+          releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
+          releaseBody: Rust + Tauri v2 全平台正式构建（含稀缺 runner 交叉回退）。
           releaseDraft: true
           prerelease: ${{ inputs.prerelease }}
 
@@ -784,7 +960,7 @@ jobs:
         run: gh release upload "${TAG_NAME}" dist/ios/* --clobber
 
   finalize:
-    needs: [prepare, verify, release-bootstrap, desktop, android, ios]
+    needs: [prepare, verify, release-bootstrap, desktop, desktop-fallback, android, ios]
     if: >-
       always() &&
       inputs.publish_release == true &&
@@ -792,6 +968,7 @@ jobs:
       needs.verify.result == 'success' &&
       needs.release-bootstrap.result == 'success' &&
       (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') &&
+      (needs.desktop-fallback.result == 'success' || needs.desktop-fallback.result == 'skipped') &&
       (needs.android.result == 'success' || needs.android.result == 'skipped') &&
       (needs.ios.result == 'success' || needs.ios.result == 'skipped')
     runs-on: ubuntu-latest
@@ -847,4 +1024,7 @@ jobs:
           - Platforms: ${{ needs.prepare.outputs.selected_platforms }}
           - Prerelease: \`${{ inputs.prerelease }}\`
           - Updater metadata: \`${{ needs.prepare.outputs.desktop_count != '0' }}\`
+          - Desktop fallback jobs: \`${{ needs.prepare.outputs.desktop_fallback_count }}\`
+          - Desktop native result: \`${{ needs.desktop.result }}\`
+          - Desktop fallback result: \`${{ needs.desktop-fallback.result }}\`
           EOF
