@@ -342,31 +342,99 @@ jobs:
           PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          cat > release-notes.md <<EOF
-          ## Fanqie Novel Downloader ${VERSION}
+          cat > release-notes.md <<'EOF'
+          ## 📖 番茄小说下载器
 
-          基于 Rust + Tauri v2 的全平台版本。
+          基于 Rust + Tauri v2 的全平台小说下载器，支持 Windows、Linux、macOS、Android、iOS。
 
-          - 私有源码引用：\`${SOURCE_REF}\`
-          - 私有源码提交：\`${SOURCE_COMMIT}\`
-          - 构建平台：${PLATFORMS}
-          - 桌面端支持签名自动更新
-          - Android 提供通用 APK 与 AAB
-          - iOS 在配置 Apple 签名后提供 IPA
+          > 🔄 老版本用户可直接在软件内"一键更新"，无需手动下载。
+
+          ---
+
+          ### 🪟 Windows
+
+          | 文件 | 说明 |
+          | --- | --- |
+          | `*-windows-x64-setup.exe` | **64位（常用）** — Intel / AMD 处理器 |
+          | `*-windows-arm64-setup.exe` | ARM64 — Surface / 骁龙笔记本等 |
+
+          ### 🍎 macOS
+
+          | 文件 | 说明 |
+          | --- | --- |
+          | `*-darwin-aarch64.dmg` | **Apple M 芯片（M1/M2/M3/M4）** |
+          | `*-darwin-x64.dmg` | Intel 芯片 |
+
+          ### 🐧 Linux
+
+          | 文件 | 说明 |
+          | --- | --- |
+          | `*-linux-amd64.deb` | **DEB 包（Debian/Ubuntu 等）** — 64位 |
+          | `*-linux-arm64.deb` | DEB 包 — ARM64 |
+          | `*-linux-amd64.AppImage` | AppImage（免安装、体积较大） |
+          | `*-linux-arm64.AppImage` | AppImage — ARM64 |
+
+          > 💡 **Linux 用户推荐下载 DEB 包**（仅 7 MB），AppImage 因内置运行库体积达 80 MB。
+
+          ### 🤖 Android
+
+          | 文件 | 说明 |
+          | --- | --- |
+          | `*-universal-release.apk` | **通用版** — 兼容所有设备（66 MB） |
+          | `*-arm64-v8a-release.apk` | **64位（推荐）** — 现代手机（~15 MB） |
+          | `*-armeabi-v7a-release.apk` | 32位 — 老旧手机 |
+          | `*-x86_64-release.apk` | 模拟器 / Intel 平板 |
+          | `*-universal-release.aab` | AAB 格式（用于应用商店上架） |
+
+          > 💡 **手机用户推荐下载 `arm64-v8a` 版本**，体积仅约 15 MB，覆盖 99% 的设备。
+
+          ### 📱 iOS
+
+          需要配置 Apple 签名证书后才会生成 IPA。如未提供，请等待后续版本。
+
+          ---
+
+          ### ❓ 常见问题
+
+          - **Windows 安装报"无法验证发行商"**：右键 → 属性 → 勾选"解除锁定"后重新运行。
+          - **Linux DEB 安装失败**：请先安装 `libwebkit2gtk-4.1`。
+          - **Android 安装被拦截**：在系统设置中允许"安装未知来源应用"。
+          - **更新检查失败**：请确保网络正常，或手动下载新版安装包覆盖安装。
+
+          ### 🔗 相关链接
+
+          - [问题反馈](https://github.com/POf-L/Fanqie-novel-Downloader/issues)
+          - [项目说明](https://github.com/POf-L/Fanqie-novel-Downloader)
+
           EOF
+
+          # Append build metadata
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "<details>"
+            echo "<summary>📦 构建信息</summary>"
+            echo ""
+            echo "- 版本：\`${VERSION}\`"
+            echo "- 源码引用：\`${SOURCE_REF}\`"
+            echo "- 源码提交：\`${SOURCE_COMMIT}\`"
+            echo "- 构建平台：${PLATFORMS}"
+            echo "</details>"
+          } >> release-notes.md
 
           if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
             echo "Release already exists: ${TAG_NAME}"
           elif [[ "${PRERELEASE}" == "true" ]]; then
             gh release create "${TAG_NAME}" \
-              --title "Fanqie Novel Downloader ${VERSION}" \
+              --title "番茄小说下载器 ${VERSION}" \
               --notes-file release-notes.md \
               --target "${GITHUB_SHA}" \
               --draft \
               --prerelease
           else
             gh release create "${TAG_NAME}" \
-              --title "Fanqie Novel Downloader ${VERSION}" \
+              --title "番茄小说下载器 ${VERSION}" \
               --notes-file release-notes.md \
               --target "${GITHUB_SHA}" \
               --draft
@@ -450,7 +518,7 @@ jobs:
           workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-[bundle]
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
           tagName: ${{ inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
-          releaseName: Fanqie Novel Downloader ${{ needs.prepare.outputs.version }}
+          releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
           releaseBody: Rust + Tauri v2 全平台正式构建。
           releaseDraft: true
           prerelease: ${{ inputs.prerelease }}
@@ -538,17 +606,31 @@ jobs:
           echo "Publishing Android requires ANDROID_KEYSTORE_BASE64 and related secrets."
           exit 1
 
-      - name: Build universal APK and AAB
+      - name: Build per-arch APKs, universal APK and AAB
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.ANDROID_NDK_VERSION }}
-        run: >-
-          cargo tauri android build
-          --target aarch64 armv7 i686 x86_64
-          --apk
-          --aab
-          --ci
-          --config src-tauri/tauri.android.release.conf.json
+        run: |
+          set -euo pipefail
+          # Build per-architecture split APKs (much smaller for users)
+          for arch in aarch64 armv7 x86_64; do
+            echo "::group::Building ${arch} APK"
+            cargo tauri android build \
+              --target "${arch}" \
+              --apk \
+              --ci \
+              --config src-tauri/tauri.android.release.conf.json
+            echo "::endgroup::"
+          done
+          # Build universal APK + AAB (for app stores and compatibility)
+          echo "::group::Building universal APK + AAB"
+          cargo tauri android build \
+            --target aarch64 armv7 i686 x86_64 \
+            --apk \
+            --aab \
+            --ci \
+            --config src-tauri/tauri.android.release.conf.json
+          echo "::endgroup::"
 
       - name: Collect and verify signed Android artifacts
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
@@ -561,10 +643,11 @@ jobs:
             cp "$file" "dist/android/FanqieNovelDownloader-${FANQIE_ANDROID_VERSION_NAME}-${base}"
           done < <(
             find src-tauri/gen/android/app/build/outputs \
-              -type f \( -name '*.apk' -o -name '*.aab' \) | sort
+              -type f \( -name '*.apk' -o -name '*.aab' \) -not -name '*-unsigned*' | sort
           )
+          echo "=== Collected Android artifacts ==="
+          find dist/android -type f -printf '%f  %s bytes\n' | sort
           test -n "$(find dist/android -type f -name '*.apk' -print -quit)"
-          test -n "$(find dist/android -type f -name '*.aab' -print -quit)"
           APKSIGNER="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner"
           while IFS= read -r apk; do
             echo "Verifying signature: ${apk}"
