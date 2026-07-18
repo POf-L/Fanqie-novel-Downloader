@@ -56,7 +56,7 @@ on:
         default: true
         type: boolean
       platform_ios:
-        description: "iOS ARM64 IPA（发布时必须配置 Apple 签名）"
+        description: "iOS（当前不支持，请勿勾选）"
         required: false
         default: false
         type: boolean
@@ -1010,9 +1010,12 @@ jobs:
           lines = [
               f"## {version}{badge}",
               "",
-              "基于 **Rust + Tauri v2** 的全平台番茄小说下载器。",
+              "基于 **Rust + Tauri v2** 的番茄小说下载器。",
               "",
               "> 🔄 已安装旧版的用户，可直接在软件内使用「一键更新」。",
+              ">",
+              "> 📱 **当前支持**：Windows / Linux / macOS / Android。",
+              "> **iOS 暂不支持**，请勿期待本仓库提供 IPA。",
               "",
               "## 下载地址",
               "",
@@ -1066,11 +1069,9 @@ jobs:
               "",
               "### 📱 iOS",
               "",
+              "**当前不支持。** 本项目暂时不提供 iOS / IPA 下载。",
+              "",
           ]
-          if ios_ipa:
-              lines.append(f"- {links(ios_ipa, {'ipa': 'IPA（需有效签名）'})}")
-          else:
-              lines.append("_本版本未提供 IPA（需配置 Apple 签名后才会生成）。_")
 
           lines += [
               "",
@@ -1081,6 +1082,7 @@ jobs:
               "- **Windows 提示无法验证发行商**：安装包右键 → 属性 → 勾选「解除锁定」后再运行。",
               "- **Linux DEB 打不开**：先安装 `libwebkit2gtk-4.1`（Ubuntu/Debian）。",
               "- **Android 安装被拦截**：系统设置中允许「安装未知来源应用」。",
+              "- **有没有 iOS 版**：没有，**当前不支持 iOS**。",
               "- **软件内更新失败**：可手动下载本页对应平台安装包覆盖安装。",
               "",
               "### 💎 支持与推广",
