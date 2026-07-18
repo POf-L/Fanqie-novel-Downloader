@@ -381,86 +381,15 @@ jobs:
           PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          cat > release-notes.md <<'EOF'
-          ## 📖 番茄小说下载器
+          # Draft body is temporary; finalize rewrites it with real download links.
+          cat > release-notes.md <<EOF
+          ## ${VERSION}
 
-          基于 Rust + Tauri v2 的全平台小说下载器，支持 Windows、Linux、macOS、Android、iOS。
+          构建中，完成后会自动生成 Clash 风格的中文下载指引……
 
-          > 🔄 老版本用户可直接在软件内"一键更新"，无需手动下载。
-
-          ---
-
-          ### 🪟 Windows
-
-          | 文件 | 说明 |
-          | --- | --- |
-          | `*-windows-x64-setup.exe` | **64位（常用）** — Intel / AMD 处理器 |
-          | `*-windows-arm64-setup.exe` | ARM64 — Surface / 骁龙笔记本等 |
-
-          ### 🍎 macOS
-
-          | 文件 | 说明 |
-          | --- | --- |
-          | `*-darwin-aarch64.dmg` | **Apple M 芯片（M1/M2/M3/M4）** |
-          | `*-darwin-x64.dmg` | Intel 芯片 |
-
-          ### 🐧 Linux
-
-          | 文件 | 说明 |
-          | --- | --- |
-          | `*-linux-amd64.deb` | **DEB 包（Debian/Ubuntu 等）** — 64位 |
-          | `*-linux-arm64.deb` | DEB 包 — ARM64 |
-          | `*-linux-amd64.AppImage` | AppImage（免安装、体积较大） |
-          | `*-linux-arm64.AppImage` | AppImage — ARM64 |
-
-          > 💡 **Linux 用户推荐下载 DEB 包**（仅 7 MB），AppImage 因内置运行库体积达 80 MB。
-
-          ### 🤖 Android
-
-          | 文件 | 说明 |
-          | --- | --- |
-          | `*-universal-release.apk` | **通用版** — 兼容所有设备（66 MB） |
-          | `*-arm64-v8a-release.apk` | **64位（推荐）** — 现代手机（~15 MB） |
-          | `*-armeabi-v7a-release.apk` | 32位 — 老旧手机 |
-          | `*-x86_64-release.apk` | 模拟器 / Intel 平板 |
-          | `*-universal-release.aab` | AAB 格式（用于应用商店上架） |
-
-          > 💡 **手机用户推荐下载 `arm64-v8a` 版本**，体积仅约 15 MB，覆盖 99% 的设备。
-
-          ### 📱 iOS
-
-          需要配置 Apple 签名证书后才会生成 IPA。如未提供，请等待后续版本。
-
-          ---
-
-          ### ❓ 常见问题
-
-          - **Windows 安装报"无法验证发行商"**：右键 → 属性 → 勾选"解除锁定"后重新运行。
-          - **Linux DEB 安装失败**：请先安装 `libwebkit2gtk-4.1`。
-          - **Android 安装被拦截**：在系统设置中允许"安装未知来源应用"。
-          - **更新检查失败**：请确保网络正常，或手动下载新版安装包覆盖安装。
-
-          ### 🔗 相关链接
-
-          - [问题反馈](https://github.com/POf-L/Fanqie-novel-Downloader/issues)
-          - [项目说明](https://github.com/POf-L/Fanqie-novel-Downloader)
-
+          - 源码：\`${SOURCE_REF}\` @ \`${SOURCE_COMMIT}\`
+          - 平台：${PLATFORMS}
           EOF
-
-          # Append build metadata
-          {
-            echo ""
-            echo "---"
-            echo ""
-            echo "<details>"
-            echo "<summary>📦 构建信息</summary>"
-            echo ""
-            echo "- 版本：\`${VERSION}\`"
-            echo "- 源码引用：\`${SOURCE_REF}\`"
-            echo "- 源码提交：\`${SOURCE_COMMIT}\`"
-            echo "- 构建平台：${PLATFORMS}"
-            echo "</details>"
-          } >> release-notes.md
 
           if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
             echo "Release already exists: ${TAG_NAME}"
@@ -973,14 +902,20 @@ jobs:
       (needs.ios.result == 'success' || needs.ios.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
-      - name: Verify release metadata and publish draft
+      - name: Verify release metadata, rewrite Chinese notes, publish draft
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+          PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
           DESKTOP_COUNT: ${{ needs.prepare.outputs.desktop_count }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
+          set -euo pipefail
           mkdir -p release-check
           gh release download "${TAG_NAME}" --dir release-check
           find release-check -maxdepth 1 -type f -printf '%f\n' | sort
@@ -1011,7 +946,179 @@ jobs:
           gh release upload "${TAG_NAME}" \
             release-check/SHA256SUMS-release.txt \
             --clobber
-          gh release edit "${TAG_NAME}" --draft=false
+
+          # Clash Verge style Chinese release notes with real download links.
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          tag = os.environ["TAG_NAME"]
+          version = os.environ["VERSION"]
+          repo = os.environ["GH_REPO"]
+          base = f"https://github.com/{repo}/releases/download/{tag}"
+          assets = sorted(
+              p.name
+              for p in Path("release-check").iterdir()
+              if p.is_file()
+              and not p.name.endswith(".sig")
+              and p.name not in {"latest.json", "SHA256SUMS-release.txt", "SHA256SUMS-android.txt", "SHA256SUMS-ios.txt", "SIGNING.txt"}
+          )
+
+          def pick(*needles: str) -> list[str]:
+              out = []
+              for name in assets:
+                  low = name.lower()
+                  if all(n.lower() in low for n in needles):
+                      out.append(name)
+              return out
+
+          def link(name: str, label: str) -> str:
+              return f"[{label}]({base}/{name})"
+
+          def links(items: list[str], labels: dict[str, str] | None = None) -> str:
+              if not items:
+                  return "_本版本未提供_"
+              parts = []
+              for name in items:
+                  label = name
+                  if labels:
+                      for key, value in labels.items():
+                          if key in name.lower():
+                              label = value
+                              break
+                  parts.append(link(name, label))
+              return " | ".join(parts)
+
+          win_x64 = pick("windows-x64", ".exe")
+          win_arm = pick("windows-arm64", ".exe")
+          mac_arm = [n for n in pick("darwin-aarch64") if n.endswith(".dmg")]
+          mac_x64 = [n for n in pick("darwin-x64") if n.endswith(".dmg")]
+          linux_deb_x64 = pick("linux-amd64", ".deb")
+          linux_deb_arm = pick("linux-arm64", ".deb")
+          linux_app_x64 = pick("linux-amd64", ".appimage")
+          linux_app_arm = pick("linux-arm64", ".appimage")
+          android_arm64 = [n for n in assets if "arm64-v8a" in n.lower() and n.endswith(".apk")]
+          android_v7 = [n for n in assets if "armeabi-v7a" in n.lower() and n.endswith(".apk")]
+          android_x86 = [n for n in assets if "x86_64" in n.lower() and n.endswith(".apk")]
+          android_uni = [n for n in assets if "universal" in n.lower() and n.endswith(".apk")]
+          android_aab = [n for n in assets if n.endswith(".aab")]
+          ios_ipa = [n for n in assets if n.endswith(".ipa")]
+
+          pre = os.environ.get("PRERELEASE", "false").lower() == "true"
+          badge = "（测试预发布，不会触发稳定版自动更新）" if pre else ""
+
+          lines = [
+              f"## {version}{badge}",
+              "",
+              "基于 **Rust + Tauri v2** 的全平台番茄小说下载器。",
+              "",
+              "> 🔄 已安装旧版的用户，可直接在软件内使用「一键更新」。",
+              "",
+              "## 下载地址",
+              "",
+              "### 🪟 Windows",
+              "",
+              "#### 安装包（推荐）",
+              "",
+              f"- {links(win_x64, {'x64': '64位（常用）', 'arm64': 'ARM64（不常用）'})}",
+          ]
+          if win_arm:
+              # If win_x64 line didn't include arm (different files), add arm line
+              if not any("arm64" in x.lower() for x in win_x64):
+                  lines.append(f"- {links(win_arm, {'arm64': 'ARM64（Surface / 骁龙本）'})}")
+          lines += [
+              "",
+              "### 🍎 macOS",
+              "",
+              f"- {links(mac_arm, {'aarch64': 'Apple M 芯片（推荐）', 'arm64': 'Apple M 芯片（推荐）'})}",
+              f"- {links(mac_x64, {'x64': 'Intel 芯片'})}",
+              "",
+              "### 🐧 Linux",
+              "",
+              "#### DEB 包（推荐，体积小，Debian / Ubuntu 等）",
+              "",
+              f"- {links(linux_deb_x64, {'amd64': '64位', 'arm64': 'ARM64'})}",
+          ]
+          if linux_deb_arm and not any("arm64" in x.lower() for x in linux_deb_x64):
+              lines.append(f"- {links(linux_deb_arm, {'arm64': 'ARM64'})}")
+          lines += [
+              "",
+              "#### AppImage（免安装，体积较大约 80MB）",
+              "",
+              f"- {links(linux_app_x64, {'amd64': '64位', 'arm64': 'ARM64'})}",
+          ]
+          if linux_app_arm and not any("arm64" in x.lower() for x in linux_app_x64):
+              lines.append(f"- {links(linux_app_arm, {'arm64': 'ARM64'})}")
+          lines += [
+              "",
+              "### 🤖 Android",
+              "",
+              "#### 手机安装包（推荐 arm64，体积约 15MB）",
+              "",
+              f"- {links(android_arm64, {'arm64-v8a': '64位 arm64-v8a（现代手机，推荐）'})}",
+              f"- {links(android_v7, {'armeabi-v7a': '32位 armeabi-v7a（老旧手机）'})}",
+              f"- {links(android_uni, {'universal': '通用版 universal（兼容所有设备，约 66MB）'})}",
+              f"- {links(android_x86, {'x86_64': 'x86_64（模拟器 / 部分平板）'})}",
+              "",
+              "#### 应用商店包",
+              "",
+              f"- {links(android_aab, {'aab': 'AAB（上架用）'})}",
+              "",
+              "### 📱 iOS",
+              "",
+          ]
+          if ios_ipa:
+              lines.append(f"- {links(ios_ipa, {'ipa': 'IPA（需有效签名）'})}")
+          else:
+              lines.append("_本版本未提供 IPA（需配置 Apple 签名后才会生成）。_")
+
+          lines += [
+              "",
+              "---",
+              "",
+              "### ❓ 常见问题",
+              "",
+              "- **Windows 提示无法验证发行商**：安装包右键 → 属性 → 勾选「解除锁定」后再运行。",
+              "- **Linux DEB 打不开**：先安装 `libwebkit2gtk-4.1`（Ubuntu/Debian）。",
+              "- **Android 安装被拦截**：系统设置中允许「安装未知来源应用」。",
+              "- **软件内更新失败**：可手动下载本页对应平台安装包覆盖安装。",
+              "",
+              "### 💎 支持与推广",
+              "",
+              "如果这个项目对你有帮助，也欢迎支持一下合作服务：",
+              "",
+              "> 走邀请码注册即送 **1 美元**，不走邀请链接是没有的。麻烦各位体验一下了。",
+              "",
+              f"- [注册链接（含邀请码）](https://999554.xyz/register?aff=Xf2p)",
+              "",
+              "也诚招赞助与推广合作，可通过 [Issues](https://github.com/POf-L/Fanqie-novel-Downloader/issues) 留言联系。",
+              "",
+              "### 🔗 相关链接",
+              "",
+              "- [问题反馈](https://github.com/POf-L/Fanqie-novel-Downloader/issues)",
+              "- [项目说明](https://github.com/POf-L/Fanqie-novel-Downloader)",
+              "",
+              "<details>",
+              "<summary>📦 构建信息</summary>",
+              "",
+              f"- 版本：`{version}`",
+              f"- Tag：`{tag}`",
+              f"- 源码引用：`{os.environ.get('SOURCE_REF', '')}`",
+              f"- 源码提交：`{os.environ.get('SOURCE_COMMIT', '')}`",
+              f"- 构建平台：{os.environ.get('PLATFORMS', '')}",
+              f"- 资源数量：{len(assets)}",
+              "",
+              "</details>",
+              "",
+          ]
+
+          Path("release-notes-final.md").write_text("\n".join(lines), encoding="utf-8")
+          print("Generated release notes with", len(assets), "assets")
+          PY
+
+          gh release edit "${TAG_NAME}" \
+            --notes-file release-notes-final.md \
+            --draft=false
 
       - name: Release summary
         run: |
