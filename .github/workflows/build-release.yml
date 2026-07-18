@@ -1245,16 +1245,34 @@ jobs:
               "",
               "### 🤖 Android",
               "",
-              "#### 手机安装包（推荐 arm64，体积约 15MB）",
+              "#### 手机安装包",
               "",
-              f"- {links(android_arm64, {'arm64-v8a': '64位 arm64-v8a（现代手机，推荐）'})}",
-              f"- {links(android_v7, {'armeabi-v7a': '32位 armeabi-v7a（老旧手机）'})}",
-              f"- {links(android_uni, {'universal': '通用版 universal（兼容所有设备，约 66MB）'})}",
-              f"- {links(android_x86, {'x86_64': 'x86_64（模拟器 / 部分平板）'})}",
+          ]
+          any_apk = android_arm64 or android_v7 or android_uni or android_x86
+          if android_arm64:
+              lines.append(f"- {links(android_arm64, {'arm64-v8a': '64位 arm64-v8a（现代手机，推荐）'})}")
+          if android_v7:
+              lines.append(f"- {links(android_v7, {'armeabi-v7a': '32位 armeabi-v7a（老旧手机）'})}")
+          if android_uni:
+              uni_label = '通用版 universal（兼容所有设备）'
+              # 如果只有 universal，标注体积约 66MB
+              if not android_arm64 and not android_v7 and not android_x86:
+                  uni_label = '通用版 universal（兼容所有设备，约 66MB）'
+              lines.append(f"- {links(android_uni, {'universal': uni_label})}")
+          if android_x86:
+              lines.append(f"- {links(android_x86, {'x86_64': 'x86_64（模拟器 / 部分平板）'})}")
+          if not any_apk:
+              lines.append("- _本版本未提供_")
+          lines += [
               "",
               "#### 应用商店包",
               "",
-              f"- {links(android_aab, {'aab': 'AAB（上架用）'})}",
+          ]
+          if android_aab:
+              lines.append(f"- {links(android_aab, {'aab': 'AAB（上架用）'})}")
+          else:
+              lines.append("- _本版本未提供_")
+          lines += [
               "",
               "### 📱 iOS",
               "",

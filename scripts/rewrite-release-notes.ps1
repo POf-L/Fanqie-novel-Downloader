@@ -184,7 +184,13 @@ function Build-Notes {
   $apkLines = @()
   if ($apkArm64.Count -gt 0) { $apkLines += '- ' + (Make-Link $base $apkArm64[0] '64位 arm64-v8a（现代手机，推荐）') }
   if ($apkV7.Count -gt 0) { $apkLines += '- ' + (Make-Link $base $apkV7[0] '32位 armeabi-v7a（老旧手机）') }
-  if ($apkUni.Count -gt 0) { $apkLines += '- ' + (Make-Link $base $apkUni[0] '通用版 universal（兼容所有设备）') }
+  if ($apkUni.Count -gt 0) {
+    $uniLabel = '通用版 universal（兼容所有设备）'
+    if ($apkArm64.Count -eq 0 -and $apkV7.Count -eq 0 -and $apkX86.Count -eq 0) {
+      $uniLabel = '通用版 universal（兼容所有设备，约 66MB）'
+    }
+    $apkLines += '- ' + (Make-Link $base $apkUni[0] $uniLabel)
+  }
   if ($apkX86.Count -gt 0) { $apkLines += '- ' + (Make-Link $base $apkX86[0] 'x86_64（模拟器 / 部分平板）') }
   if ($apkLines.Count -eq 0) { $apkLines += '- _本版本未提供_' }
   foreach ($l in $apkLines) { $lines.Add($l) | Out-Null }
