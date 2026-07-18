@@ -21,7 +21,7 @@
 - 桌面客户端签名自动更新
 - 支持 Windows、Linux、macOS、Android
 - Android 可导出并通过系统应用打开 TXT / EPUB
-- **iOS 暂不支持**
+- iOS 提供 **无签名 IPA**，需自行侧载安装（不上架 App Store）
 
 ## 下载使用
 
@@ -37,11 +37,13 @@ https://github.com/POf-L/Fanqie-novel-Downloader/releases
 - Linux x64 / ARM64：DEB 与 AppImage（需要 WebKitGTK 4.1）
 - macOS Intel / Apple Silicon：APP 与 DMG
 - Android：通用 APK / 分架构 APK，以及 AAB
-- iOS：**当前不支持**，不提供 IPA
+- iOS 提供 **无签名 IPA**（需自行侧载安装，不上架 App Store）
 
 发布文件统一使用 `FanqieNovelDownloader-tauri-` 前缀。Windows 用户应按 CPU 架构选择 x64 或 ARM64 安装程序；Linux 用户可按发行版选择 DEB 或 AppImage；macOS 用户应区分 Intel 与 Apple Silicon。
 
 Android 普通用户下载 APK 即可（优先 `arm64-v8a`），AAB 主要用于应用商店。
+
+iOS 提供的是 **无 Apple 签名** 的 IPA，不支持上架 App Store；有条件的用户可自行侧载安装，安装后需在「设置 → 通用 → VPN 与设备管理」中信任证书。
 
 桌面端稳定 Release 会同时发布签名更新包及 `latest.json`，客户端可直接使用“一键更新”。标记为 prerelease 的版本不会进入稳定版自动更新通道。
 

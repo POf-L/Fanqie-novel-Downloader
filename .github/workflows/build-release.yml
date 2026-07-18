@@ -56,9 +56,9 @@ on:
         default: true
         type: boolean
       platform_ios:
-        description: "iOS（当前不支持，请勿勾选）"
+        description: "iOS IPA（无签名，需自行侧载安装）"
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -317,11 +317,8 @@ jobs:
             echo "Android publishing requires all four Android signing secrets."
             exit 1
           fi
-          if [[ "${PUBLISH_RELEASE}" == "true" &&
-                "${IOS_ENABLED}" == "true" && "${ios}" != "true" ]]; then
-            echo "iOS publishing requires IOS_CERTIFICATE, IOS_CERTIFICATE_PASSWORD, IOS_MOBILE_PROVISION and APPLE_DEVELOPMENT_TEAM."
-            exit 1
-          fi
+          # iOS unsigned IPA is allowed without Apple signing secrets.
+          # Users sideload it themselves (AltStore / Sideloadly / TrollStore).
 
   verify:
     needs: prepare
@@ -447,8 +444,7 @@ jobs:
               "",
               "> ⏳ **本版本正在构建中**。",
               ">",
-              "> 📱 **当前支持**：Windows / Linux / macOS / Android。",
-              "> **iOS 暂不支持**，本仓库不提供 IPA。",
+              "> 📱 **当前支持**：Windows / Linux / macOS / Android；iOS 提供无签名 IPA（需自行侧载）。",
               "",
           ]
 
@@ -545,7 +541,7 @@ jobs:
               "",
               "### 📱 iOS",
               "",
-              "**当前不支持。** 本项目暂时不提供 iOS / IPA 下载。",
+              "构建完成后会提供 **无签名 IPA**，需自行用 AltStore / Sideloadly / TrollStore 等工具侧载安装。",
               "",
               "---",
               "",
@@ -1203,8 +1199,7 @@ jobs:
               "",
               "> 🔄 已安装旧版的用户，可直接在软件内使用「一键更新」。",
               ">",
-              "> 📱 **当前支持**：Windows / Linux / macOS / Android。",
-              "> **iOS 暂不支持**，请勿期待本仓库提供 IPA。",
+              "> 📱 **当前支持**：Windows / Linux / macOS / Android；iOS 提供无签名 IPA（需自行侧载）。",
               "",
               "## 下载地址",
               "",
@@ -1276,9 +1271,16 @@ jobs:
               "",
               "### 📱 iOS",
               "",
-              "**当前不支持。** 本项目暂时不提供 iOS / IPA 下载。",
-              "",
           ]
+          if ios_ipa:
+              lines.append(f"- {links(ios_ipa, {'ipa': '无签名 IPA（需自行侧载）'})}")
+              lines += [
+                  "",
+                  "> ⚠️ **未上架 App Store**。此 IPA **无 Apple 签名**，需自行用 AltStore / Sideloadly / TrollStore 等工具侧载安装。",
+                  "> 安装后需信任开发者证书（设置 → 通用 → VPN 与设备管理）。",
+              ]
+          else:
+              lines.append("_本版本未提供 IPA。_")
 
           lines += [
               "",
@@ -1289,7 +1291,7 @@ jobs:
               "- **Windows 提示无法验证发行商**：安装包右键 → 属性 → 勾选「解除锁定」后再运行。",
               "- **Linux DEB 打不开**：先安装 `libwebkit2gtk-4.1`（Ubuntu/Debian）。",
               "- **Android 安装被拦截**：系统设置中允许「安装未知来源应用」。",
-              "- **有没有 iOS 版**：没有，**当前不支持 iOS**。",
+              "- **iOS 如何安装**：下载无签名 IPA，用 AltStore / Sideloadly / TrollStore 等工具侧载；不支持 App Store。",
               "- **软件内更新失败**：可手动下载本页对应平台安装包覆盖安装。",
               "",
               "### 💎 支持与推广",
