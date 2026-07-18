@@ -896,24 +896,15 @@ jobs:
           echo "Publishing Android requires ANDROID_KEYSTORE_BASE64 and related secrets."
           exit 1
 
-      - name: Build per-arch APKs, universal APK and AAB
+      - name: Build split APKs, universal APK and AAB
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.ANDROID_NDK_VERSION }}
         run: |
           set -euo pipefail
-          # Build per-architecture split APKs (much smaller for users)
-          for arch in aarch64 armv7 x86_64; do
-            echo "::group::Building ${arch} APK"
-            cargo tauri android build \
-              --target "${arch}" \
-              --apk \
-              --ci \
-              --config src-tauri/tauri.android.release.conf.json
-            echo "::endgroup::"
-          done
-          # Build universal APK + AAB (for app stores and compatibility)
-          echo "::group::Building universal APK + AAB"
+          # Gradle splits.abi in build.gradle.kts produces per-ABI APKs
+          # (arm64-v8a, armeabi-v7a, x86_64) + universal APK + AAB in one build.
+          echo "::group::Building all Android artifacts"
           cargo tauri android build \
             --target aarch64 armv7 i686 x86_64 \
             --apk \
@@ -921,6 +912,8 @@ jobs:
             --ci \
             --config src-tauri/tauri.android.release.conf.json
           echo "::endgroup::"
+          echo "=== Build outputs ==="
+          find src-tauri/gen/android/app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) -printf '%f  %s bytes\n' | sort
 
       - name: Collect and verify signed Android artifacts
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
