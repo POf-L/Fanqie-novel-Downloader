@@ -51,7 +51,7 @@ on:
         default: true
         type: boolean
       platform_android:
-        description: "Android 通用 APK + AAB"
+        description: "Android 分架构 APK + 通用 APK + AAB"
         required: false
         default: true
         type: boolean
@@ -902,8 +902,11 @@ jobs:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.ANDROID_NDK_VERSION }}
         run: |
           set -euo pipefail
-          # Gradle splits.abi in build.gradle.kts produces per-ABI APKs
-          # (arm64-v8a, armeabi-v7a, x86_64) + universal APK + AAB in one build.
+          # Gradle splits.abi produces three small single-ABI APKs plus a
+          # universal fallback. Remove stale outputs so collection cannot pick
+          # up a universal-only APK from an earlier build/cache.
+          rm -rf src-tauri/gen/android/app/build/outputs/apk \
+            src-tauri/gen/android/app/build/outputs/bundle
           echo "::group::Building all Android artifacts"
           cargo tauri android build \
             --target aarch64 armv7 i686 x86_64 \
@@ -920,17 +923,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist/android
-          while IFS= read -r file; do
-            base="$(basename "$file")"
-            cp "$file" "dist/android/FanqieNovelDownloader-${FANQIE_ANDROID_VERSION_NAME}-${base}"
-          done < <(
-            find src-tauri/gen/android/app/build/outputs \
-              -type f \( -name '*.apk' -o -name '*.aab' \) -not -name '*-unsigned*' | sort
-          )
+          chmod +x scripts/ci-collect-android-artifacts.sh
+          scripts/ci-collect-android-artifacts.sh
+          for required in \
+            "dist/android/FanqieNovelDownloader-${FANQIE_ANDROID_VERSION_NAME}-android-arm64-v8a.apk" \
+            "dist/android/FanqieNovelDownloader-${FANQIE_ANDROID_VERSION_NAME}-android-armeabi-v7a.apk" \
+            "dist/android/FanqieNovelDownloader-${FANQIE_ANDROID_VERSION_NAME}-android-x86_64.apk" \
+            "dist/android/FanqieNovelDownloader-${FANQIE_ANDROID_VERSION_NAME}-android-universal.apk" \
+            "dist/android/FanqieNovelDownloader-${FANQIE_ANDROID_VERSION_NAME}-android.aab"
+          do
+            test -s "${required}"
+          done
           echo "=== Collected Android artifacts ==="
           find dist/android -type f -printf '%f  %s bytes\n' | sort
-          test -n "$(find dist/android -type f -name '*.apk' -print -quit)"
           APKSIGNER="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner"
           while IFS= read -r apk; do
             echo "Verifying signature: ${apk}"
@@ -1042,7 +1047,8 @@ jobs:
             -c "Print :UIFileSharingEnabled" \
             src-tauri/gen/apple/fanqie-novel-downloader-tauri_iOS/Info.plist
           grep -q "fanqie_present_file_share_sheet" \
-            src-tauri/gen/apple/Sources/fanqie-novel-downloader-tauri/main.mm
+            src-tauri/src/ios_file_share.mm
+          grep -q "ios_file_share.mm" src-tauri/build.rs
 
       - name: Build unsigned iOS IPA
         if: needs.prepare.outputs.ios_signing != 'true'
