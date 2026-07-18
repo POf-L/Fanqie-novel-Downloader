@@ -381,18 +381,207 @@ jobs:
           PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          # Draft body is temporary; finalize rewrites it with real download links.
-          cat > release-notes.md <<EOF
-          ## ${VERSION}
+          set -euo pipefail
+          # Draft notes use Chinese + real hyperlinks.
+          # Until this build finishes uploading assets, links default to the latest
+          # already-published release; finalize will rewrite them to this tag.
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import urllib.request
+          from pathlib import Path
 
-          构建中，完成后会自动生成 Clash 风格的中文下载指引……
+          token = os.environ["GH_TOKEN"]
+          repo = os.environ["GH_REPO"]
+          version = os.environ["VERSION"]
+          tag = os.environ["TAG_NAME"]
+          prerelease = os.environ.get("PRERELEASE", "false").lower() == "true"
+          source_ref = os.environ.get("SOURCE_REF", "")
+          source_commit = os.environ.get("SOURCE_COMMIT", "")
+          platforms = os.environ.get("PLATFORMS", "")
 
-          - 源码：\`${SOURCE_REF}\` @ \`${SOURCE_COMMIT}\`
-          - 平台：${PLATFORMS}
-          EOF
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{repo}/releases?per_page=30",
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+                  "User-Agent": "fanqie-release-bootstrap",
+              },
+          )
+          with urllib.request.urlopen(req) as resp:
+              releases = json.load(resp)
+
+          latest = None
+          for rel in releases:
+              if rel.get("draft"):
+                  continue
+              assets = [a.get("name", "") for a in (rel.get("assets") or [])]
+              useful = [
+                  n for n in assets
+                  if n and not n.endswith(".sig")
+                  and n not in {
+                      "latest.json", "SHA256SUMS-release.txt",
+                      "SHA256SUMS-android.txt", "SHA256SUMS-ios.txt", "SIGNING.txt",
+                  }
+              ]
+              if useful:
+                  latest = rel
+                  break
+
+          def pick(names, *needles):
+              out = []
+              for name in names:
+                  low = name.lower()
+                  if all(n.lower() in low for n in needles):
+                      out.append(name)
+              return out
+
+          def link(base, name, label):
+              return f"[{label}]({base}/{name})"
+
+          lines = [
+              f"## {version}{'（测试预发布）' if prerelease else ''}",
+              "",
+              "基于 **Rust + Tauri v2** 的番茄小说下载器。",
+              "",
+              "> ⏳ **本版本正在构建中**。",
+              ">",
+              "> 📱 **当前支持**：Windows / Linux / macOS / Android。",
+              "> **iOS 暂不支持**，本仓库不提供 IPA。",
+              "",
+          ]
+
+          if latest:
+              ltag = latest.get("tag_name") or ""
+              lname = latest.get("name") or ltag
+              base = f"https://github.com/{repo}/releases/download/{ltag}"
+              assets = [
+                  a.get("name", "")
+                  for a in (latest.get("assets") or [])
+                  if a.get("name")
+                  and not a["name"].endswith(".sig")
+                  and a["name"] not in {
+                      "latest.json", "SHA256SUMS-release.txt",
+                      "SHA256SUMS-android.txt", "SHA256SUMS-ios.txt", "SIGNING.txt",
+                  }
+              ]
+              win_x64 = pick(assets, "windows-x64", ".exe")
+              win_arm = pick(assets, "windows-arm64", ".exe")
+              mac_arm = [n for n in pick(assets, "darwin-aarch64") if n.endswith(".dmg")]
+              mac_x64 = [n for n in pick(assets, "darwin-x64") if n.endswith(".dmg")]
+              deb_x64 = pick(assets, "linux-amd64", ".deb")
+              deb_arm = pick(assets, "linux-arm64", ".deb")
+              app_x64 = pick(assets, "linux-amd64", ".appimage") or pick(assets, "linux-amd64", ".AppImage")
+              # case-insensitive already via lower in pick for needles; AppImage may be mixed case
+              app_x64 = [n for n in assets if "linux-amd64" in n.lower() and n.lower().endswith(".appimage")]
+              app_arm = [n for n in assets if ("linux-arm64" in n.lower() or "linux-aarch64" in n.lower()) and n.lower().endswith(".appimage")]
+              apk_arm64 = [n for n in assets if "arm64-v8a" in n.lower() and n.endswith(".apk")]
+              apk_uni = [n for n in assets if "universal" in n.lower() and n.endswith(".apk")]
+              if not apk_uni:
+                  apk_uni = [n for n in assets if n.endswith(".apk") and "arm64-v8a" not in n.lower() and "armeabi" not in n.lower()]
+              aab = [n for n in assets if n.endswith(".aab")]
+
+              lines += [
+                  f"> 🔗 下方下载链接**暂时指向最新已发布版本** [`{lname}`](https://github.com/{repo}/releases/tag/{ltag})。",
+                  "> 本版本构建完成后，链接会自动替换为本版本资源。",
+                  "",
+                  "## 下载地址（默认：最新已发布版本）",
+                  "",
+                  "### 🪟 Windows",
+                  "",
+                  "#### 安装包（推荐）",
+                  "",
+              ]
+              win_parts = []
+              if win_x64:
+                  win_parts.append(link(base, win_x64[0], "64位（常用）"))
+              if win_arm:
+                  win_parts.append(link(base, win_arm[0], "ARM64（Surface / 骁龙本）"))
+              lines.append("- " + (" | ".join(win_parts) if win_parts else "_暂无_"))
+              lines += ["", "### 🍎 macOS", ""]
+              mac_parts = []
+              if mac_arm:
+                  mac_parts.append(link(base, mac_arm[0], "Apple M 芯片（推荐）"))
+              if mac_x64:
+                  mac_parts.append(link(base, mac_x64[0], "Intel 芯片"))
+              lines.append("- " + (" | ".join(mac_parts) if mac_parts else "_暂无_"))
+              lines += ["", "### 🐧 Linux", "", "#### DEB 包（推荐）", ""]
+              deb_parts = []
+              if deb_x64:
+                  deb_parts.append(link(base, deb_x64[0], "64位"))
+              if deb_arm:
+                  deb_parts.append(link(base, deb_arm[0], "ARM64"))
+              lines.append("- " + (" | ".join(deb_parts) if deb_parts else "_暂无_"))
+              lines += ["", "#### AppImage", ""]
+              app_parts = []
+              if app_x64:
+                  app_parts.append(link(base, app_x64[0], "64位"))
+              if app_arm:
+                  app_parts.append(link(base, app_arm[0], "ARM64"))
+              lines.append("- " + (" | ".join(app_parts) if app_parts else "_暂无_"))
+              lines += ["", "### 🤖 Android", "", "#### 手机安装包", ""]
+              if apk_arm64:
+                  lines.append(f"- {link(base, apk_arm64[0], '64位 arm64-v8a（推荐）')}")
+              if apk_uni:
+                  lines.append(f"- {link(base, apk_uni[0], '通用版 universal')}")
+              if not apk_arm64 and not apk_uni:
+                  lines.append("- _暂无_")
+              lines += ["", "#### 应用商店包", ""]
+              if aab:
+                  lines.append(f"- {link(base, aab[0], 'AAB（上架用）')}")
+              else:
+                  lines.append("- _暂无_")
+          else:
+              lines += [
+                  "> 当前仓库还没有可指向的已发布资源，请稍后再看本页 Assets。",
+                  "",
+                  "## 下载地址",
+                  "",
+                  "_构建完成后自动生成各平台下载链接。_",
+              ]
+
+          lines += [
+              "",
+              "### 📱 iOS",
+              "",
+              "**当前不支持。** 本项目暂时不提供 iOS / IPA 下载。",
+              "",
+              "---",
+              "",
+              "### 💎 支持与推广",
+              "",
+              "如果这个项目对你有帮助，也欢迎支持一下合作服务：",
+              "",
+              "> 走邀请码注册即送 **1 美元**，不走邀请链接是没有的。麻烦各位体验一下了。",
+              "",
+              "- [注册链接（含邀请码）](https://999554.xyz/register?aff=Xf2p)",
+              "",
+              "### 🔗 相关链接",
+              "",
+              f"- [全部 Releases](https://github.com/{repo}/releases)",
+              f"- [问题反馈](https://github.com/{repo}/issues)",
+              f"- [项目说明](https://github.com/{repo})",
+              "",
+              "<details>",
+              "<summary>📦 构建信息</summary>",
+              "",
+              f"- 正在构建版本：`{version}`",
+              f"- Tag：`{tag}`",
+              f"- 源码引用：`{source_ref}`",
+              f"- 源码提交：`{source_commit}`",
+              f"- 计划平台：{platforms}",
+              "",
+              "</details>",
+              "",
+          ]
+          Path("release-notes.md").write_text("\n".join(lines), encoding="utf-8")
+          print("Draft notes ready; default download links target latest published release.")
+          PY
 
           if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
             echo "Release already exists: ${TAG_NAME}"
+            gh release edit "${TAG_NAME}" --notes-file release-notes.md || true
           elif [[ "${PRERELEASE}" == "true" ]]; then
             gh release create "${TAG_NAME}" \
               --title "番茄小说下载器 ${VERSION}" \
