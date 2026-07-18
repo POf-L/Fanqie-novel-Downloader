@@ -203,6 +203,7 @@ jobs:
         run: |
           import os
           import subprocess
+          from datetime import datetime, timezone
           from pathlib import Path
 
           source = Path(os.environ["PRIVATE_SOURCE_PATH"])
@@ -210,7 +211,15 @@ jobs:
               ["git", "-C", str(source), "rev-parse", "--short=12", "HEAD"],
               text=True,
           ).strip()
-          version = f"0.1.{int(os.environ['GITHUB_RUN_NUMBER'])}"
+          now = datetime.now(timezone.utc)
+          # Tauri 强制 SemVer（最多 3 段、禁止前导零），所以用
+          #   YYYY.M.D-HM  → 如 2025.7.7-837
+          # 3 段保证 SemVer 合法，-HM 作为 pre-release 后缀保留时间精度。
+          # version_parts() 逐段提取数字，解析为 [2025, 7, 7, 837]，
+          # 与老版 Go 的 [2025, 6, 7, 27] 比较逻辑完全一致。
+          # 不用 strftime("%-m") 因为该格式化符在 Windows 上不支持。
+          hm = now.hour * 100 + now.minute
+          version = f"{now.year}.{now.month}.{now.day}-{hm}"
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"source_commit={source_commit}\n")
               output.write(f"source_ref={os.environ['SOURCE_REF']}\n")

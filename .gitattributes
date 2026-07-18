@@ -1,0 +1,26 @@
+# Normalize line endings: Git stores LF in the object database.
+# On checkout, text files always use LF regardless of platform settings.
+# This prevents core.autocrlf=true on Windows from silently converting
+# LF to CRLF and creating noisy diffs / mixed line endings.
+* text=auto eol=lf
+
+# Binary files must never be touched
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.icns binary
+*.gif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.apk binary
+*.aab binary
+*.ipa binary
+*.zip binary
+*.gz binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
