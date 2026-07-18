@@ -963,7 +963,9 @@ jobs:
   ios:
     needs: [prepare, verify, release-bootstrap]
     if: needs.prepare.outputs.ios_enabled == 'true'
-    runs-on: macos-latest
+    # macos-15 still ships Xcode 16.x; Xcode 26 breaks Tauri iOS via SwiftUICore.
+    runs-on: macos-15
+    continue-on-error: true
     steps:
       - name: Checkout private Tauri source
         uses: actions/checkout@v4
@@ -974,6 +976,35 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
+      - name: Select Xcode 16 (avoid SwiftUICore link error on Xcode 26)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Available Xcode apps:"
+          ls /Applications | grep -i xcode || true
+          selected=""
+          for app in \
+            /Applications/Xcode_16.4.app \
+            /Applications/Xcode_16.3.app \
+            /Applications/Xcode_16.2.app \
+            /Applications/Xcode_16.1.app \
+            /Applications/Xcode_16.0.app \
+            /Applications/Xcode_16.app
+          do
+            if [[ -d "$app" ]]; then
+              selected="$app"
+              break
+            fi
+          done
+          if [[ -z "${selected}" ]]; then
+            echo "No Xcode 16.x found on runner; iOS build cannot proceed safely on Xcode 26."
+            exit 1
+          fi
+          sudo xcode-select -s "${selected}/Contents/Developer"
+          sudo xcodebuild -license accept || true
+          xcodebuild -version
+          xcrun --show-sdk-path --sdk iphoneos
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
@@ -981,7 +1012,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
-          key: ios-arm64
+          key: ios-arm64-xcode16
 
       - name: Install XcodeGen and Tauri CLI
         run: |
