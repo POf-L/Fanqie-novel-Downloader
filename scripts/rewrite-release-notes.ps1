@@ -124,20 +124,41 @@ function Build-Notes {
   }
   $aab = @($assets | Where-Object { $_ -like '*.aab' })
 
-  $badge = if ($Prerelease) { '（测试预发布，不会触发稳定版自动更新）' } else { '' }
+  # 判断本版本实际产出了什么
+  $shipped = @()
+  if ($winX64.Count -gt 0 -or $winArm.Count -gt 0) { $shipped += 'Windows' }
+  if ($macArm.Count -gt 0 -or $macX64.Count -gt 0) { $shipped += 'macOS' }
+  if ($debX64.Count -gt 0 -or $debArm.Count -gt 0 -or $appX64.Count -gt 0 -or $appArm.Count -gt 0) { $shipped += 'Linux' }
+  if ($apkArm64.Count -gt 0 -or $apkV7.Count -gt 0 -or $apkUni.Count -gt 0 -or $aab.Count -gt 0) { $shipped += 'Android' }
+  $iosIpa = @($assets | Where-Object { $_ -like '*.ipa' })
+  if ($iosIpa.Count -gt 0) { $shipped += 'iOS（无签名 IPA）' }
+  $shippedStr = if ($shipped.Count -gt 0) { $shipped -join ' / ' } else { '无' }
+
+  if ($Prerelease) {
+    $header = "## $Version"
+    $risk = @(
+      '',
+      '> ⚠️ **本版本是测试预发布（Pre-release）**，可能存在不稳定问题。',
+      '> 不会进入稳定版自动更新通道；普通用户建议等正式版发布后再更新。'
+    )
+  } else {
+    $header = "## $Version（正式版）"
+    $risk = @()
+  }
+
   $lines = New-Object System.Collections.Generic.List[string]
-  $lines.Add("## $Version$badge") | Out-Null
+  $lines.Add($header) | Out-Null
   $lines.Add('') | Out-Null
   $lines.Add('基于 **Rust + Tauri v2** 的番茄小说下载器。') | Out-Null
   $lines.Add('') | Out-Null
-  $lines.Add('> 🔄 已安装旧版的用户，可直接在软件内使用「一键更新」。') | Out-Null
-  $lines.Add('>') | Out-Null
-  $lines.Add('> 📱 **当前支持**：Windows / Linux / macOS / Android。') | Out-Null
-  $lines.Add('> **iOS 暂不支持**，本仓库不提供 IPA。') | Out-Null
-  if ($Prerelease) {
+  $lines.Add('> 📱 **项目目标平台**：Windows / Linux / macOS / Android / iOS。') | Out-Null
+  $lines.Add("> 📦 **本版本实际产出**：$shippedStr。") | Out-Null
+  $lines.Add('> iOS 为无签名 IPA，需自行侧载，不上架 App Store。') | Out-Null
+  if (-not $Prerelease) {
     $lines.Add('>') | Out-Null
-    $lines.Add('> ⚠️ 本版本为 **Pre-release**，不会进入稳定版自动更新通道。') | Out-Null
+    $lines.Add('> 🔄 已安装旧版的用户，可直接在软件内使用「一键更新」。') | Out-Null
   }
+  foreach ($r in $risk) { $lines.Add($r) | Out-Null }
   $lines.Add('') | Out-Null
   $lines.Add('## 下载地址') | Out-Null
   $lines.Add('') | Out-Null
@@ -206,7 +227,14 @@ function Build-Notes {
 
   $lines.Add('### 📱 iOS') | Out-Null
   $lines.Add('') | Out-Null
-  $lines.Add('**当前不支持。** 本项目暂时不提供 iOS / IPA 下载。') | Out-Null
+  if ($iosIpa.Count -gt 0) {
+    $lines.Add("- $(Make-Link $base $iosIpa[0] '无签名 IPA（需自行侧载）')") | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('> ⚠️ **未上架 App Store**。此 IPA **无 Apple 签名**，需自行用 AltStore / Sideloadly / TrollStore 等工具侧载安装。') | Out-Null
+    $lines.Add('> 安装后需信任开发者证书（设置 → 通用 → VPN 与设备管理）。') | Out-Null
+  } else {
+    $lines.Add('_本版本未提供 IPA。_') | Out-Null
+  }
   $lines.Add('') | Out-Null
   $lines.Add('---') | Out-Null
   $lines.Add('') | Out-Null
@@ -215,7 +243,8 @@ function Build-Notes {
   $lines.Add('- **Windows 提示无法验证发行商**：安装包右键 → 属性 → 勾选「解除锁定」后再运行。') | Out-Null
   $lines.Add('- **Linux DEB 打不开**：先安装 `libwebkit2gtk-4.1`（Ubuntu/Debian）。') | Out-Null
   $lines.Add('- **Android 安装被拦截**：系统设置中允许「安装未知来源应用」。') | Out-Null
-  $lines.Add('- **有没有 iOS 版**：没有，**当前不支持 iOS**。') | Out-Null
+  $lines.Add('- **iOS 如何安装**：下载无签名 IPA，用 AltStore / Sideloadly / TrollStore 等工具侧载；不支持 App Store。') | Out-Null
+  $lines.Add('- **这是测试版还是正式版**：标题标注「测试预发布」的是测试版，标注「正式版」的是稳定版。') | Out-Null
   $lines.Add('- **软件内更新失败**：可手动下载本页对应平台安装包覆盖安装。') | Out-Null
   $lines.Add('') | Out-Null
   $lines.Add('### 💎 支持与推广') | Out-Null
@@ -236,9 +265,12 @@ function Build-Notes {
   $lines.Add('<details>') | Out-Null
   $lines.Add('<summary>📦 构建信息</summary>') | Out-Null
   $lines.Add('') | Out-Null
+  $relType = if ($Prerelease) { '测试预发布（Pre-release）' } else { '正式稳定版' }
   $lines.Add("- 版本：``$Version``") | Out-Null
   $lines.Add("- Tag：``$Tag``") | Out-Null
-  $lines.Add("- 资源数量：$($assets.Count)") | Out-Null
+  $lines.Add("- 类型：$relType") | Out-Null
+  $lines.Add("- 本版本实际产出：$shippedStr") | Out-Null
+  $lines.Add("- 可下载安装包数量：$($assets.Count)（不含 .sig 签名和校验文件）") | Out-Null
   $lines.Add('') | Out-Null
   $lines.Add('</details>') | Out-Null
   $lines.Add('') | Out-Null

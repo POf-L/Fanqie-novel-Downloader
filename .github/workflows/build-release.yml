@@ -1183,16 +1183,41 @@ jobs:
           ios_ipa = [n for n in assets if n.endswith(".ipa")]
 
           pre = os.environ.get("PRERELEASE", "false").lower() == "true"
-          badge = "（测试预发布，不会触发稳定版自动更新）" if pre else ""
+
+          # Build a human-readable list of what actually shipped this version
+          shipped = []
+          if win_x64 or win_arm: shipped.append("Windows")
+          if mac_arm or mac_x64: shipped.append("macOS")
+          if linux_deb_x64 or linux_deb_arm or linux_app_x64 or linux_app_arm: shipped.append("Linux")
+          if android_arm64 or android_v7 or android_uni or android_aab: shipped.append("Android")
+          if ios_ipa: shipped.append("iOS（无签名 IPA）")
+          shipped_str = " / ".join(shipped) if shipped else "无"
+
+          if pre:
+              header = f"## {version}"
+              risk = [
+                  "",
+                  "> ⚠️ **本版本是测试预发布（Pre-release）**，可能存在不稳定问题。",
+                  "> 不会进入稳定版自动更新通道；普通用户建议等正式版发布后再更新。",
+              ]
+          else:
+              header = f"## {version}（正式版）"
+              risk = []
 
           lines = [
-              f"## {version}{badge}",
+              header,
               "",
               "基于 **Rust + Tauri v2** 的番茄小说下载器。",
               "",
-              "> 🔄 已安装旧版的用户，可直接在软件内使用「一键更新」。",
-              ">",
-              "> 📱 **当前支持**：Windows / Linux / macOS / Android；iOS 提供无签名 IPA（需自行侧载）。",
+              "> 📱 **项目目标平台**：Windows / Linux / macOS / Android / iOS。",
+              f"> 📦 **本版本实际产出**：{shipped_str}。",
+              "> iOS 为无签名 IPA，需自行侧载，不上架 App Store。",
+          ]
+          if not pre:
+              lines.append(">")
+              lines.append("> 🔄 已安装旧版的用户，可直接在软件内使用「一键更新」。")
+          lines += risk
+          lines += [
               "",
               "## 下载地址",
               "",
@@ -1203,7 +1228,6 @@ jobs:
               f"- {links(win_x64, {'x64': '64位（常用）', 'arm64': 'ARM64（不常用）'})}",
           ]
           if win_arm:
-              # If win_x64 line didn't include arm (different files), add arm line
               if not any("arm64" in x.lower() for x in win_x64):
                   lines.append(f"- {links(win_arm, {'arm64': 'ARM64（Surface / 骁龙本）'})}")
           lines += [
@@ -1243,7 +1267,6 @@ jobs:
               lines.append(f"- {links(android_v7, {'armeabi-v7a': '32位 armeabi-v7a（老旧手机）'})}")
           if android_uni:
               uni_label = '通用版 universal（兼容所有设备）'
-              # 如果只有 universal，标注体积约 66MB
               if not android_arm64 and not android_v7 and not android_x86:
                   uni_label = '通用版 universal（兼容所有设备，约 66MB）'
               lines.append(f"- {links(android_uni, {'universal': uni_label})}")
@@ -1285,6 +1308,7 @@ jobs:
               "- **Linux DEB 打不开**：先安装 `libwebkit2gtk-4.1`（Ubuntu/Debian）。",
               "- **Android 安装被拦截**：系统设置中允许「安装未知来源应用」。",
               "- **iOS 如何安装**：下载无签名 IPA，用 AltStore / Sideloadly / TrollStore 等工具侧载；不支持 App Store。",
+              "- **这是测试版还是正式版**：标题标注「测试预发布」的是测试版，标注「正式版」的是稳定版。",
               "- **软件内更新失败**：可手动下载本页对应平台安装包覆盖安装。",
               "",
               "### 💎 支持与推广",
@@ -1307,10 +1331,12 @@ jobs:
               "",
               f"- 版本：`{version}`",
               f"- Tag：`{tag}`",
+              f"- 类型：{'测试预发布（Pre-release）' if pre else '正式稳定版'}",
               f"- 源码引用：`{os.environ.get('SOURCE_REF', '')}`",
               f"- 源码提交：`{os.environ.get('SOURCE_COMMIT', '')}`",
               f"- 构建平台：{os.environ.get('PLATFORMS', '')}",
-              f"- 资源数量：{len(assets)}",
+              f"- 本版本实际产出：{shipped_str}",
+              f"- 可下载安装包数量：{len(assets)}（不含 .sig 签名和校验文件）",
               "",
               "</details>",
               "",
