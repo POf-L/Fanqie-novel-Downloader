@@ -616,6 +616,17 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
+      - name: Validate macOS app icon
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          icon="${PRIVATE_SOURCE_PATH}/src-tauri/icons/icon.icns"
+          iconset="${RUNNER_TEMP}/fanqie-app-icon.iconset"
+          rm -rf "${iconset}"
+          iconutil -c iconset "${icon}" -o "${iconset}"
+          test -f "${iconset}/icon_512x512@2x.png"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -737,6 +748,17 @@ jobs:
           token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
+
+      - name: Validate macOS app icon
+        if: steps.need.outputs.run == 'true' && runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          icon="${PRIVATE_SOURCE_PATH}/src-tauri/icons/icon.icns"
+          iconset="${RUNNER_TEMP}/fanqie-app-icon.iconset"
+          rm -rf "${iconset}"
+          iconutil -c iconset "${icon}" -o "${iconset}"
+          test -f "${iconset}/icon_512x512@2x.png"
 
       - name: Install Rust toolchain (cross target)
         if: steps.need.outputs.run == 'true'
