@@ -1233,7 +1233,11 @@ jobs:
           linux_deb_x64 = pick("linux-amd64", ".deb")
           linux_deb_arm = pick("linux-arm64", ".deb")
           linux_app_x64 = pick("linux-amd64", ".appimage")
-          linux_app_arm = pick("linux-arm64", ".appimage")
+          linux_app_arm = [
+              n for n in assets
+              if ("linux-arm64" in n.lower() or "linux-aarch64" in n.lower())
+              and n.lower().endswith(".appimage")
+          ]
           android_arm64 = [n for n in assets if "arm64-v8a" in n.lower() and n.endswith(".apk")]
           android_v7 = [n for n in assets if "armeabi-v7a" in n.lower() and n.endswith(".apk")]
           android_x86 = [n for n in assets if "x86_64" in n.lower() and n.endswith(".apk")]
