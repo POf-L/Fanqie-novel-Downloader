@@ -950,6 +950,7 @@ jobs:
           name: FanqieNovelDownloader-tauri-android-all-abis
           path: ${{ env.PRIVATE_SOURCE_PATH }}/dist/android/*
           if-no-files-found: error
+          retention-days: 7
 
       - name: Upload Android release assets
         if: inputs.publish_release == true
@@ -1086,6 +1087,7 @@ jobs:
           name: FanqieNovelDownloader-tauri-ios-arm64
           path: ${{ env.PRIVATE_SOURCE_PATH }}/dist/ios/*
           if-no-files-found: error
+          retention-days: 7
 
       - name: Upload iOS release assets
         if: inputs.publish_release == true

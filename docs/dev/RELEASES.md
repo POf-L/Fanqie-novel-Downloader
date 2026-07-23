@@ -30,7 +30,8 @@ limited to built binaries, signatures, and verification manifests. Do not add
 source archives, caches, debug dumps, or source-bearing logs to the upload
 steps. The public wrapper deliberately does not enable `actions/cache` or
 `Swatinem/rust-cache` for private-source jobs; all compiler output remains on
-the disposable runner.
+the disposable runner. The two cross-job binary artifacts use a seven-day
+retention window and are not part of the public release asset set.
 
 ## Draft hygiene
 

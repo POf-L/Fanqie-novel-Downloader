@@ -48,6 +48,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("Swatinem/rust-cache", self.workflow)
         self.assertNotIn("actions/cache", self.workflow)
 
+    def test_workflow_artifacts_have_a_short_retention_window(self):
+        self.assertEqual(self.workflow.count("retention-days: 7"), 2)
+
     def test_finalization_normalizes_and_rechecks_updater_metadata(self):
         self.assertIn("scripts/finalize-release.py", self.workflow)
         self.assertNotIn("releases/tags/${TAG_NAME}", self.workflow)
