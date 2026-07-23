@@ -25,6 +25,11 @@ on:
         required: true
         default: "windows-x64,windows-arm64,linux-x64,linux-arm64,macos-x64,macos-arm64,android,ios"
         type: string
+      release_highlights:
+        description: "可选的发布要点，每行一项"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -1138,15 +1143,22 @@ jobs:
           SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
           SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
           PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
+          RELEASE_HIGHLIGHTS: ${{ inputs.release_highlights }}
         run: |
           set -euo pipefail
-          python scripts/finalize-release.py \
-            --repo "${GH_REPO}" \
-            --tag "${TAG_NAME}" \
-            --version "${VERSION}" \
-            --source-ref "${SOURCE_REF}" \
-            --source-commit "${SOURCE_COMMIT}" \
+          arguments=(
+            --repo "${GH_REPO}"
+            --tag "${TAG_NAME}"
+            --version "${VERSION}"
+            --source-ref "${SOURCE_REF}"
+            --source-commit "${SOURCE_COMMIT}"
             --platforms "${PLATFORMS}"
+          )
+          if [[ -n "${RELEASE_HIGHLIGHTS//[[:space:]]/}" ]]; then
+            printf '%s\n' "${RELEASE_HIGHLIGHTS}" > release-highlights.md
+            arguments+=(--highlights-file release-highlights.md)
+          fi
+          python scripts/finalize-release.py "${arguments[@]}"
 
       - name: Release summary
         run: |

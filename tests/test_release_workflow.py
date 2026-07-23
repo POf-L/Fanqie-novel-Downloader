@@ -37,6 +37,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
     def test_finalization_normalizes_and_rechecks_updater_metadata(self):
         self.assertIn("scripts/finalize-release.py", self.workflow)
         self.assertNotIn("releases/tags/${TAG_NAME}", self.workflow)
+        self.assertIn("release_highlights:", self.workflow)
+        self.assertIn("--highlights-file release-highlights.md", self.workflow)
 
     def test_draft_recovery_reuses_the_finalizer_without_rebuilding(self):
         self.assertIn("name: Finalize Draft Release", self.finalize_workflow)
