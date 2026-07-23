@@ -64,6 +64,16 @@ action does not attempt to import an empty certificate. As of 2026-07-24 these
 Secrets are not configured in the public wrapper or the private source
 repository, so macOS publication is intentionally blocked.
 
+Unsigned packaging was verified on 2026-07-24 by Actions run
+[`30053365281`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30053365281)
+from private source commit `3eb84f3deee4bd7263c0947671e665983876b96a`.
+Native Intel and Apple Silicon APP/DMG jobs, plus the Intel fallback job, all
+succeeded without invoking certificate or keychain import. The four native
+artifact archives matched their Actions SHA-256 digests and contained the
+expected x86_64/arm64 Mach-O executable, bundle identifier, version, icon, and
+DMG. They remain seven-day workflow artifacts and were not attached to a
+Release.
+
 ## Source isolation
 
 The public wrapper is an orchestration repository, not a mirror of the private
