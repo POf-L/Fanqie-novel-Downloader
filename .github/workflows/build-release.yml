@@ -432,6 +432,7 @@ jobs:
               "> 📱 **当前支持**：Windows / Linux / macOS / Android；iOS 提供无签名 IPA（需自行侧载）。",
               "",
           ]
+          ios_ipa = []
 
           if latest:
               ltag = latest.get("tag_name") or ""
@@ -457,11 +458,21 @@ jobs:
               # case-insensitive already via lower in pick for needles; AppImage may be mixed case
               app_x64 = [n for n in assets if "linux-amd64" in n.lower() and n.lower().endswith(".appimage")]
               app_arm = [n for n in assets if ("linux-arm64" in n.lower() or "linux-aarch64" in n.lower()) and n.lower().endswith(".appimage")]
-              apk_arm64 = [n for n in assets if "arm64-v8a" in n.lower() and n.endswith(".apk")]
-              apk_uni = [n for n in assets if "universal" in n.lower() and n.endswith(".apk")]
+              apk_arm64 = [n for n in assets if "arm64-v8a" in n.lower() and n.lower().endswith(".apk")]
+              apk_v7 = [n for n in assets if "armeabi-v7a" in n.lower() and n.lower().endswith(".apk")]
+              apk_x86 = [n for n in assets if "x86_64" in n.lower() and n.lower().endswith(".apk")]
+              apk_uni = [n for n in assets if "universal" in n.lower() and n.lower().endswith(".apk")]
               if not apk_uni:
-                  apk_uni = [n for n in assets if n.endswith(".apk") and "arm64-v8a" not in n.lower() and "armeabi" not in n.lower()]
-              aab = [n for n in assets if n.endswith(".aab")]
+                  apk_uni = [
+                      n for n in assets
+                      if n.lower().endswith(".apk")
+                      and all(
+                          marker not in n.lower()
+                          for marker in ("arm64-v8a", "armeabi-v7a", "x86_64")
+                      )
+                  ]
+              aab = [n for n in assets if n.lower().endswith(".aab")]
+              ios_ipa = [n for n in assets if n.lower().endswith(".ipa")]
 
               lines += [
                   f"> 🔗 下方下载链接**暂时指向最新已发布版本** [`{lname}`](https://github.com/{repo}/releases/tag/{ltag})。",
@@ -504,9 +515,13 @@ jobs:
               lines += ["", "### 🤖 Android", "", "#### 手机安装包", ""]
               if apk_arm64:
                   lines.append(f"- {link(base, apk_arm64[0], '64位 arm64-v8a（推荐）')}")
+              if apk_v7:
+                  lines.append(f"- {link(base, apk_v7[0], '32位 armeabi-v7a')}")
+              if apk_x86:
+                  lines.append(f"- {link(base, apk_x86[0], '模拟器 x86_64')}")
               if apk_uni:
                   lines.append(f"- {link(base, apk_uni[0], '通用版 universal')}")
-              if not apk_arm64 and not apk_uni:
+              if not apk_arm64 and not apk_v7 and not apk_x86 and not apk_uni:
                   lines.append("- _暂无_")
               lines += ["", "#### 应用商店包", ""]
               if aab:
@@ -522,11 +537,13 @@ jobs:
                   "_构建完成后自动生成各平台下载链接。_",
               ]
 
+          lines += ["", "### 📱 iOS", ""]
+          if ios_ipa:
+              lines.append(f"- {link(base, ios_ipa[0], '无签名 IPA（侧载安装）')}")
+          else:
+              lines.append("_构建完成后会提供无签名 IPA，需自行用 AltStore / Sideloadly / TrollStore 等工具侧载安装。_")
+
           lines += [
-              "",
-              "### 📱 iOS",
-              "",
-              "构建完成后会提供 **无签名 IPA**，需自行用 AltStore / Sideloadly / TrollStore 等工具侧载安装。",
               "",
               "---",
               "",

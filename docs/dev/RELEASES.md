@@ -18,6 +18,13 @@ GitHub Release, and then collects Android/iOS artifacts. Tauri's generated
 `latest.json` can contain GitHub API asset URLs such as
 `api.github.com/repos/.../releases/assets/<id>`.
 
+While a build is running, the draft notes temporarily link to the latest
+published release. That bootstrap list includes Android `arm64-v8a`,
+`armeabi-v7a`, `x86_64`, universal APK, AAB, and the unsigned iOS IPA whenever
+those assets exist. Architecture-specific APKs must never be used as the
+universal fallback. Finalization replaces the bootstrap links with the assets
+uploaded for the new tag.
+
 The finalization job delegates to `scripts/finalize-release.py` after every
 platform job has finished. The finalizer resolves the draft to its database ID,
 fetches the authenticated asset list, normalizes and re-uploads `latest.json`,

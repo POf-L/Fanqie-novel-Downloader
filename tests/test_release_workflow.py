@@ -57,6 +57,19 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("release_highlights:", self.workflow)
         self.assertIn("--highlights-file release-highlights.md", self.workflow)
 
+    def test_draft_bootstrap_links_every_mobile_artifact(self):
+        for architecture in ("arm64-v8a", "armeabi-v7a", "x86_64", "universal"):
+            self.assertIn(architecture, self.workflow)
+        self.assertIn("apk_v7", self.workflow)
+        self.assertIn("apk_x86", self.workflow)
+        self.assertIn("ios_ipa", self.workflow)
+        self.assertIn("if ios_ipa:", self.workflow)
+        self.assertIn("无签名 IPA（侧载安装）", self.workflow)
+        self.assertIn(
+            'for marker in ("arm64-v8a", "armeabi-v7a", "x86_64")',
+            self.workflow,
+        )
+
     def test_draft_recovery_reuses_the_finalizer_without_rebuilding(self):
         self.assertIn("name: Finalize Draft Release", self.finalize_workflow)
         self.assertIn("permissions:\n  contents: write", self.finalize_workflow)
