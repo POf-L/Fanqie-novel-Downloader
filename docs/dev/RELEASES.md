@@ -10,7 +10,9 @@ The release contains 26 assets, 12 working user download links for Windows,
 Linux, Android and unsigned iOS, complete SHA-256 manifests, and canonical
 updater URLs. macOS is intentionally absent until Developer ID signing and
 notarization credentials are configured. The build and release jobs passed;
-Android device tap-through remains a separate hardware check.
+Android 14 API 34 emulator tap-through has also passed, including a real SAF
+directory export. OEM document providers and physical display cutouts remain
+separate device checks.
 
 ## Asset flow
 
