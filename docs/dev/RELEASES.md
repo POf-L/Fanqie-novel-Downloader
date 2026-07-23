@@ -2,14 +2,15 @@
 
 ## Latest Verified Release
 
-[`v2026.7.23-1133`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/v2026.7.23-1133)
+[`v2026.7.23-1739`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/v2026.7.23-1739)
 was published by Actions run
-[`30003605742`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30003605742)
-from private Tauri source commit `57ac3ba6768d`. The release contains 30
-assets, all 14 installer links (including Android arm64-v8a, armeabi-v7a,
-universal, x86_64, and AAB), complete SHA-256 manifests, and canonical updater
-URLs. The build and release jobs passed; Android device tap-through remains a
-separate hardware check.
+[`30030326151`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30030326151)
+from private Tauri source commit `742ef58639200e891e2f80e8129173e2dac5b87f`.
+The release contains 26 assets, 12 working user download links for Windows,
+Linux, Android and unsigned iOS, complete SHA-256 manifests, and canonical
+updater URLs. macOS is intentionally absent until Developer ID signing and
+notarization credentials are configured. The build and release jobs passed;
+Android device tap-through remains a separate hardware check.
 
 ## Asset flow
 
