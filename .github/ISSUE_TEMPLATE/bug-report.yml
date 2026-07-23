@@ -1,0 +1,48 @@
+name: Bug report
+description: 报告可复现的下载器问题
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先搜索已有 Issue。不要在公开 Issue 中粘贴 token、签名、私钥、设备身份或个人数据。
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本
+      description: 例如 v2026.7.23-524
+      placeholder: v2026.7.23-524
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: 平台与架构
+      description: 例如 Android 14 arm64-v8a、Windows 11 x64
+      placeholder: Android 14 arm64-v8a
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 请按顺序描述操作和预期结果。
+      placeholder: |
+        1. 打开……
+        2. 输入……
+        3. 点击……
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: 错误文本或日志
+      description: 请保留状态码、Content-Type 和脱敏 endpoint；删除 query、token、签名和设备 ID。
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 其他信息
+      description: 可附截图、设备型号、保存目录类型或相关下载链接。

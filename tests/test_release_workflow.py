@@ -8,6 +8,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "build-release.yml"
 REPAIR_WORKFLOW = ROOT / ".github" / "workflows" / "repair-updater-metadata.yml"
 FINALIZE_WORKFLOW = ROOT / ".github" / "workflows" / "finalize-draft-release.yml"
 FINALIZER = ROOT / "scripts" / "finalize-release.py"
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
@@ -17,6 +18,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         cls.repair_workflow = REPAIR_WORKFLOW.read_text(encoding="utf-8")
         cls.finalize_workflow = FINALIZE_WORKFLOW.read_text(encoding="utf-8")
         cls.finalizer = FINALIZER.read_text(encoding="utf-8")
+        cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     def test_platform_selection_stays_within_dispatch_input_limit(self):
         input_block = self.workflow.split("permissions:", 1)[0]
@@ -50,6 +52,11 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('"--paginate"', self.finalizer)
         self.assertIn('"--slurp"', self.finalizer)
         self.assertNotIn("releases/tags/", self.finalizer)
+
+    def test_wrapper_has_automatic_tooling_validation(self):
+        self.assertIn("pull_request:", self.ci_workflow)
+        self.assertIn("python -m unittest discover", self.ci_workflow)
+        self.assertIn("rhysd/actionlint:1.7.7", self.ci_workflow)
 
     def test_repair_workflow_reuses_normalizer_and_updates_checksums(self):
         self.assertIn("name: Repair Updater Metadata", self.repair_workflow)
