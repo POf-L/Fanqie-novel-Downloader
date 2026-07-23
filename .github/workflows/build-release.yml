@@ -20,46 +20,11 @@ on:
         required: true
         default: false
         type: boolean
-      platform_windows_x64:
-        description: "Windows x64"
-        required: false
-        default: true
-        type: boolean
-      platform_windows_arm64:
-        description: "Windows ARM64"
-        required: false
-        default: true
-        type: boolean
-      platform_linux_x64:
-        description: "Linux x64"
-        required: false
-        default: true
-        type: boolean
-      platform_linux_arm64:
-        description: "Linux ARM64"
-        required: false
-        default: true
-        type: boolean
-      platform_macos_x64:
-        description: "macOS Intel"
-        required: false
-        default: true
-        type: boolean
-      platform_macos_arm64:
-        description: "macOS Apple Silicon"
-        required: false
-        default: true
-        type: boolean
-      platform_android:
-        description: "Android 分架构 APK + 通用 APK + AAB"
-        required: false
-        default: true
-        type: boolean
-      platform_ios:
-        description: "iOS IPA（无签名，需自行侧载安装）"
-        required: false
-        default: true
-        type: boolean
+      platforms:
+        description: "逗号分隔的平台：windows-x64,windows-arm64,linux-x64,linux-arm64,macos-x64,macos-arm64,android,ios"
+        required: true
+        default: "windows-x64,windows-arm64,linux-x64,linux-arm64,macos-x64,macos-arm64,android,ios"
+        type: string
 
 permissions:
   contents: write
@@ -118,22 +83,10 @@ jobs:
         id: platforms
         shell: python
         env:
-          WINDOWS_X64: ${{ inputs.platform_windows_x64 }}
-          WINDOWS_ARM64: ${{ inputs.platform_windows_arm64 }}
-          LINUX_X64: ${{ inputs.platform_linux_x64 }}
-          LINUX_ARM64: ${{ inputs.platform_linux_arm64 }}
-          MACOS_X64: ${{ inputs.platform_macos_x64 }}
-          MACOS_ARM64: ${{ inputs.platform_macos_arm64 }}
-          ANDROID: ${{ inputs.platform_android }}
-          IOS: ${{ inputs.platform_ios }}
+          PLATFORMS: ${{ inputs.platforms }}
         run: |
           import json
           import os
-
-          def enabled(name: str) -> bool:
-              return os.environ.get(name, "").strip().lower() in {
-                  "1", "true", "yes", "on"
-              }
 
           # allow_fallback: scarce runners may OOM / queue-fail; a second job
           # cross-compiles on a more available runner when release assets are missing.
@@ -194,7 +147,25 @@ jobs:
                   "asset_substr": "darwin-aarch64",
               }),
           ]
-          desktop = [entry for name, entry in candidates if enabled(name)]
+          def normalize(name: str) -> str:
+              return name.strip().lower().replace("_", "-")
+
+          requested = {
+              normalize(name)
+              for name in os.environ.get("PLATFORMS", "").split(",")
+              if name.strip()
+          }
+          known = {normalize(name) for name, _ in candidates} | {"android", "ios"}
+          unknown = sorted(requested - known)
+          if unknown:
+              raise SystemExit(
+                  "未知平台: " + ", ".join(unknown) +
+                  "; 可选值: " + ", ".join(sorted(known))
+              )
+
+          desktop = [
+              entry for name, entry in candidates if normalize(name) in requested
+          ]
           fallback = [
               {
                   "os": entry["fallback_os"],
@@ -207,8 +178,8 @@ jobs:
               for entry in desktop
               if entry.get("allow_fallback")
           ]
-          android = enabled("ANDROID")
-          ios = enabled("IOS")
+          android = "android" in requested
+          ios = "ios" in requested
           selected = [entry["platform"] for entry in desktop]
           if android:
               selected.append("android")
@@ -324,6 +295,15 @@ jobs:
     needs: prepare
     runs-on: ubuntu-22.04
     steps:
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          path: release-wrapper
+
+      - name: Test release metadata tooling
+        working-directory: release-wrapper
+        run: python -m unittest discover -s tests -p 'test_*.py'
+
       - name: Checkout private Tauri source
         uses: actions/checkout@v4
         with:
@@ -333,7 +313,7 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.0
         with:
           components: rustfmt,clippy
 
@@ -627,7 +607,7 @@ jobs:
           iconutil -c iconset "${icon}" -o "${iconset}"
           test -f "${iconset}/icon_512x512@2x.png"
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.0
         with:
           targets: ${{ matrix.target }}
 
@@ -762,7 +742,7 @@ jobs:
 
       - name: Install Rust toolchain (cross target)
         if: steps.need.outputs.run == 'true'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.97.0
         with:
           targets: ${{ matrix.target }}
 
@@ -856,7 +836,7 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.0
         with:
           targets: >-
             aarch64-linux-android,
@@ -1032,7 +1012,7 @@ jobs:
           xcodebuild -version
           xcrun --show-sdk-path --sdk iphoneos
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
 
@@ -1139,6 +1119,9 @@ jobs:
       (needs.ios.result == 'success' || needs.ios.result == 'skipped' || needs.ios.result == 'failure')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+
       - name: Verify release metadata, rewrite Chinese notes, publish draft
         shell: bash
         env:
@@ -1159,19 +1142,20 @@ jobs:
 
           if [[ "${DESKTOP_COUNT}" != "0" ]]; then
             test -s release-check/latest.json
-            python - <<'PY'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(Path("release-check/latest.json").read_text(encoding="utf-8"))
-          platforms = payload.get("platforms") or {}
-          if not platforms:
-              raise SystemExit("latest.json does not contain updater platforms")
-          for name, item in platforms.items():
-              if not item.get("url") or not item.get("signature"):
-                  raise SystemExit(f"invalid updater entry: {name}")
-          print("Updater platforms:", ", ".join(sorted(platforms)))
-          PY
+            gh api "repos/${GH_REPO}/releases/tags/${TAG_NAME}" > release-check/release.json
+            python scripts/normalize-updater-metadata.py \
+              --metadata release-check/latest.json \
+              --assets release-check/release.json \
+              --repo "${GH_REPO}" \
+              --tag "${TAG_NAME}"
+            python scripts/normalize-updater-metadata.py \
+              --metadata release-check/latest.json \
+              --assets release-check/release.json \
+              --repo "${GH_REPO}" \
+              --tag "${TAG_NAME}" \
+              --check
+            gh release upload "${TAG_NAME}" release-check/latest.json --clobber
+            rm -f release-check/release.json
           fi
 
           (

@@ -1,6 +1,9 @@
 # Public wrapper repo
 release-assets/
 private-src/
+release-check/
+repair-check/
+release-notes*.md
 
 # Local temp files and private config
 *.local
@@ -33,8 +36,15 @@ private-src/
 server_url.txt
 tmp/
 temp/
+backups/
+reports/
 logs/
 .cache/
+.cache-*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
 .idea/
 .vscode/
 .DS_Store

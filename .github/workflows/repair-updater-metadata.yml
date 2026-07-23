@@ -1,0 +1,93 @@
+name: Repair Updater Metadata
+
+# Repairs an already-published release without rebuilding platform artifacts.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要修复的 Release tag；留空则使用当前 latest 稳定版"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+
+      - name: Normalize and upload latest.json
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG}"
+          if [[ -z "${tag}" ]]; then
+            tag="$(gh release view --repo "${GH_REPO}" --json tagName --jq '.tagName')"
+          fi
+          test -n "${tag}"
+          mkdir -p repair-check
+          gh release download "${tag}" \
+            --repo "${GH_REPO}" \
+            --pattern latest.json \
+            --dir repair-check
+          asset_names="$(gh release view "${tag}" --repo "${GH_REPO}" --json assets --jq '.assets[].name')"
+          if printf '%s\n' "${asset_names}" | grep -Fx 'SHA256SUMS-release.txt' >/dev/null; then
+            gh release download "${tag}" \
+              --repo "${GH_REPO}" \
+              --pattern SHA256SUMS-release.txt \
+              --dir repair-check
+          fi
+          gh api "repos/${GH_REPO}/releases/tags/${tag}" > repair-check/release.json
+
+          python scripts/normalize-updater-metadata.py \
+            --metadata repair-check/latest.json \
+            --assets repair-check/release.json \
+            --repo "${GH_REPO}" \
+            --tag "${tag}"
+          python scripts/normalize-updater-metadata.py \
+            --metadata repair-check/latest.json \
+            --assets repair-check/release.json \
+            --repo "${GH_REPO}" \
+            --tag "${tag}" \
+            --check
+          if [[ -f repair-check/SHA256SUMS-release.txt ]]; then
+            python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          checksum_path = Path("repair-check/SHA256SUMS-release.txt")
+          digest = hashlib.sha256(Path("repair-check/latest.json").read_bytes()).hexdigest()
+          lines = checksum_path.read_text(encoding="utf-8").splitlines()
+          replaced = False
+          output = []
+          for line in lines:
+              fields = line.split(maxsplit=1)
+              if len(fields) == 2 and Path(fields[1].lstrip("*./")).name == "latest.json":
+                  output.append(f"{digest}  ./latest.json")
+                  replaced = True
+              else:
+                  output.append(line)
+          if not replaced:
+              output.append(f"{digest}  ./latest.json")
+          checksum_path.write_text("\n".join(output) + "\n", encoding="utf-8")
+          PY
+          fi
+          gh release upload "${tag}" \
+            --repo "${GH_REPO}" \
+            repair-check/latest.json \
+            --clobber
+          if [[ -f repair-check/SHA256SUMS-release.txt ]]; then
+            gh release upload "${tag}" \
+              --repo "${GH_REPO}" \
+              repair-check/SHA256SUMS-release.txt \
+              --clobber
+          fi
+          echo "Repaired updater metadata for ${GH_REPO}@${tag}"
