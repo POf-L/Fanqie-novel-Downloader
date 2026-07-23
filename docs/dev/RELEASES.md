@@ -52,7 +52,8 @@ publication. The optional source fields fall back to the build information in
 the draft notes. The workflow refuses an already-published release.
 
 ```powershell
-gh workflow run "Finalize Draft Release" -f tag=v2026.7.23-524
+$env:DRAFT_TAG = Read-Host "Existing draft tag"
+gh workflow run "Finalize Draft Release" -f tag=$env:DRAFT_TAG
 ```
 
 ## Repair published updater metadata
