@@ -6,6 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "build-release.yml"
 REPAIR_WORKFLOW = ROOT / ".github" / "workflows" / "repair-updater-metadata.yml"
+FINALIZE_WORKFLOW = ROOT / ".github" / "workflows" / "finalize-draft-release.yml"
+FINALIZER = ROOT / "scripts" / "finalize-release.py"
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
@@ -13,6 +15,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
     def setUpClass(cls):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
         cls.repair_workflow = REPAIR_WORKFLOW.read_text(encoding="utf-8")
+        cls.finalize_workflow = FINALIZE_WORKFLOW.read_text(encoding="utf-8")
+        cls.finalizer = FINALIZER.read_text(encoding="utf-8")
 
     def test_platform_selection_stays_within_dispatch_input_limit(self):
         input_block = self.workflow.split("permissions:", 1)[0]
@@ -29,9 +33,23 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
 
     def test_finalization_normalizes_and_rechecks_updater_metadata(self):
-        self.assertIn("scripts/normalize-updater-metadata.py", self.workflow)
-        self.assertIn("--check", self.workflow)
-        self.assertIn("gh release upload \"${TAG_NAME}\" release-check/latest.json", self.workflow)
+        self.assertIn("scripts/finalize-release.py", self.workflow)
+        self.assertNotIn("releases/tags/${TAG_NAME}", self.workflow)
+
+    def test_draft_recovery_reuses_the_finalizer_without_rebuilding(self):
+        self.assertIn("name: Finalize Draft Release", self.finalize_workflow)
+        self.assertIn("permissions:\n  contents: write", self.finalize_workflow)
+        self.assertIn("scripts/finalize-release.py", self.finalize_workflow)
+        self.assertIn("source_commit:", self.finalize_workflow)
+        self.assertNotIn("tauri-apps/tauri-action", self.finalize_workflow)
+        self.assertNotIn("PRIVATE_SOURCE_REPOSITORY", self.finalize_workflow)
+
+    def test_finalizer_fetches_drafts_by_database_id(self):
+        self.assertIn('"databaseId,tagName"', self.finalizer)
+        self.assertIn('f"repos/{repo}/releases/{database_id}"', self.finalizer)
+        self.assertIn('"--paginate"', self.finalizer)
+        self.assertIn('"--slurp"', self.finalizer)
+        self.assertNotIn("releases/tags/", self.finalizer)
 
     def test_repair_workflow_reuses_normalizer_and_updates_checksums(self):
         self.assertIn("name: Repair Updater Metadata", self.repair_workflow)

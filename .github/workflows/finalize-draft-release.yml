@@ -1,0 +1,83 @@
+name: Finalize Draft Release
+
+run-name: Finalize ${{ inputs.tag }}
+
+# Recovers a fully built draft after a finalization failure. Platform binaries
+# are reused from the existing release and are never rebuilt by this workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的现有 Draft Release tag"
+        required: true
+        type: string
+      version:
+        description: "版本号；留空则从 tag 推导"
+        required: false
+        default: ""
+        type: string
+      source_ref:
+        description: "私有源码引用；留空则从现有草稿说明读取"
+        required: false
+        default: ""
+        type: string
+      source_commit:
+        description: "私有源码提交；留空则从现有草稿说明读取"
+        required: false
+        default: ""
+        type: string
+      platforms:
+        description: "构建平台；留空则从现有草稿说明读取"
+        required: false
+        default: ""
+        type: string
+      highlights:
+        description: "可选的发布要点，每行一项"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+
+      - name: Test release tooling
+        run: python -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Finalize existing draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PLATFORMS: ${{ inputs.platforms }}
+          HIGHLIGHTS: ${{ inputs.highlights }}
+        run: |
+          set -euo pipefail
+          arguments=(
+            --repo "${GH_REPO}"
+            --tag "${TAG_NAME}"
+            --version "${VERSION}"
+            --source-ref "${SOURCE_REF}"
+            --source-commit "${SOURCE_COMMIT}"
+            --platforms "${PLATFORMS}"
+          )
+          if [[ -n "${HIGHLIGHTS//[[:space:]]/}" ]]; then
+            printf '%s\n' "${HIGHLIGHTS}" > release-highlights.md
+            arguments+=(--highlights-file release-highlights.md)
+          fi
+          python scripts/finalize-release.py "${arguments[@]}"

@@ -63,18 +63,11 @@ def public_asset_url(asset: dict, prefix: str) -> str:
         raise SystemExit("release asset has no name")
     if name == "latest.json" or name.endswith(".sig"):
         raise SystemExit(f"updater entry points to a metadata/signature asset: {name}")
-    url = str(asset.get("browser_download_url") or "").strip()
-    if not url:
-        url = prefix + quote(name, safe="")
 
-    parsed = urlparse(url)
-    if parsed.scheme.lower() != "https" or parsed.netloc.lower() != "github.com":
-        raise SystemExit(f"asset {name!r} does not have a public GitHub URL: {url}")
-    if not url.startswith(prefix):
-        raise SystemExit(
-            f"asset {name!r} points outside the expected release: {url}"
-        )
-    return url
+    # Draft release assets use an ephemeral ``untagged-*`` download path.  The
+    # authenticated release payload is authoritative for the asset name, but
+    # its browser URL is not stable until the draft is published.
+    return prefix + quote(name, safe="")
 
 
 def asset_for_entry(
@@ -110,9 +103,17 @@ def normalize(
     by_id: dict[str, dict],
     by_name: dict[str, dict],
     prefix: str,
+    release_version: str,
     *,
     check: bool,
 ) -> bool:
+    actual_version = str(metadata.get("version") or "").strip()
+    if actual_version != release_version:
+        raise SystemExit(
+            "latest.json version does not match the release tag: "
+            f"expected {release_version!r}, got {actual_version!r}"
+        )
+
     platforms = metadata.get("platforms")
     if not isinstance(platforms, dict) or not platforms:
         raise SystemExit("latest.json does not contain updater platforms")
@@ -178,7 +179,12 @@ def main() -> int:
     by_id, by_name = release_assets(assets_payload)
     prefix = expected_download_prefix(args.repo, args.tag)
     changed = normalize(
-        metadata, by_id, by_name, prefix, check=args.check
+        metadata,
+        by_id,
+        by_name,
+        prefix,
+        args.tag.removeprefix("v"),
+        check=args.check,
     )
     if not args.check and changed:
         write_json(args.metadata, metadata)

@@ -9,7 +9,13 @@ steps, and a sanitized log or screenshot. For official API JSON errors, keep the
 diagnostic fields showing the endpoint path, HTTP status, Content-Type, and
 short body preview; remove query strings, signatures, tokens, and device IDs.
 For a workflow change, add or update an automated fixture and run the local
-Python tests.
+Python tests and workflow lint:
+
+```powershell
+python -m unittest discover -s tests -p 'test_*.py'
+actionlint -no-color
+git diff --check
+```
 
 Never commit release credentials, updater keys, private source snapshots, or
 downloaded artifacts. See `SECURITY.md` before reporting a sensitive problem.

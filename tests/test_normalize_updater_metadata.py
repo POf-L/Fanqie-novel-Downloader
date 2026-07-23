@@ -77,8 +77,38 @@ class NormalizeUpdaterMetadataTest(unittest.TestCase):
         self.assertEqual(check.returncode, 0, check.stderr)
         self.assertEqual(checked, normalized)
 
+    def test_draft_asset_url_is_rebuilt_with_the_final_tag(self):
+        metadata = {
+            "version": "2026.7.23-1200",
+            "platforms": {
+                "windows-x86_64": {
+                    "signature": "sig",
+                    "url": "https://api.github.com/repos/POf-L/Fanqie-novel-Downloader/releases/assets/103",
+                }
+            }
+        }
+        assets = {
+            "assets": [
+                {
+                    "id": 103,
+                    "name": "Fanqie Downloader windows.exe",
+                    "browser_download_url": "https://github.com/POf-L/Fanqie-novel-Downloader/releases/download/untagged-a60dc9b1951508bce7c9/Fanqie%20Downloader%20windows.exe",
+                }
+            ]
+        }
+
+        result, normalized = self.run_normalizer(metadata, assets)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            normalized["platforms"]["windows-x86_64"]["url"],
+            "https://github.com/POf-L/Fanqie-novel-Downloader/releases/download/v2026.7.23-1200/Fanqie%20Downloader%20windows.exe",
+        )
+        self.assertNotIn("untagged-", normalized["platforms"]["windows-x86_64"]["url"])
+
     def test_missing_asset_is_a_hard_failure(self):
         metadata = {
+            "version": "2026.7.23-1200",
             "platforms": {
                 "windows-x86_64": {
                     "signature": "sig",
@@ -92,6 +122,7 @@ class NormalizeUpdaterMetadataTest(unittest.TestCase):
 
     def test_signature_asset_cannot_be_selected_as_the_update_payload(self):
         metadata = {
+            "version": "2026.7.23-1200",
             "platforms": {
                 "windows-x86_64": {
                     "signature": "sig",
@@ -111,6 +142,30 @@ class NormalizeUpdaterMetadataTest(unittest.TestCase):
         result, _ = self.run_normalizer(metadata, assets)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("metadata/signature", result.stderr)
+
+    def test_stale_metadata_version_is_a_hard_failure(self):
+        metadata = {
+            "version": "2026.7.21-1511",
+            "platforms": {
+                "windows-x86_64": {
+                    "signature": "sig",
+                    "url": "https://api.github.com/repos/POf-L/Fanqie-novel-Downloader/releases/assets/1001",
+                }
+            },
+        }
+        assets = {
+            "assets": [
+                {
+                    "id": 1001,
+                    "name": "Fanqie-windows.exe",
+                }
+            ]
+        }
+
+        result, _ = self.run_normalizer(metadata, assets)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("version does not match", result.stderr)
 
 
 if __name__ == "__main__":
