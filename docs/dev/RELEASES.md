@@ -1,5 +1,16 @@
 # Release Operations
 
+## Latest Verified Release
+
+[`v2026.7.23-1133`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/v2026.7.23-1133)
+was published by Actions run
+[`30003605742`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30003605742)
+from private Tauri source commit `57ac3ba6768d`. The release contains 30
+assets, all 14 installer links (including Android arm64-v8a, armeabi-v7a,
+universal, x86_64, and AAB), complete SHA-256 manifests, and canonical updater
+URLs. The build and release jobs passed; Android device tap-through remains a
+separate hardware check.
+
 ## Asset flow
 
 The workflow builds desktop artifacts with Tauri, uploads them to a draft
