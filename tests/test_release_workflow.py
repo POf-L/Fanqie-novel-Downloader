@@ -34,6 +34,16 @@ class ReleaseWorkflowTest(unittest.TestCase):
             5,
         )
 
+    def test_private_source_checkouts_do_not_persist_credentials(self):
+        private_checkouts = self.workflow.count(
+            "token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}"
+        )
+        self.assertEqual(private_checkouts, 6)
+        self.assertEqual(
+            self.workflow.count("persist-credentials: false"),
+            private_checkouts,
+        )
+
     def test_finalization_normalizes_and_rechecks_updater_metadata(self):
         self.assertIn("scripts/finalize-release.py", self.workflow)
         self.assertNotIn("releases/tags/${TAG_NAME}", self.workflow)

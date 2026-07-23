@@ -20,6 +20,16 @@ The dispatch form keeps platform selection in one validated `platforms` string
 so it stays within GitHub's workflow input limit. Release jobs pin Rust to the
 same `1.97.0` toolchain declared by the Tauri source repository.
 
+## Source isolation
+
+The public wrapper is an orchestration repository, not a mirror of the private
+Tauri source. Each build job checks out the requested private commit with the
+`PRIVATE_SOURCE_TOKEN` secret and `persist-credentials: false`. The checkout
+exists only on the ephemeral runner; workflow artifacts and release assets are
+limited to built binaries, signatures, and verification manifests. Do not add
+source archives, caches, debug dumps, or source-bearing logs to the upload
+steps.
+
 ## Local validation
 
 ```powershell

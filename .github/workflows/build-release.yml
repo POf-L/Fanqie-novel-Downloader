@@ -81,6 +81,7 @@ jobs:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ inputs.source_ref }}
           token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
@@ -317,6 +318,7 @@ jobs:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
           token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
@@ -600,6 +602,7 @@ jobs:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
           token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
@@ -733,6 +736,7 @@ jobs:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
           token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
@@ -835,6 +839,7 @@ jobs:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
           token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
@@ -989,6 +994,7 @@ jobs:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
           token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
