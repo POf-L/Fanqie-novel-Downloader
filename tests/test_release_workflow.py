@@ -94,6 +94,21 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertGreaterEqual(self.workflow.count('test -d "${app_path}/Contents/_CodeSignature"'), 2)
         self.assertGreaterEqual(self.workflow.count("spctl --assess --type execute"), 2)
 
+    def test_unsigned_macos_actions_do_not_receive_empty_apple_credentials(self):
+        self.assertEqual(
+            self.workflow.count("Export Apple signing credentials for Tauri"),
+            2,
+        )
+        for step_name in (
+            "Build, sign updater artifacts and upload",
+            "Cross-build, sign updater artifacts and upload",
+        ):
+            section = self.workflow.split(f"- name: {step_name}", 1)[1]
+            section = section.split("\n      - name:", 1)[0]
+            self.assertNotIn("APPLE_CERTIFICATE:", section)
+            self.assertNotIn("APPLE_ID:", section)
+        self.assertIn('>> "${GITHUB_ENV}"', self.workflow)
+
     def test_private_source_checkouts_do_not_persist_credentials(self):
         private_checkouts = self.workflow.count(
             "token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}"

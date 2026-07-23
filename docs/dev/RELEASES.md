@@ -58,9 +58,11 @@ notarization, and pass both `codesign --verify --deep --strict` and
 The workflow checks only whether all names are configured and never prints a
 value. An unsigned local test build may still run with publication disabled,
 but it must not be attached to a stable release because Gatekeeper presents it
-to users as damaged. As of 2026-07-24 these Secrets are not configured in the
-public wrapper or the private source repository, so macOS publication is
-intentionally blocked.
+to users as damaged. The Tauri action receives Apple credentials only after
+this gate succeeds; unsigned test runs leave those variables undefined so the
+action does not attempt to import an empty certificate. As of 2026-07-24 these
+Secrets are not configured in the public wrapper or the private source
+repository, so macOS publication is intentionally blocked.
 
 ## Source isolation
 
