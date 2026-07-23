@@ -1,6 +1,11 @@
+import io
+import json
+import os
 import re
+import textwrap
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +24,45 @@ class ReleaseWorkflowTest(unittest.TestCase):
         cls.finalize_workflow = FINALIZE_WORKFLOW.read_text(encoding="utf-8")
         cls.finalizer = FINALIZER.read_text(encoding="utf-8")
         cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+
+    def render_draft_notes(self, asset_names):
+        script = self.workflow.split("          python - <<'PY'\n", 1)[1]
+        script = textwrap.dedent(script.split("\n          PY", 1)[0])
+        releases = [
+            {
+                "draft": False,
+                "tag_name": "vprevious",
+                "name": "Previous release",
+                "assets": [{"name": name} for name in asset_names],
+            }
+        ]
+        response = io.BytesIO(json.dumps(releases).encode("utf-8"))
+        written = {}
+
+        def capture_write_text(path, data, encoding=None):
+            written[str(path)] = data
+            return len(data)
+
+        environment = {
+            "GH_TOKEN": "test-token",
+            "GH_REPO": "POf-L/Fanqie-novel-Downloader",
+            "VERSION": "2099.1.1",
+            "TAG_NAME": "v2099.1.1",
+            "PRERELEASE": "false",
+            "SOURCE_REF": "main",
+            "SOURCE_COMMIT": "0123456789ab",
+            "PLATFORMS": "android,ios",
+        }
+        with (
+            patch.dict(os.environ, environment),
+            patch("urllib.request.urlopen", return_value=response),
+            patch.object(Path, "write_text", new=capture_write_text),
+            patch("builtins.print"),
+        ):
+            exec(compile(script, str(WORKFLOW), "exec"), {})
+
+        self.assertEqual(set(written), {"release-notes.md"})
+        return written["release-notes.md"]
 
     def test_platform_selection_stays_within_dispatch_input_limit(self):
         input_block = self.workflow.split("permissions:", 1)[0]
@@ -69,6 +113,38 @@ class ReleaseWorkflowTest(unittest.TestCase):
             'for marker in ("arm64-v8a", "armeabi-v7a", "x86_64")',
             self.workflow,
         )
+
+    def test_draft_bootstrap_renders_every_mobile_download_link(self):
+        assets = [
+            "fanqie-android-arm64-v8a.apk",
+            "fanqie-android-armeabi-v7a.apk",
+            "fanqie-android-x86_64.apk",
+            "fanqie-android-universal.apk",
+            "fanqie-android.aab",
+            "fanqie-ios-arm64.ipa",
+        ]
+        notes = self.render_draft_notes(assets)
+        base = (
+            "https://github.com/POf-L/Fanqie-novel-Downloader/"
+            "releases/download/vprevious/"
+        )
+
+        for asset in assets:
+            self.assertIn(f"({base}{asset})", notes)
+        self.assertIn("32位 armeabi-v7a", notes)
+        self.assertIn("模拟器 x86_64", notes)
+        self.assertIn("无签名 IPA（侧载安装）", notes)
+
+    def test_draft_bootstrap_does_not_mislabel_split_apk_as_universal(self):
+        notes = self.render_draft_notes(
+            [
+                "fanqie-android-arm64-v8a.apk",
+                "fanqie-android-armeabi-v7a.apk",
+                "fanqie-android-x86_64.apk",
+            ]
+        )
+
+        self.assertNotIn("通用版 universal", notes)
 
     def test_draft_recovery_reuses_the_finalizer_without_rebuilding(self):
         self.assertIn("name: Finalize Draft Release", self.finalize_workflow)
