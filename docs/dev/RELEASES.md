@@ -28,7 +28,9 @@ Tauri source. Each build job checks out the requested private commit with the
 exists only on the ephemeral runner; workflow artifacts and release assets are
 limited to built binaries, signatures, and verification manifests. Do not add
 source archives, caches, debug dumps, or source-bearing logs to the upload
-steps.
+steps. The public wrapper deliberately does not enable `actions/cache` or
+`Swatinem/rust-cache` for private-source jobs; all compiler output remains on
+the disposable runner.
 
 ## Draft hygiene
 

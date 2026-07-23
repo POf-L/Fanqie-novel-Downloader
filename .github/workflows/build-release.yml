@@ -326,10 +326,6 @@ jobs:
         with:
           components: rustfmt,clippy
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
-
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
@@ -621,11 +617,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
-          key: ${{ matrix.target }}
-
       - name: Install Tauri Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -757,12 +748,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
-        if: steps.need.outputs.run == 'true'
-        with:
-          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
-          key: fallback-${{ matrix.target }}
-
       - name: Install Linux host deps and ARM64 cross linker
         if: steps.need.outputs.run == 'true' && runner.os == 'Linux'
         run: |
@@ -857,11 +842,6 @@ jobs:
             armv7-linux-androideabi,
             i686-linux-android,
             x86_64-linux-android
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
-          key: android-all-abis
 
       - name: Install Android SDK, NDK and Tauri CLI
         run: |
@@ -1032,11 +1012,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.97.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
-          key: ios-arm64-xcode16
 
       - name: Install XcodeGen and Tauri CLI
         run: |

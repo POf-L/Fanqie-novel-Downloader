@@ -44,6 +44,10 @@ class ReleaseWorkflowTest(unittest.TestCase):
             private_checkouts,
         )
 
+    def test_private_source_builds_do_not_use_public_actions_cache(self):
+        self.assertNotIn("Swatinem/rust-cache", self.workflow)
+        self.assertNotIn("actions/cache", self.workflow)
+
     def test_finalization_normalizes_and_rechecks_updater_metadata(self):
         self.assertIn("scripts/finalize-release.py", self.workflow)
         self.assertNotIn("releases/tags/${TAG_NAME}", self.workflow)
