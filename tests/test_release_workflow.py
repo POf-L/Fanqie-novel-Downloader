@@ -78,6 +78,22 @@ class ReleaseWorkflowTest(unittest.TestCase):
             5,
         )
 
+    def test_published_macos_bundles_require_developer_id_and_gatekeeper_checks(self):
+        self.assertIn("MACOS_ENABLED: ${{ contains(steps.platforms.outputs.selected_platforms, 'macos-') }}", self.workflow)
+        for secret in (
+            "APPLE_CERTIFICATE",
+            "APPLE_CERTIFICATE_PASSWORD",
+            "APPLE_SIGNING_IDENTITY",
+            "APPLE_ID",
+            "APPLE_PASSWORD",
+            "APPLE_TEAM_ID",
+        ):
+            self.assertIn(f"{secret}: ${{{{ secrets.{secret} }}}}", self.workflow)
+        self.assertIn('bundle["macOS"] = {"signingIdentity": identity}', self.workflow)
+        self.assertGreaterEqual(self.workflow.count("codesign --verify --deep --strict"), 2)
+        self.assertGreaterEqual(self.workflow.count('test -d "${app_path}/Contents/_CodeSignature"'), 2)
+        self.assertGreaterEqual(self.workflow.count("spctl --assess --type execute"), 2)
+
     def test_private_source_checkouts_do_not_persist_credentials(self):
         private_checkouts = self.workflow.count(
             "token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}"

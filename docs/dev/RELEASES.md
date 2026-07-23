@@ -38,6 +38,27 @@ The dispatch form keeps platform selection in one validated `platforms` string
 so it stays within GitHub's workflow input limit. Release jobs pin Rust to the
 same `1.97.0` toolchain declared by the Tauri source repository.
 
+## macOS publication gate
+
+A published macOS APP/DMG must use a Developer ID certificate, complete Apple
+notarization, and pass both `codesign --verify --deep --strict` and
+`spctl --assess --type execute`. Selecting either macOS target while
+`publish_release` is true therefore requires these repository Secrets:
+
+- `APPLE_CERTIFICATE`
+- `APPLE_CERTIFICATE_PASSWORD`
+- `APPLE_SIGNING_IDENTITY`
+- `APPLE_ID`
+- `APPLE_PASSWORD`
+- `APPLE_TEAM_ID`
+
+The workflow checks only whether all names are configured and never prints a
+value. An unsigned local test build may still run with publication disabled,
+but it must not be attached to a stable release because Gatekeeper presents it
+to users as damaged. As of 2026-07-24 these Secrets are not configured in the
+public wrapper or the private source repository, so macOS publication is
+intentionally blocked.
+
 ## Source isolation
 
 The public wrapper is an orchestration repository, not a mirror of the private

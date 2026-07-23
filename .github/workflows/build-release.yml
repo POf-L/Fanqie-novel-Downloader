@@ -249,6 +249,7 @@ jobs:
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
           ANDROID_ENABLED: ${{ steps.platforms.outputs.android_enabled }}
           IOS_ENABLED: ${{ steps.platforms.outputs.ios_enabled }}
+          MACOS_ENABLED: ${{ contains(steps.platforms.outputs.selected_platforms, 'macos-') }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -259,6 +260,12 @@ jobs:
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}
           APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           updater=false
           android=false
@@ -279,11 +286,21 @@ jobs:
                 -n "${APPLE_DEVELOPMENT_TEAM}" ]]; then
             ios=true
           fi
+          macos=false
+          if [[ -n "${APPLE_CERTIFICATE}" &&
+                -n "${APPLE_CERTIFICATE_PASSWORD}" &&
+                -n "${APPLE_SIGNING_IDENTITY}" &&
+                -n "${APPLE_ID}" &&
+                -n "${APPLE_PASSWORD}" &&
+                -n "${APPLE_TEAM_ID}" ]]; then
+            macos=true
+          fi
 
           {
             echo "updater_signing=${updater}"
             echo "android_signing=${android}"
             echo "ios_signing=${ios}"
+            echo "macos_signing=${macos}"
           } >> "${GITHUB_OUTPUT}"
 
           if [[ "${PUBLISH_RELEASE}" == "true" && "${updater}" != "true" &&
@@ -294,6 +311,11 @@ jobs:
           if [[ "${PUBLISH_RELEASE}" == "true" &&
                 "${ANDROID_ENABLED}" == "true" && "${android}" != "true" ]]; then
             echo "Android publishing requires all four Android signing secrets."
+            exit 1
+          fi
+          if [[ "${PUBLISH_RELEASE}" == "true" &&
+                "${MACOS_ENABLED}" == "true" && "${macos}" != "true" ]]; then
+            echo "macOS publishing requires Apple certificate, Developer ID, notarization, and team secrets."
             exit 1
           fi
           # iOS unsigned IPA is allowed without Apple signing secrets.
@@ -650,22 +672,42 @@ jobs:
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.updater_signing }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           import json
           import os
           from pathlib import Path
 
           path = Path(os.environ["PRIVATE_SOURCE_PATH"]) / "src-tauri" / "tauri.release.conf.json"
+          bundle = {
+              "createUpdaterArtifacts":
+                  os.environ["CREATE_UPDATER_ARTIFACTS"] == "true"
+          }
+          identity = os.environ.get("APPLE_SIGNING_IDENTITY", "").strip()
+          if identity:
+              bundle["macOS"] = {"signingIdentity": identity}
           path.write_text(
-              json.dumps({
-                  "version": os.environ["APP_VERSION"],
-                  "bundle": {
-                      "createUpdaterArtifacts":
-                          os.environ["CREATE_UPDATER_ARTIFACTS"] == "true"
-                  },
-              }, ensure_ascii=False),
+              json.dumps({"version": os.environ["APP_VERSION"], "bundle": bundle}, ensure_ascii=False),
               encoding="utf-8",
           )
+
+      - name: Require Apple signing and notarization secrets
+        if: runner.os == 'macOS' && inputs.publish_release == true
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "Publishing macOS artifacts requires ${name}."
+              exit 1
+            fi
+          done
 
       - name: Build, sign updater artifacts and upload
         uses: tauri-apps/tauri-action@v1
@@ -673,6 +715,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
           args: >-
@@ -687,6 +735,16 @@ jobs:
           releaseBody: Rust + Tauri v2 全平台正式构建。
           releaseDraft: true
           prerelease: ${{ inputs.prerelease }}
+
+      - name: Verify macOS signing and notarization
+        if: runner.os == 'macOS' && inputs.publish_release == true
+        shell: bash
+        run: |
+          app_path="$(find "${PRIVATE_SOURCE_PATH}/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "${app_path}"
+          test -d "${app_path}/Contents/_CodeSignature"
+          codesign --verify --deep --strict --verbose=2 "${app_path}"
+          spctl --assess --type execute --verbose=2 "${app_path}"
 
   # When scarce native runners fail (resource pressure / OOM / unavailable),
   # cross-compile the same targets on more available x64/arm64 runners.
@@ -791,22 +849,42 @@ jobs:
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.updater_signing }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           import json
           import os
           from pathlib import Path
 
           path = Path(os.environ["PRIVATE_SOURCE_PATH"]) / "src-tauri" / "tauri.release.conf.json"
+          bundle = {
+              "createUpdaterArtifacts":
+                  os.environ["CREATE_UPDATER_ARTIFACTS"] == "true"
+          }
+          identity = os.environ.get("APPLE_SIGNING_IDENTITY", "").strip()
+          if identity:
+              bundle["macOS"] = {"signingIdentity": identity}
           path.write_text(
-              json.dumps({
-                  "version": os.environ["APP_VERSION"],
-                  "bundle": {
-                      "createUpdaterArtifacts":
-                          os.environ["CREATE_UPDATER_ARTIFACTS"] == "true"
-                  },
-              }, ensure_ascii=False),
+              json.dumps({"version": os.environ["APP_VERSION"], "bundle": bundle}, ensure_ascii=False),
               encoding="utf-8",
           )
+
+      - name: Require Apple signing and notarization secrets
+        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "Publishing macOS artifacts requires ${name}."
+              exit 1
+            fi
+          done
 
       - name: Cross-build, sign updater artifacts and upload
         if: steps.need.outputs.run == 'true'
@@ -815,6 +893,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
           args: >-
@@ -829,6 +913,16 @@ jobs:
           releaseBody: Rust + Tauri v2 全平台正式构建（含稀缺 runner 交叉回退）。
           releaseDraft: true
           prerelease: ${{ inputs.prerelease }}
+
+      - name: Verify macOS signing and notarization
+        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true
+        shell: bash
+        run: |
+          app_path="$(find "${PRIVATE_SOURCE_PATH}/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "${app_path}"
+          test -d "${app_path}/Contents/_CodeSignature"
+          codesign --verify --deep --strict --verbose=2 "${app_path}"
+          spctl --assess --type execute --verbose=2 "${app_path}"
 
   android:
     needs: [prepare, verify, release-bootstrap]
