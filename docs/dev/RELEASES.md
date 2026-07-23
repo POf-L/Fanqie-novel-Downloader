@@ -30,6 +30,15 @@ limited to built binaries, signatures, and verification manifests. Do not add
 source archives, caches, debug dumps, or source-bearing logs to the upload
 steps.
 
+## Draft hygiene
+
+Each build may leave one recoverable draft when finalization fails. Keep a
+draft only while it is tied to an active or intentionally recoverable Actions
+run. After the run is finished, inspect the numeric release ID and delete
+abandoned `untagged-*` drafts; never delete a named stable or historical
+prerelease release as part of this cleanup. The current stable release must be
+rechecked after any draft deletion.
+
 ## Local validation
 
 ```powershell

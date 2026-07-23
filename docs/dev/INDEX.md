@@ -5,4 +5,6 @@
   workflow contract that makes updater URLs publicly downloadable.
 - [Release Finalizer](modules/release-finalizer.md): draft validation,
   checksums, release notes, publication, and failure recovery.
+- [Legacy Release-Note Tools](modules/legacy-release-notes.md): historical
+  one-off scripts kept separate from the supported publication path.
 - [Repository README](../../README.md): user-facing features and downloads.
