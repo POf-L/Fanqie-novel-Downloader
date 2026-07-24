@@ -19,6 +19,24 @@ the stable release remains gated on Apple signing. Its workflow contract,
 asset set, source-isolation rules, and recovery procedure are documented in
 [Unsigned macOS Release](modules/macos-unsigned-release.md).
 
+## Latest Verified Unsigned macOS Client
+
+[`macos-unsigned-v2026.7.24-22-r1`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/macos-unsigned-v2026.7.24-22-r1)
+was published as a prerelease by Actions run
+[`30056011403`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30056011403)
+from wrapper commit `c708ecae3e9af406f169b46099835e30521ba8bd`
+and private Tauri source commit
+`091ab8c834084c93406a6c2e33632a8278c024f0`.
+
+Post-publication verification confirmed all four anonymous DMG/APP ZIP links
+and the checksum link return HTTP 200. Downloaded files match both the release
+manifest and GitHub's SHA-256 digests. The APP ZIPs contain executable arm64
+and x86_64 Mach-O binaries, version `2026.7.24-22`, the expected Bundle ID and
+icon, executable permissions, and no `_CodeSignature` directory. The workflow
+also ran `hdiutil verify` on both DMGs before publication. The release is
+non-draft and prerelease; GitHub's latest stable release remains
+`v2026.7.23-1739`.
+
 ## Asset flow
 
 The workflow builds desktop artifacts with Tauri, uploads them to a draft
