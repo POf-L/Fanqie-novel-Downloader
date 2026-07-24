@@ -124,6 +124,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("uploadUpdaterJson: false", workflow)
         self.assertIn("uploadUpdaterSignatures: false", workflow)
         self.assertIn('"createUpdaterArtifacts": False', workflow)
+        self.assertIn("### 其他平台状态", workflow)
+        self.assertIn("\\`apksigner\\`", workflow)
         self.assertNotIn("scripts/finalize-release.py", workflow)
         self.assertNotIn("--latest", workflow)
         self.assertIn(
