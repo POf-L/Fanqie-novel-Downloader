@@ -92,6 +92,52 @@ class PrepareReleaseArtifactsTest(unittest.TestCase):
             notes,
         )
 
+        self.assertIn("## 平台状态与安装限制", notes)
+        self.assertIn("Windows", notes)
+        self.assertIn("Authenticode", notes)
+        self.assertIn("macOS", notes)
+        self.assertIn("Developer ID", notes)
+        self.assertIn("Linux", notes)
+        self.assertIn("- **Linux**：本版本未提供安装包", notes)
+        self.assertIn("Android", notes)
+        self.assertIn("缺少发布 keystore", notes)
+        self.assertIn("iOS", notes)
+        self.assertIn("- **iOS**：本版本未提供 IPA", notes)
+        self.assertIn("自动更新", notes)
+
+    def test_platform_status_reports_signed_android_and_unsigned_macos(self):
+        release = self.fixture()
+        release["prerelease"] = True
+        release["assets"].extend(
+            [
+                {
+                    "name": "FanqieNovelDownloader-tauri-darwin-aarch64-unsigned.dmg",
+                    "digest": "sha256:" + "e" * 64,
+                },
+                {
+                    "name": "FanqieNovelDownloader-2026.7.23-524-android-arm64-v8a.apk",
+                    "digest": "sha256:" + "f" * 64,
+                },
+                {
+                    "name": "SIGNING.txt",
+                    "digest": "sha256:" + "1" * 64,
+                },
+                {
+                    "name": "FanqieNovelDownloader-2026.7.23-524-Fanqie.Novel.Downloader.ipa",
+                    "digest": "sha256:" + "2" * 64,
+                },
+            ]
+        )
+
+        result, notes_path, _ = self.run_preparer(release)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        notes = notes_path.read_text(encoding="utf-8")
+        self.assertIn("未签名、未公证的预发布包", notes)
+        self.assertIn("使用发布密钥签名并经 `apksigner` 验证", notes)
+        self.assertIn("无 Apple 签名侧载模式", notes)
+        self.assertIn("这是 prerelease", notes)
+
     def test_check_rejects_a_stale_digest(self):
         release = self.fixture()
         stale = "0" * 64 + "  latest.json\n"

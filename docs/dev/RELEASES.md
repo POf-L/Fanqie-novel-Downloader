@@ -57,7 +57,8 @@ The finalization job delegates to `scripts/finalize-release.py` after every
 platform job has finished. The finalizer resolves the draft to its database ID,
 fetches the authenticated asset list, normalizes and re-uploads `latest.json`,
 and creates `SHA256SUMS-release.txt` from GitHub's asset digests. It then
-generates final Chinese release notes and validates every generated artifact.
+generates final Chinese release notes, including a platform status and signing
+limitations block, and validates every generated artifact.
 Only a fully validated draft is published. The finalizer checks the published
 asset URLs, updater metadata, checksum manifest, source commit, and stable
 `latest` state once more after publication.

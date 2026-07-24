@@ -189,6 +189,16 @@ jobs:
 
           不需要、也不应全局关闭 Gatekeeper。
 
+          ### 其他平台状态
+
+          本预发布只提供 macOS 客户端；其他平台请从[稳定版 Release](https://github.com/${GH_REPO}/releases/tag/${stable_tag})获取：
+
+          - Windows 当前未配置 Authenticode 证书，SmartScreen 或“无法验证发行商”提示属于预期，核对 SHA-256 后可在文件属性中解除锁定。
+          - Linux 的 DEB / AppImage 不提供项目级发行商签名，请按架构选择并核对 SHA-256；AppImage 需要执行权限。
+          - Android 正式 APK / AAB 使用发布密钥并经 \`apksigner\` 验证；安装 APK 仍需允许未知来源。
+          - iOS IPA 当前为无 Apple 签名侧载包，不支持 App Store。
+          - 本预发布不进入稳定版自动更新；未签名或无 updater 签名的包请手动安装。
+
           ### 构建信息
 
           - 私有源码引用：\`${SOURCE_REF}\`
@@ -435,6 +445,16 @@ jobs:
           \`\`\`
 
           不需要、也不应全局关闭 Gatekeeper。
+
+          ### 其他平台状态
+
+          本预发布只提供 macOS 客户端；其他平台请从[稳定版 Release](https://github.com/${GH_REPO}/releases/tag/${STABLE_TAG})获取：
+
+          - Windows 当前未配置 Authenticode 证书，SmartScreen 或“无法验证发行商”提示属于预期，核对 SHA-256 后可在文件属性中解除锁定。
+          - Linux 的 DEB / AppImage 不提供项目级发行商签名，请按架构选择并核对 SHA-256；AppImage 需要执行权限。
+          - Android 正式 APK / AAB 使用发布密钥并经 \`apksigner\` 验证；安装 APK 仍需允许未知来源。
+          - iOS IPA 当前为无 Apple 签名侧载包，不支持 App Store。
+          - 本预发布不进入稳定版自动更新；未签名或无 updater 签名的包请手动安装。
 
           ### 构建信息
 

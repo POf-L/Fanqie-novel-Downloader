@@ -31,6 +31,17 @@ the build fields. Optional release highlights are read from a text file.
 Any failure before step 5 leaves a recoverable draft. The finalizer rejects an
 already-published release so recovery cannot silently rewrite a stable release.
 
+## Platform status block
+
+`scripts/prepare-release-artifacts.py` adds `平台状态与安装限制` to every
+final note. The block is derived from the actual asset names and control files,
+so a missing platform is called out instead of receiving a guessed download
+link. It documents the current Windows Authenticode, Linux package-signing,
+Android keystore, iOS sideload, macOS Developer ID/notarization, and updater
+boundaries. Keep this block in the supported generator when adding a platform or
+changing its signing gate; do not rely on the legacy PowerShell rewriter for
+routine publication.
+
 ## Verification
 
 `tests/test_prepare_release_artifacts.py` exercises digest manifests, tamper

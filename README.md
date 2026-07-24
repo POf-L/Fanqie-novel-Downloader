@@ -32,6 +32,9 @@
 
 https://github.com/POf-L/Fanqie-novel-Downloader/releases
 
+每个已发布版本的说明都会列出实际提供的平台、签名/公证状态、侧载要求和
+自动更新边界；没有附件的平台不会从其他架构包推断下载地址。
+
 当前工作流可以生成：
 
 - Windows x64 / ARM64：NSIS 安装程序
