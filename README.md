@@ -18,8 +18,9 @@
 - 书架管理
 - TXT / EPUB 下载
 - 下载历史记录
-- 桌面客户端签名自动更新
+- Windows / Linux 桌面客户端签名自动更新
 - 支持 Windows、Linux、macOS、Android
+- macOS 提供独立的 Intel / Apple Silicon 未签名预发布客户端
 - Android 可导出并通过系统应用打开 TXT / EPUB
 - iOS 提供 **无签名 IPA**，需自行侧载安装（不上架 App Store）
 
@@ -35,17 +36,23 @@ https://github.com/POf-L/Fanqie-novel-Downloader/releases
 
 - Windows x64 / ARM64：NSIS 安装程序
 - Linux x64 / ARM64：DEB 与 AppImage（需要 WebKitGTK 4.1）
-- macOS Intel / Apple Silicon：APP 与 DMG
+- macOS Intel / Apple Silicon：未签名预发布提供 APP ZIP 与 DMG；正式版待 Apple 签名与公证
 - Android：通用 APK / 分架构 APK，以及 AAB
 - iOS 提供 **无签名 IPA**（需自行侧载安装，不上架 App Store）
 
-发布文件统一使用 `FanqieNovelDownloader-tauri-` 前缀。Windows 用户应按 CPU 架构选择 x64 或 ARM64 安装程序；Linux 用户可按发行版选择 DEB 或 AppImage；macOS 用户应区分 Intel 与 Apple Silicon。
+发布文件统一使用 `FanqieNovelDownloader-tauri-` 前缀；macOS 未签名渠道使用 `FanqieNovelDownloader-macos-` 前缀并在文件名中明确标注 `unsigned`。Windows 用户应按 CPU 架构选择 x64 或 ARM64 安装程序；Linux 用户可按发行版选择 DEB 或 AppImage；macOS 用户应区分 Intel 与 Apple Silicon。
 
 Android 普通用户下载 APK 即可（优先 `arm64-v8a`），AAB 主要用于应用商店。
 
 iOS 提供的是 **无 Apple 签名** 的 IPA，不支持上架 App Store；有条件的用户可自行侧载安装，安装后需在「设置 → 通用 → VPN 与设备管理」中信任证书。
 
-桌面端稳定 Release 会同时发布签名更新包及 `latest.json`，客户端可直接使用“一键更新”。标记为 prerelease 的版本不会进入稳定版自动更新通道。
+### macOS 未签名客户端
+
+在 Apple Developer ID 签名与公证尚未配置期间，macOS 客户端通过 Releases 中标题含“macOS 未签名版”的 prerelease 优先提供。Apple Silicon 用户选择 `arm64`，Intel 用户选择 `x64`，通常优先下载 DMG；每个版本同时提供 APP ZIP 和 `SHA256SUMS-macos-unsigned.txt`。
+
+首次启动被系统拦截时，请先核对 SHA-256，再前往「系统设置 → 隐私与安全性」选择「仍要打开」。发布说明中也提供只针对本应用移除隔离属性的方法；无需全局关闭 Gatekeeper。
+
+桌面端稳定 Release 会同时发布签名更新包及 `latest.json`，客户端可直接使用“一键更新”。macOS 未签名 prerelease 不生成 `latest.json`，不会进入稳定版自动更新通道。
 
 维护者可从 [`docs/dev/INDEX.md`](docs/dev/INDEX.md) 查看发布流程；手动发布时，
 `platforms` 输入使用逗号分隔的平台名。已发布版本的更新元数据可通过

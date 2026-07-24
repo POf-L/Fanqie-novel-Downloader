@@ -10,6 +10,9 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "build-release.yml"
+UNSIGNED_MACOS_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "publish-unsigned-macos.yml"
+)
 REPAIR_WORKFLOW = ROOT / ".github" / "workflows" / "repair-updater-metadata.yml"
 FINALIZE_WORKFLOW = ROOT / ".github" / "workflows" / "finalize-draft-release.yml"
 FINALIZER = ROOT / "scripts" / "finalize-release.py"
@@ -20,6 +23,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+        cls.unsigned_macos_workflow = UNSIGNED_MACOS_WORKFLOW.read_text(
+            encoding="utf-8"
+        )
         cls.repair_workflow = REPAIR_WORKFLOW.read_text(encoding="utf-8")
         cls.finalize_workflow = FINALIZE_WORKFLOW.read_text(encoding="utf-8")
         cls.finalizer = FINALIZER.read_text(encoding="utf-8")
@@ -108,6 +114,67 @@ class ReleaseWorkflowTest(unittest.TestCase):
             self.assertNotIn("APPLE_CERTIFICATE:", section)
             self.assertNotIn("APPLE_ID:", section)
         self.assertIn('>> "${GITHUB_ENV}"', self.workflow)
+
+    def test_unsigned_macos_channel_never_enters_stable_updater_flow(self):
+        workflow = self.unsigned_macos_workflow
+        self.assertIn("name: Publish Unsigned macOS Client", workflow)
+        self.assertIn('tag = f"macos-unsigned-v{version}', workflow)
+        self.assertIn("--draft=false", workflow)
+        self.assertGreaterEqual(workflow.count("--prerelease"), 2)
+        self.assertIn("uploadUpdaterJson: false", workflow)
+        self.assertIn("uploadUpdaterSignatures: false", workflow)
+        self.assertIn('"createUpdaterArtifacts": False', workflow)
+        self.assertNotIn("scripts/finalize-release.py", workflow)
+        self.assertNotIn("--latest", workflow)
+        self.assertIn(
+            'releases/latest" --jq .tag_name)" = "${STABLE_TAG}"',
+            workflow,
+        )
+
+    def test_unsigned_macos_channel_builds_and_verifies_both_architectures(self):
+        workflow = self.unsigned_macos_workflow
+        for value in (
+            "macos-15-intel",
+            "macos-latest",
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin",
+            'test ! -d "${app_path}/Contents/_CodeSignature"',
+            'test "${bundle_id}" = "com.pofl.fanqienoveldownloader"',
+            'test "${bundle_version}" = "${APP_VERSION}"',
+            'file "${executable}" | grep -F "${MACHO_ARCH}"',
+            'hdiutil verify "${dmg_path}"',
+        ):
+            self.assertIn(value, workflow)
+
+        for arch in ("arm64", "x64"):
+            for suffix in ("unsigned.dmg", "unsigned.zip"):
+                self.assertIn(
+                    f"FanqieNovelDownloader-macos-{arch}-{suffix}", workflow
+                )
+        self.assertIn("SHA256SUMS-macos-unsigned.txt", workflow)
+        self.assertIn("sha256sum --check", workflow)
+
+    def test_unsigned_macos_channel_keeps_private_source_out_of_artifacts(self):
+        workflow = self.unsigned_macos_workflow
+        private_checkouts = workflow.count(
+            "repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}"
+        )
+        self.assertEqual(private_checkouts, 3)
+        self.assertEqual(
+            workflow.count("token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}"),
+            private_checkouts,
+        )
+        self.assertGreaterEqual(
+            workflow.count("persist-credentials: false"), private_checkouts
+        )
+        self.assertNotIn("actions/cache", workflow)
+        self.assertNotIn("Swatinem/rust-cache", workflow)
+        upload_section = workflow.split(
+            "- name: Upload unsigned macOS bundles", 1
+        )[1].split("\n\n  publish:", 1)[0]
+        self.assertIn("${{ runner.temp }}/unsigned-macos-", upload_section)
+        self.assertNotIn("PRIVATE_SOURCE_PATH", upload_section)
+        self.assertIn("retention-days: 7", upload_section)
 
     def test_private_source_checkouts_do_not_persist_credentials(self):
         private_checkouts = self.workflow.count(

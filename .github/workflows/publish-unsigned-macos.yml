@@ -1,0 +1,428 @@
+name: Publish Unsigned macOS Client
+
+# This public wrapper checks out the private source only on ephemeral runners.
+# Published artifacts are limited to user-installable bundles and checksums.
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "私有 Tauri 源码分支 / Tag / Commit"
+        required: true
+        default: "main"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: unsigned-macos-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  PRIVATE_SOURCE_REPOSITORY: "POf-L/Fanqie-novel-Downloader-tauri"
+  PRIVATE_SOURCE_PATH: "private-src"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    outputs:
+      build_matrix: ${{ steps.meta.outputs.build_matrix }}
+      source_commit: ${{ steps.meta.outputs.source_commit }}
+      source_ref: ${{ steps.meta.outputs.source_ref }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Validate private source token
+        env:
+          PRIVATE_SOURCE_TOKEN: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+        run: |
+          if [[ -z "${PRIVATE_SOURCE_TOKEN}" ]]; then
+            echo "Missing repository secret: PRIVATE_SOURCE_TOKEN"
+            exit 1
+          fi
+
+      - name: Checkout private Tauri source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
+
+      - name: Generate unsigned release metadata
+        id: meta
+        shell: python
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          import json
+          import os
+          import subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          source = Path(os.environ["PRIVATE_SOURCE_PATH"])
+          source_commit = subprocess.check_output(
+              ["git", "-C", str(source), "rev-parse", "HEAD"],
+              text=True,
+          ).strip()
+          now = datetime.now(timezone.utc)
+          hm = now.hour * 100 + now.minute
+          version = f"{now.year}.{now.month}.{now.day}-{hm}"
+          tag = f"macos-unsigned-v{version}-r{os.environ['RUN_NUMBER']}"
+          matrix = {
+              "include": [
+                  {
+                      "os": "macos-15-intel",
+                      "arch": "x64",
+                      "macho_arch": "x86_64",
+                      "target": "x86_64-apple-darwin",
+                  },
+                  {
+                      "os": "macos-latest",
+                      "arch": "arm64",
+                      "macho_arch": "arm64",
+                      "target": "aarch64-apple-darwin",
+                  },
+              ]
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(
+                  "build_matrix="
+                  + json.dumps(matrix, separators=(",", ":"))
+                  + "\n"
+              )
+              output.write(f"source_commit={source_commit}\n")
+              output.write(f"source_ref={os.environ['SOURCE_REF']}\n")
+              output.write(f"version={version}\n")
+              output.write(f"tag_name={tag}\n")
+
+  verify:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Test release wrapper
+        run: python -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Checkout private Tauri source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ needs.prepare.outputs.source_commit }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
+
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          components: rustfmt,clippy
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Test and lint private Tauri source
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo test --manifest-path src-tauri/Cargo.toml
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          node --test tests/*.js
+          node --check web/static/app.js
+          git diff --check
+
+  release-bootstrap:
+    needs: [prepare, verify]
+    runs-on: ubuntu-22.04
+    outputs:
+      stable_tag: ${{ steps.release.outputs.stable_tag }}
+    steps:
+      - name: Create unsigned macOS draft prerelease
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          stable_tag="$(gh api "repos/${GH_REPO}/releases/latest" --jq .tag_name)"
+          echo "stable_tag=${stable_tag}" >> "${GITHUB_OUTPUT}"
+
+          cat > release-notes.md <<EOF
+          ## macOS 未签名客户端 ${VERSION}
+
+          这是独立的 **unsigned prerelease**，用于在 Apple Developer ID 签名和公证尚未配置时优先向 macOS 用户提供客户端。它不会替代稳定版，也不会写入桌面自动更新的 \`latest.json\`。
+
+          > 本版本未经过 Apple 签名或公证。macOS 首次打开时会显示 Gatekeeper 提示，这是预期行为；构建完成后请先核对本页 SHA-256 清单。
+
+          构建正在进行，完成后本页会列出 Apple Silicon 与 Intel 的 DMG、APP ZIP 及校验值。
+
+          ### 安装
+
+          1. 优先打开 DMG，将应用拖入“应用程序”。
+          2. 首次启动被拦截时，前往“系统设置 → 隐私与安全性”，确认应用来源后选择“仍要打开”。
+          3. 只有在 SHA-256 已核对且系统仍阻止启动时，才对该应用单独执行：
+
+          \`\`\`bash
+          xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
+          \`\`\`
+
+          不需要、也不应全局关闭 Gatekeeper。
+
+          ### 构建信息
+
+          - 私有源码引用：\`${SOURCE_REF}\`
+          - 私有源码提交：\`${SOURCE_COMMIT}\`
+          - 稳定版保持为：\`${stable_tag}\`
+          EOF
+
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            is_prerelease="$(gh release view "${TAG_NAME}" --json isPrerelease --jq .isPrerelease)"
+            if [[ "${is_prerelease}" != "true" ]]; then
+              echo "Refusing to reuse a non-prerelease tag: ${TAG_NAME}"
+              exit 1
+            fi
+            gh release edit "${TAG_NAME}" \
+              --title "番茄小说下载器 macOS 未签名版 ${VERSION}" \
+              --notes-file release-notes.md \
+              --prerelease
+          else
+            gh release create "${TAG_NAME}" \
+              --title "番茄小说下载器 macOS 未签名版 ${VERSION}" \
+              --notes-file release-notes.md \
+              --target "${GITHUB_SHA}" \
+              --draft \
+              --prerelease
+          fi
+
+  build:
+    needs: [prepare, verify, release-bootstrap]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    name: Build unsigned macOS ${{ matrix.arch }}
+    steps:
+      - name: Checkout private Tauri source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
+          ref: ${{ needs.prepare.outputs.source_commit }}
+          token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: ${{ env.PRIVATE_SOURCE_PATH }}
+          fetch-depth: 1
+
+      - name: Validate macOS app icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          icon="${PRIVATE_SOURCE_PATH}/src-tauri/icons/icon.icns"
+          iconset="${RUNNER_TEMP}/fanqie-app-icon.iconset"
+          rm -rf "${iconset}"
+          iconutil -c iconset "${icon}" -o "${iconset}"
+          test -f "${iconset}/icon_512x512@2x.png"
+
+      - uses: dtolnay/rust-toolchain@1.97.0
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Create unsigned release build config
+        shell: python
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["PRIVATE_SOURCE_PATH"]) / "src-tauri" / "tauri.release.conf.json"
+          path.write_text(
+              json.dumps({
+                  "version": os.environ["APP_VERSION"],
+                  "bundle": {"createUpdaterArtifacts": False},
+              }, ensure_ascii=False),
+              encoding="utf-8",
+          )
+
+      - name: Build unsigned macOS bundles
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
+          retryAttempts: 5
+          args: >-
+            --target ${{ matrix.target }}
+            --bundles app,dmg
+            --config src-tauri/tauri.release.conf.json
+          uploadWorkflowArtifacts: false
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+          tagName: ""
+
+      - name: Verify and package unsigned client
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          ASSET_ARCH: ${{ matrix.arch }}
+          MACHO_ARCH: ${{ matrix.macho_arch }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          bundle_root="${PRIVATE_SOURCE_PATH}/src-tauri/target/${TARGET}/release/bundle"
+          app_path="$(find "${bundle_root}/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          dmg_path="$(find "${bundle_root}/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          test -n "${app_path}"
+          test -n "${dmg_path}"
+          test -f "${app_path}/Contents/Info.plist"
+          test -f "${app_path}/Contents/Resources/icon.icns"
+          test ! -d "${app_path}/Contents/_CodeSignature"
+
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${app_path}/Contents/Info.plist")"
+          bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")"
+          executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${app_path}/Contents/Info.plist")"
+          executable="${app_path}/Contents/MacOS/${executable_name}"
+          test "${bundle_id}" = "com.pofl.fanqienoveldownloader"
+          test "${bundle_version}" = "${APP_VERSION}"
+          file "${executable}" | grep -F "${MACHO_ARCH}"
+          hdiutil verify "${dmg_path}"
+
+          output="${RUNNER_TEMP}/unsigned-macos-${ASSET_ARCH}"
+          mkdir -p "${output}"
+          dmg_asset="${output}/FanqieNovelDownloader-macos-${ASSET_ARCH}-unsigned.dmg"
+          zip_asset="${output}/FanqieNovelDownloader-macos-${ASSET_ARCH}-unsigned.zip"
+          cp "${dmg_path}" "${dmg_asset}"
+          ditto -c -k --sequesterRsrc --keepParent "${app_path}" "${zip_asset}"
+          shasum -a 256 "${dmg_asset}" "${zip_asset}"
+
+      - name: Upload unsigned macOS bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-macos-${{ matrix.arch }}
+          path: ${{ runner.temp }}/unsigned-macos-${{ matrix.arch }}/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [prepare, verify, release-bootstrap, build]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download unsigned macOS bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: unsigned-macos-*
+          path: dist
+          merge-multiple: true
+
+      - name: Validate assets and create SHA-256 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          expected=(
+            FanqieNovelDownloader-macos-arm64-unsigned.dmg
+            FanqieNovelDownloader-macos-arm64-unsigned.zip
+            FanqieNovelDownloader-macos-x64-unsigned.dmg
+            FanqieNovelDownloader-macos-x64-unsigned.zip
+          )
+          mapfile -t actual < <(find . -maxdepth 1 -type f -printf '%f\n' | sort)
+          mapfile -t wanted < <(printf '%s\n' "${expected[@]}" | sort)
+          diff -u <(printf '%s\n' "${wanted[@]}") <(printf '%s\n' "${actual[@]}")
+          sha256sum "${expected[@]}" > SHA256SUMS-macos-unsigned.txt
+          sha256sum --check SHA256SUMS-macos-unsigned.txt
+
+      - name: Upload and publish unsigned macOS prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
+          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+          STABLE_TAG: ${{ needs.release-bootstrap.outputs.stable_tag }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/${GH_REPO}/releases/download/${TAG_NAME}"
+          cat > release-notes.md <<EOF
+          ## macOS 未签名客户端 ${VERSION}
+
+          这是独立的 **unsigned prerelease**。它未经过 Apple Developer ID 签名或公证，不会替代稳定版，也不会进入桌面自动更新通道。
+
+          ### 下载
+
+          - Apple Silicon（M1/M2/M3/M4 等）：[DMG](${base}/FanqieNovelDownloader-macos-arm64-unsigned.dmg) | [APP ZIP](${base}/FanqieNovelDownloader-macos-arm64-unsigned.zip)
+          - Intel： [DMG](${base}/FanqieNovelDownloader-macos-x64-unsigned.dmg) | [APP ZIP](${base}/FanqieNovelDownloader-macos-x64-unsigned.zip)
+          - [SHA-256 校验清单](${base}/SHA256SUMS-macos-unsigned.txt)
+
+          ### 安装
+
+          1. 优先打开 DMG，将应用拖入“应用程序”。
+          2. 首次启动被拦截时，前往“系统设置 → 隐私与安全性”，确认应用来源后选择“仍要打开”。
+          3. 只有在 SHA-256 已核对且系统仍阻止启动时，才对该应用单独执行：
+
+          \`\`\`bash
+          xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
+          \`\`\`
+
+          不需要、也不应全局关闭 Gatekeeper。
+
+          ### 构建信息
+
+          - 私有源码引用：\`${SOURCE_REF}\`
+          - 私有源码提交：\`${SOURCE_COMMIT}\`
+          - Bundle ID：\`com.pofl.fanqienoveldownloader\`
+          - 签名状态：未签名、未公证
+          - 稳定版保持为：\`${STABLE_TAG}\`
+          EOF
+
+          gh release upload "${TAG_NAME}" dist/* --clobber
+          gh release edit "${TAG_NAME}" \
+            --title "番茄小说下载器 macOS 未签名版 ${VERSION}" \
+            --notes-file release-notes.md \
+            --draft=false \
+            --prerelease
+
+          test "$(gh release view "${TAG_NAME}" --json isDraft --jq .isDraft)" = "false"
+          test "$(gh release view "${TAG_NAME}" --json isPrerelease --jq .isPrerelease)" = "true"
+          assets="$(gh release view "${TAG_NAME}" --json assets --jq '.assets[].name' | sort)"
+          expected="$(printf '%s\n' \
+            FanqieNovelDownloader-macos-arm64-unsigned.dmg \
+            FanqieNovelDownloader-macos-arm64-unsigned.zip \
+            FanqieNovelDownloader-macos-x64-unsigned.dmg \
+            FanqieNovelDownloader-macos-x64-unsigned.zip \
+            SHA256SUMS-macos-unsigned.txt | sort)"
+          diff -u <(printf '%s\n' "${expected}") <(printf '%s\n' "${assets}")
+          test "$(gh api "repos/${GH_REPO}/releases/latest" --jq .tag_name)" = "${STABLE_TAG}"
+
+      - name: Write publication summary
+        run: |
+          cat >> "${GITHUB_STEP_SUMMARY}" <<EOF
+          ## Unsigned macOS prerelease published
+
+          - Release: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.tag_name }}
+          - Source commit: \`${{ needs.prepare.outputs.source_commit }}\`
+          - Stable latest remains: \`${{ needs.release-bootstrap.outputs.stable_tag }}\`
+          EOF

@@ -14,6 +14,11 @@ Android 14 API 34 emulator tap-through has also passed, including a real SAF
 directory export. OEM document providers and physical display cutouts remain
 separate device checks.
 
+macOS users are served through the separate unsigned prerelease channel while
+the stable release remains gated on Apple signing. Its workflow contract,
+asset set, source-isolation rules, and recovery procedure are documented in
+[Unsigned macOS Release](modules/macos-unsigned-release.md).
+
 ## Asset flow
 
 The workflow builds desktop artifacts with Tauri, uploads them to a draft
@@ -41,7 +46,7 @@ The dispatch form keeps platform selection in one validated `platforms` string
 so it stays within GitHub's workflow input limit. Release jobs pin Rust to the
 same `1.97.0` toolchain declared by the Tauri source repository.
 
-## macOS publication gate
+## Stable macOS publication gate
 
 A published macOS APP/DMG must use a Developer ID certificate, complete Apple
 notarization, and pass both `codesign --verify --deep --strict` and
@@ -73,6 +78,12 @@ artifact archives matched their Actions SHA-256 digests and contained the
 expected x86_64/arm64 Mach-O executable, bundle identifier, version, icon, and
 DMG. They remain seven-day workflow artifacts and were not attached to a
 Release.
+
+The verified packaging path is now implemented as the dedicated `Publish
+Unsigned macOS Client` workflow. It publishes only a clearly labeled
+prerelease and checks that GitHub's latest stable tag remains unchanged. See
+[Unsigned macOS Release](modules/macos-unsigned-release.md) for its complete
+contract; do not weaken this stable signing gate to publish unsigned assets.
 
 ## Source isolation
 
