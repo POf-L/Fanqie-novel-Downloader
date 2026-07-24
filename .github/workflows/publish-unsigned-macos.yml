@@ -168,6 +168,8 @@ jobs:
           stable_tag="$(gh api "repos/${GH_REPO}/releases/latest" --jq .tag_name)"
           echo "stable_tag=${stable_tag}" >> "${GITHUB_OUTPUT}"
 
+          # The heredoc is Markdown; Chinese typographic quotes are intentional.
+          # shellcheck disable=SC1111
           cat > release-notes.md <<EOF
           ## macOS 未签名客户端 ${VERSION}
 
@@ -423,6 +425,8 @@ jobs:
         run: |
           set -euo pipefail
           base="https://github.com/${GH_REPO}/releases/download/${TAG_NAME}"
+          # The heredoc is Markdown; Chinese typographic quotes are intentional.
+          # shellcheck disable=SC1111
           cat > release-notes.md <<EOF
           ## macOS 未签名客户端 ${VERSION}
 
