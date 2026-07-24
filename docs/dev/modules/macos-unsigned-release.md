@@ -36,6 +36,9 @@ The unsigned channel must keep all of these properties:
   passed to the build action.
 - The APP has the expected Bundle ID, version, icon, Mach-O architecture, and
   no `_CodeSignature` directory; the DMG passes `hdiutil verify`.
+- Each native macOS runner mounts its DMG, copies the packaged APP out of the
+  image, launches its executable for 15 seconds, and rejects an early exit,
+  panic, segmentation fault, or fatal startup log.
 - The release stays marked as a prerelease and does not become GitHub's latest
   stable release.
 - Asset names include `unsigned`, and publication stops unless the exact

@@ -442,6 +442,7 @@ jobs:
           - 私有源码提交：\`${SOURCE_COMMIT}\`
           - Bundle ID：\`com.pofl.fanqienoveldownloader\`
           - 签名状态：未签名、未公证
+          - 原生 macOS runner：DMG 挂载及 APP 启动 smoke test 通过
           - 稳定版保持为：\`${STABLE_TAG}\`
           EOF
 

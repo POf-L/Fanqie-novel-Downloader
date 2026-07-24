@@ -21,21 +21,23 @@ asset set, source-isolation rules, and recovery procedure are documented in
 
 ## Latest Verified Unsigned macOS Client
 
-[`macos-unsigned-v2026.7.24-22-r1`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/macos-unsigned-v2026.7.24-22-r1)
+[`macos-unsigned-v2026.7.24-38-r2`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/macos-unsigned-v2026.7.24-38-r2)
 was published as a prerelease by Actions run
-[`30056011403`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30056011403)
-from wrapper commit `c708ecae3e9af406f169b46099835e30521ba8bd`
+[`30056768823`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30056768823)
+from wrapper commit `48612d5d8c1abc1db1bcc553aaebc51cb4d5bad3`
 and private Tauri source commit
 `091ab8c834084c93406a6c2e33632a8278c024f0`.
 
-Post-publication verification confirmed all four anonymous DMG/APP ZIP links
-and the checksum link return HTTP 200. Downloaded files match both the release
-manifest and GitHub's SHA-256 digests. The APP ZIPs contain executable arm64
-and x86_64 Mach-O binaries, version `2026.7.24-22`, the expected Bundle ID and
-icon, executable permissions, and no `_CodeSignature` directory. The workflow
-also ran `hdiutil verify` on both DMGs before publication. The release is
-non-draft and prerelease; GitHub's latest stable release remains
-`v2026.7.23-1739`.
+Both native macOS jobs mounted their generated DMG, copied the packaged APP,
+launched its executable for 15 seconds, and found no early exit, panic, or fatal
+startup log. They also verified the expected Mach-O architecture, version
+`2026.7.24-38`, Bundle ID, icon, executable permissions, absence of
+`_CodeSignature`, and DMG integrity before publication. Post-publication HTTP
+checks confirmed all four anonymous DMG/APP ZIP links and the checksum link
+return 200. The exact asset set carries GitHub SHA-256 digests and a checked
+release manifest. The release is non-draft and prerelease; GitHub's latest
+stable release remains `v2026.7.23-1739`. The superseded packaging-only r1
+prerelease and tag were deleted after r2 passed.
 
 ## Asset flow
 
