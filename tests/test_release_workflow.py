@@ -143,6 +143,11 @@ class ReleaseWorkflowTest(unittest.TestCase):
             'test "${bundle_version}" = "${APP_VERSION}"',
             'file "${executable}" | grep -F "${MACHO_ARCH}"',
             'hdiutil verify "${dmg_path}"',
+            'hdiutil attach -readonly -nobrowse -mountpoint',
+            'ditto "${mounted_app}" "${runtime_app}"',
+            '"${runtime_executable}" >"${runtime_log}" 2>&1 &',
+            'kill -0 "${runtime_pid}"',
+            "for _ in {1..15}",
         ):
             self.assertIn(value, workflow)
 

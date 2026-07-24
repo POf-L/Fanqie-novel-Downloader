@@ -309,6 +309,53 @@ jobs:
           file "${executable}" | grep -F "${MACHO_ARCH}"
           hdiutil verify "${dmg_path}"
 
+          mount_dir="${RUNNER_TEMP}/fanqie-dmg-${ASSET_ARCH}"
+          runtime_dir="${RUNNER_TEMP}/fanqie-runtime-${ASSET_ARCH}"
+          runtime_app="${runtime_dir}/Fanqie Novel Downloader.app"
+          runtime_log="${RUNNER_TEMP}/fanqie-runtime-${ASSET_ARCH}.log"
+          mkdir -p "${mount_dir}" "${runtime_dir}"
+          mounted=false
+          runtime_pid=""
+          cleanup() {
+            if [[ -n "${runtime_pid}" ]] && kill -0 "${runtime_pid}" 2>/dev/null; then
+              kill -TERM "${runtime_pid}" 2>/dev/null || true
+              wait "${runtime_pid}" 2>/dev/null || true
+            fi
+            if [[ "${mounted}" == "true" ]]; then
+              hdiutil detach "${mount_dir}" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+
+          hdiutil attach -readonly -nobrowse -mountpoint "${mount_dir}" "${dmg_path}" >/dev/null
+          mounted=true
+          mounted_app="$(find "${mount_dir}" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "${mounted_app}"
+          ditto "${mounted_app}" "${runtime_app}"
+          hdiutil detach "${mount_dir}" >/dev/null
+          mounted=false
+
+          runtime_executable="${runtime_app}/Contents/MacOS/${executable_name}"
+          "${runtime_executable}" >"${runtime_log}" 2>&1 &
+          runtime_pid=$!
+          for _ in {1..15}; do
+            sleep 1
+            if ! kill -0 "${runtime_pid}" 2>/dev/null; then
+              wait "${runtime_pid}" || status=$?
+              cat "${runtime_log}"
+              echo "The packaged macOS app exited during startup (status ${status:-0})."
+              exit 1
+            fi
+          done
+          if grep -Eiq 'panicked at|fatal error|segmentation fault' "${runtime_log}"; then
+            cat "${runtime_log}"
+            echo "The packaged macOS app logged a fatal startup error."
+            exit 1
+          fi
+          kill -TERM "${runtime_pid}"
+          wait "${runtime_pid}" 2>/dev/null || true
+          runtime_pid=""
+
           output="${RUNNER_TEMP}/unsigned-macos-${ASSET_ARCH}"
           mkdir -p "${output}"
           dmg_asset="${output}/FanqieNovelDownloader-macos-${ASSET_ARCH}-unsigned.dmg"
