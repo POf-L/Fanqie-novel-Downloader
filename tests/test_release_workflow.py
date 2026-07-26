@@ -31,7 +31,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         cls.finalizer = FINALIZER.read_text(encoding="utf-8")
         cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
-    def render_draft_notes(self, asset_names, *, unsigned=False):
+    def render_draft_notes(self, asset_names, *, unsigned=False, unsigned_release=False):
         script = self.workflow.split("          python - <<'PY'\n", 1)[1]
         script = textwrap.dedent(script.split("\n          PY", 1)[0])
         releases = [
@@ -59,6 +59,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             "SOURCE_COMMIT": "0123456789ab",
             "PLATFORMS": "android,ios",
             "PUBLISH_UNSIGNED_PRERELEASE": str(unsigned).lower(),
+            "PUBLISH_UNSIGNED_RELEASE": str(unsigned_release).lower(),
         }
         with (
             patch.dict(os.environ, environment),
@@ -104,13 +105,13 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(
             self.workflow.count(
-                "uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease }}"
+                "uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}"
             ),
             2,
         )
         self.assertEqual(
             self.workflow.count(
-                "uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease }}"
+                "uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}"
             ),
             2,
         )
@@ -121,11 +122,12 @@ class ReleaseWorkflowTest(unittest.TestCase):
             "ANDROID_KEYSTORE_BASE64",
         ):
             self.assertIn(
-                f"!inputs.publish_unsigned_prerelease && secrets.{secret}",
+                f"!inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.{secret}",
                 self.workflow,
             )
         self.assertIn(
             "inputs.publish_unsigned_prerelease == true || "
+            "inputs.publish_unsigned_release == true || "
             "needs.prepare.outputs.ios_signing != 'true'",
             self.workflow,
         )
@@ -143,12 +145,13 @@ class ReleaseWorkflowTest(unittest.TestCase):
     def test_unsigned_prerelease_uploads_release_assets_for_every_platform(self):
         release_enabled = (
             "inputs.publish_release == true || "
-            "inputs.publish_unsigned_prerelease == true"
+            "inputs.publish_unsigned_prerelease == true || "
+            "inputs.publish_unsigned_release == true"
         )
-        self.assertGreaterEqual(self.workflow.count(release_enabled), 3)
+        self.assertGreaterEqual(self.workflow.count(release_enabled), 2)
         self.assertEqual(
             self.workflow.count(
-                "inputs.publish_release && needs.prepare.outputs.tag_name || ''"
+                "!inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && inputs.publish_release && needs.prepare.outputs.tag_name || ''"
             ),
             2,
         )
@@ -211,6 +214,21 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("不会生成或上传 `latest.json`", notes)
         self.assertIn("未知发布者", notes)
         self.assertIn("Gatekeeper", notes)
+
+    def test_unsigned_formal_release_is_normal_but_stays_out_of_updater_channel(self):
+        input_block = self.workflow.split("permissions:", 1)[0]
+        self.assertIn("      publish_unsigned_release:\n", input_block)
+        self.assertIn(
+            "publish_unsigned_release requires publish_release=true.", self.workflow
+        )
+        self.assertIn('"make_latest": False', self.workflow)
+        self.assertIn("$'false\\tfalse'", self.workflow)
+        self.assertIn("inputs.publish_unsigned_release == true", self.workflow)
+        notes = self.render_draft_notes([], unsigned_release=True)
+        self.assertIn("未签名版本，不支持自动更新", notes)
+        self.assertIn("普通 GitHub Release", notes)
+        self.assertIn("不会生成或上传 `latest.json`", notes)
+        self.assertNotIn("不会替代稳定版", notes)
 
     def test_release_jobs_use_the_pinned_rust_toolchain(self):
         self.assertNotIn("dtolnay/rust-toolchain@stable", self.workflow)

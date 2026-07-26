@@ -16,7 +16,12 @@ on:
         default: true
         type: boolean
       publish_unsigned_prerelease:
-        description: "无正式签名密钥时发布独立未签名测试预发布；请同时将 publish_release 设为 false"
+        description: "无正式签名密钥时发布独立未签名测试预发布；请将 publish_release 设为 false"
+        required: true
+        default: false
+        type: boolean
+      publish_unsigned_release:
+        description: "发布无签名正式 Release（普通 Release，不生成 updater；请同时将 publish_release 设为 true）"
         required: true
         default: false
         type: boolean
@@ -71,6 +76,7 @@ jobs:
       create_updater_artifacts: ${{ steps.secrets.outputs.create_updater_artifacts }}
       android_signing: ${{ steps.secrets.outputs.android_signing }}
       ios_signing: ${{ steps.secrets.outputs.ios_signing }}
+      unsigned_mode: ${{ steps.secrets.outputs.unsigned_mode }}
     steps:
       - name: Validate private source token
         env:
@@ -223,6 +229,7 @@ jobs:
         env:
           SOURCE_REF: ${{ inputs.source_ref }}
           PUBLISH_UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
+          PUBLISH_UNSIGNED_RELEASE: ${{ inputs.publish_unsigned_release }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           import os
@@ -248,7 +255,7 @@ jobs:
               output.write(f"source_commit={source_commit}\n")
               output.write(f"source_ref={os.environ['SOURCE_REF']}\n")
               output.write(f"version={version}\n")
-              if os.environ["PUBLISH_UNSIGNED_PRERELEASE"] == "true":
+              if os.environ["PUBLISH_UNSIGNED_PRERELEASE"] == "true" or os.environ["PUBLISH_UNSIGNED_RELEASE"] == "true":
                   tag_name = f"unsigned-v{version}-r{os.environ['RUN_NUMBER']}"
               else:
                   tag_name = f"v{version}"
@@ -260,6 +267,8 @@ jobs:
         env:
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
           PUBLISH_UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
+          PUBLISH_UNSIGNED_RELEASE: ${{ inputs.publish_unsigned_release }}
+          PRERELEASE: ${{ inputs.prerelease }}
           ANDROID_ENABLED: ${{ steps.platforms.outputs.android_enabled }}
           IOS_ENABLED: ${{ steps.platforms.outputs.ios_enabled }}
           MACOS_ENABLED: ${{ contains(steps.platforms.outputs.selected_platforms, 'macos-') }}
@@ -280,9 +289,24 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          if [[ "${PUBLISH_UNSIGNED_PRERELEASE}" == "true" &&
+                "${PUBLISH_UNSIGNED_RELEASE}" == "true" ]]; then
+            echo "publish_unsigned_prerelease and publish_unsigned_release are mutually exclusive."
+            exit 1
+          fi
           if [[ "${PUBLISH_RELEASE}" == "true" &&
                 "${PUBLISH_UNSIGNED_PRERELEASE}" == "true" ]]; then
             echo "publish_release and publish_unsigned_prerelease are mutually exclusive."
+            exit 1
+          fi
+          if [[ "${PUBLISH_UNSIGNED_RELEASE}" == "true" &&
+                "${PUBLISH_RELEASE}" != "true" ]]; then
+            echo "publish_unsigned_release requires publish_release=true."
+            exit 1
+          fi
+          if [[ "${PUBLISH_UNSIGNED_RELEASE}" == "true" &&
+                "${PRERELEASE}" == "true" ]]; then
+            echo "publish_unsigned_release is a normal (non-prerelease) Release; set prerelease=false."
             exit 1
           fi
 
@@ -315,8 +339,13 @@ jobs:
             macos=true
           fi
 
+          unsigned_mode=false
+          if [[ "${PUBLISH_UNSIGNED_PRERELEASE}" == "true" ||
+                "${PUBLISH_UNSIGNED_RELEASE}" == "true" ]]; then
+            unsigned_mode=true
+          fi
           create_updater_artifacts="${updater}"
-          if [[ "${PUBLISH_UNSIGNED_PRERELEASE}" == "true" ]]; then
+          if [[ "${unsigned_mode}" == "true" ]]; then
             create_updater_artifacts=false
           fi
 
@@ -326,19 +355,20 @@ jobs:
             echo "android_signing=${android}"
             echo "ios_signing=${ios}"
             echo "macos_signing=${macos}"
+            echo "unsigned_mode=${unsigned_mode}"
           } >> "${GITHUB_OUTPUT}"
 
-          if [[ "${PUBLISH_RELEASE}" == "true" && "${updater}" != "true" &&
+          if [[ "${PUBLISH_RELEASE}" == "true" && "${unsigned_mode}" != "true" && "${updater}" != "true" &&
                 "${{ steps.platforms.outputs.desktop_count }}" != "0" ]]; then
             echo "Desktop publishing requires TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD."
             exit 1
           fi
-          if [[ "${PUBLISH_RELEASE}" == "true" &&
+          if [[ "${PUBLISH_RELEASE}" == "true" && "${unsigned_mode}" != "true" &&
                 "${ANDROID_ENABLED}" == "true" && "${android}" != "true" ]]; then
             echo "Android publishing requires all four Android signing secrets."
             exit 1
           fi
-          if [[ "${PUBLISH_RELEASE}" == "true" &&
+          if [[ "${PUBLISH_RELEASE}" == "true" && "${unsigned_mode}" != "true" &&
                 "${MACOS_ENABLED}" == "true" && "${macos}" != "true" ]]; then
             echo "macOS publishing requires Apple certificate, Developer ID, notarization, and team secrets."
             exit 1
@@ -398,7 +428,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create draft release
-        if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true
+        if: >-
+          inputs.publish_release == true ||
+          inputs.publish_unsigned_prerelease == true ||
+          inputs.publish_unsigned_release == true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -410,6 +443,7 @@ jobs:
           PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
           PRERELEASE: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}
           PUBLISH_UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
+          PUBLISH_UNSIGNED_RELEASE: ${{ inputs.publish_unsigned_release }}
         run: |
           set -euo pipefail
           # Draft notes use Chinese + real hyperlinks.
@@ -427,10 +461,15 @@ jobs:
           version = os.environ["VERSION"]
           tag = os.environ["TAG_NAME"]
           prerelease = os.environ.get("PRERELEASE", "false").lower() == "true"
-          unsigned = (
+          unsigned_prerelease = (
               os.environ.get("PUBLISH_UNSIGNED_PRERELEASE", "false").lower()
               == "true"
           )
+          unsigned_release = (
+              os.environ.get("PUBLISH_UNSIGNED_RELEASE", "false").lower()
+              == "true"
+          )
+          unsigned = unsigned_prerelease or unsigned_release
           source_ref = os.environ.get("SOURCE_REF", "")
           source_commit = os.environ.get("SOURCE_COMMIT", "")
           platforms = os.environ.get("PLATFORMS", "")
@@ -474,19 +513,41 @@ jobs:
           def link(base, name, label):
               return f"[{label}]({base}/{name})"
 
+          if unsigned_release:
+              release_label = "（未签名版）"
+          elif unsigned_prerelease:
+              release_label = "（未签名测试预发布）"
+          elif prerelease:
+              release_label = "（测试预发布）"
+          else:
+              release_label = ""
           lines = [
-              f"## {version}{'（未签名测试预发布）' if unsigned else ('（测试预发布）' if prerelease else '')}",
+              f"## {version}{release_label}",
               "",
               "基于 **Rust + Tauri v2** 的番茄小说下载器。",
               "",
           ]
           if unsigned:
+              channel_notice = (
+                  "这是独立的普通 GitHub Release（未标记 prerelease），不会进入稳定版自动更新通道；"
+                  "不会生成或上传 `latest.json`。"
+                  if unsigned_release
+                  else
+                  "这是独立的 GitHub prerelease，不会替代稳定版，也不会生成或上传 `latest.json`。"
+              )
+              warning = (
+                  "**未签名版本，不支持自动更新。**"
+                  if unsigned_release
+                  else
+                  "**未签名版本，仅供测试，不支持自动更新。**"
+              )
               lines += [
-                  "> **未签名版本，仅供测试，不支持自动更新。**",
+                  f"> {warning}",
                   ">",
-                  "> 这是独立的 GitHub prerelease，不会替代稳定版，也不会生成或上传 `latest.json`。",
+                  f"> {channel_notice}",
                   "> Windows 未经过 Authenticode 签名，会显示“未知发布者”或 SmartScreen 警告。",
                   "> macOS 未经过 Developer ID 签名或公证，首次启动会触发 Gatekeeper。",
+                  "> iOS IPA 未经过 Apple 签名，只能使用 AltStore、Sideloadly 或 TrollStore 侧载。",
                   "",
               ]
           lines += [
@@ -659,6 +720,24 @@ jobs:
                 --draft \
                 --prerelease
             fi
+          elif [[ "${PUBLISH_UNSIGNED_RELEASE}" == "true" ]]; then
+            if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+              is_prerelease="$(gh release view "${TAG_NAME}" --json isPrerelease --jq .isPrerelease)"
+              if [[ "${is_prerelease}" == "true" ]]; then
+                echo "Refusing to reuse a prerelease tag for an unsigned formal release: ${TAG_NAME}"
+                exit 1
+              fi
+              gh release edit "${TAG_NAME}" \
+                --title "番茄小说下载器 未签名版 ${VERSION}" \
+                --notes-file release-notes.md \
+                --draft
+            else
+              gh release create "${TAG_NAME}" \
+                --title "番茄小说下载器 未签名版 ${VERSION}" \
+                --notes-file release-notes.md \
+                --target "${GITHUB_SHA}" \
+                --draft
+            fi
           elif gh release view "${TAG_NAME}" >/dev/null 2>&1; then
             echo "Release already exists: ${TAG_NAME}"
             gh release edit "${TAG_NAME}" --notes-file release-notes.md || true
@@ -733,7 +812,7 @@ jobs:
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
-          APPLE_SIGNING_IDENTITY: ${{ !inputs.publish_unsigned_prerelease && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: |
           import json
           import os
@@ -753,7 +832,7 @@ jobs:
           )
 
       - name: Require Apple signing and notarization secrets
-        if: runner.os == 'macOS' && inputs.publish_release == true
+        if: runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -771,7 +850,7 @@ jobs:
           done
 
       - name: Export Apple signing credentials for Tauri
-        if: runner.os == 'macOS' && inputs.publish_release == true
+        if: runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -795,8 +874,8 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ !inputs.publish_unsigned_prerelease && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         with:
           projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
           args: >-
@@ -804,21 +883,21 @@ jobs:
             --bundles ${{ matrix.bundles }}
             --config src-tauri/tauri.release.conf.json
           uploadWorkflowArtifacts: true
-          uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease }}
-          uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease }}
+          uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}
+          uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}
           workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-[bundle]
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
           # Unsigned builds upload a deliberately filtered set below.  Leaving
           # tagName empty prevents tauri-action from publishing its generated
           # updater archives (notably macOS .app.tar.gz).
-          tagName: ${{ inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
+          tagName: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
           releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
           releaseBody: Rust + Tauri v2 全平台正式构建。
           releaseDraft: true
           prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}
 
       - name: Verify unsigned macOS bundle before upload
-        if: runner.os == 'macOS' && inputs.publish_unsigned_prerelease == true
+        if: runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
         shell: bash
         run: |
           set -euo pipefail
@@ -831,7 +910,7 @@ jobs:
           hdiutil verify "${dmg_path}"
 
       - name: Upload unsigned desktop installers
-        if: inputs.publish_unsigned_prerelease == true
+        if: inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
         shell: python
         env:
           GH_TOKEN: ${{ github.token }}
@@ -953,7 +1032,7 @@ jobs:
           )
 
       - name: Verify macOS signing and notarization
-        if: runner.os == 'macOS' && inputs.publish_release == true
+        if: runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
         shell: bash
         run: |
           app_path="$(find "${PRIVATE_SOURCE_PATH}/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
@@ -989,8 +1068,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
           ASSET_SUBSTR: ${{ matrix.asset_substr }}
-          RELEASE_ENABLED: ${{ inputs.publish_release || inputs.publish_unsigned_prerelease }}
+          RELEASE_ENABLED: ${{ inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release }}
           PUBLISH_UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
+          PUBLISH_UNSIGNED_RELEASE: ${{ inputs.publish_unsigned_release }}
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
@@ -1005,7 +1085,8 @@ jobs:
             exit 0
           fi
           assets="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json assets -q '.assets[].name' || true)"
-          if [[ "${PUBLISH_UNSIGNED_PRERELEASE}" == "true" ]]; then
+          if [[ "${PUBLISH_UNSIGNED_PRERELEASE}" == "true" ||
+                "${PUBLISH_UNSIGNED_RELEASE}" == "true" ]]; then
             case "${TARGET}" in
               *-pc-windows-msvc)
                 expected="FanqieNovelDownloader-tauri-windows-$([[ "${TARGET}" == aarch64-* ]] && echo arm64 || echo x64)-setup.exe"
@@ -1100,7 +1181,7 @@ jobs:
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
-          APPLE_SIGNING_IDENTITY: ${{ !inputs.publish_unsigned_prerelease && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: |
           import json
           import os
@@ -1120,7 +1201,7 @@ jobs:
           )
 
       - name: Require Apple signing and notarization secrets
-        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true
+        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -1138,7 +1219,7 @@ jobs:
           done
 
       - name: Export Apple signing credentials for Tauri
-        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true
+        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -1163,8 +1244,8 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ !inputs.publish_unsigned_prerelease && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         with:
           projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
           args: >-
@@ -1172,21 +1253,21 @@ jobs:
             --bundles ${{ matrix.bundles }}
             --config src-tauri/tauri.release.conf.json
           uploadWorkflowArtifacts: true
-          uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease }}
-          uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease }}
+          uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}
+          uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}
           workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-fallback-[bundle]
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
           # Unsigned builds upload a deliberately filtered set below.  Leaving
           # tagName empty prevents tauri-action from publishing its generated
           # updater archives (notably macOS .app.tar.gz).
-          tagName: ${{ inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
+          tagName: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
           releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
           releaseBody: Rust + Tauri v2 全平台正式构建（含稀缺 runner 交叉回退）。
           releaseDraft: true
           prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}
 
       - name: Verify unsigned macOS bundle before upload
-        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_unsigned_prerelease == true
+        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
         shell: bash
         run: |
           set -euo pipefail
@@ -1199,7 +1280,7 @@ jobs:
           hdiutil verify "${dmg_path}"
 
       - name: Upload unsigned desktop installers
-        if: steps.need.outputs.run == 'true' && inputs.publish_unsigned_prerelease == true
+        if: steps.need.outputs.run == 'true' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
         shell: python
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1321,7 +1402,7 @@ jobs:
           )
 
       - name: Verify macOS signing and notarization
-        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true
+        if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
         shell: bash
         run: |
           app_path="$(find "${PRIVATE_SOURCE_PATH}/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
@@ -1395,16 +1476,16 @@ jobs:
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ !inputs.publish_unsigned_prerelease && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
-          FANQIE_ANDROID_KEY_ALIAS: ${{ !inputs.publish_unsigned_prerelease && secrets.ANDROID_KEY_ALIAS || '' }}
-          FANQIE_ANDROID_KEYSTORE_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
-          FANQIE_ANDROID_KEY_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && secrets.ANDROID_KEY_PASSWORD || '' }}
+          ANDROID_KEYSTORE_BASE64: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+          FANQIE_ANDROID_KEY_ALIAS: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.ANDROID_KEY_ALIAS || '' }}
+          FANQIE_ANDROID_KEYSTORE_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          FANQIE_ANDROID_KEY_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.ANDROID_KEY_PASSWORD || '' }}
         run: |
           chmod +x scripts/ci-ensure-android-signing.sh
           ./scripts/ci-ensure-android-signing.sh
 
       - name: Require official signing for published Android release
-        if: inputs.publish_release == true && steps.signing.outputs.mode != 'release-secret'
+        if: inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && steps.signing.outputs.mode != 'release-secret'
         run: |
           echo "Publishing Android requires ANDROID_KEYSTORE_BASE64 and related secrets."
           exit 1
@@ -1470,7 +1551,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Android release assets
-        if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true
+        if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
         env:
@@ -1563,7 +1644,7 @@ jobs:
           grep -q "ios_file_share.mm" src-tauri/build.rs
 
       - name: Build unsigned iOS IPA
-        if: inputs.publish_unsigned_prerelease == true || needs.prepare.outputs.ios_signing != 'true'
+        if: inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true || needs.prepare.outputs.ios_signing != 'true'
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         run: >-
           cargo tauri ios build
@@ -1573,7 +1654,7 @@ jobs:
           --config src-tauri/tauri.ios.release.conf.json
 
       - name: Build signed App Store IPA
-        if: inputs.publish_unsigned_prerelease == false && needs.prepare.outputs.ios_signing == 'true'
+        if: inputs.publish_unsigned_prerelease == false && inputs.publish_unsigned_release == false && needs.prepare.outputs.ios_signing == 'true'
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         env:
           IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
@@ -1607,7 +1688,7 @@ jobs:
           retention-days: 7
 
       - name: Upload iOS release assets
-        if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true
+        if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
         env:
@@ -1621,6 +1702,7 @@ jobs:
     if: >-
       always() &&
       inputs.publish_release == true &&
+      needs.prepare.outputs.unsigned_mode != 'true' &&
       needs.prepare.result == 'success' &&
       needs.verify.result == 'success' &&
       needs.release-bootstrap.result == 'success' &&
@@ -1680,8 +1762,7 @@ jobs:
     needs: [prepare, verify, release-bootstrap, desktop, desktop-fallback, android, ios]
     if: >-
       always() &&
-      inputs.publish_unsigned_prerelease == true &&
-      inputs.publish_release == false &&
+      (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true) &&
       needs.prepare.result == 'success' &&
       needs.verify.result == 'success' &&
       needs.release-bootstrap.result == 'success' &&
@@ -1702,6 +1783,8 @@ jobs:
           SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
           PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
           RELEASE_HIGHLIGHTS: ${{ inputs.release_highlights }}
+          UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
+          UNSIGNED_RELEASE: ${{ inputs.publish_unsigned_release }}
         run: |
           set -euo pipefail
           stable_tag="$(gh api "repos/${GH_REPO}/releases/latest" --jq .tag_name 2>/dev/null || true)"
@@ -1713,6 +1796,7 @@ jobs:
             exit 1
           fi
           export RELEASE_ID="${release_id}"
+          echo "RELEASE_ID=${release_id}" >> "${GITHUB_ENV}"
 
           python - <<'PY'
           import json
@@ -1750,8 +1834,17 @@ jobs:
               raise SystemExit(f"unexpected release tag: {release.get('tag_name')!r}")
           if not release.get("draft"):
               raise SystemExit("unsigned assets must be validated while the release is a draft")
-          if not release.get("prerelease"):
-              raise SystemExit("unsigned release must remain a prerelease")
+          unsigned_prerelease = (
+              os.environ.get("UNSIGNED_PRERELEASE", "false").lower() == "true"
+          )
+          unsigned_release = (
+              os.environ.get("UNSIGNED_RELEASE", "false").lower() == "true"
+          )
+          expected_prerelease = unsigned_prerelease
+          if bool(release.get("prerelease")) != expected_prerelease:
+              raise SystemExit(
+                  "unsigned release prerelease state does not match dispatch mode"
+              )
 
           def fetch_assets():
               assets = []
@@ -1875,12 +1968,25 @@ jobs:
               f"https://github.com/{repo}/releases/download/"
               f"{quote(tag, safe='')}"
           )
+          if unsigned_release:
+              title = f"番茄小说下载器未签名版 {os.environ['VERSION']}"
+              channel = (
+                  "这是普通 GitHub Release（非 prerelease），但不会被标记为稳定更新来源；"
+                  "不会生成、上传或修改 `latest.json`。"
+              )
+              warning = "> **未签名版本，不支持自动更新。**"
+          else:
+              title = f"番茄小说下载器未签名测试版 {os.environ['VERSION']}"
+              channel = (
+                  "这是独立的 GitHub prerelease，不会替代稳定版，也不会生成、上传或修改 `latest.json`。"
+              )
+              warning = "> **未签名版本，仅供测试，不支持自动更新。**"
           lines = [
-              f"## 番茄小说下载器未签名测试版 {os.environ['VERSION']}",
+              f"## {title}",
               "",
-              "> **未签名版本，仅供测试，不支持自动更新。**",
+              warning,
               "",
-              "这是独立的 GitHub prerelease，不会替代稳定版，也不会生成、上传或修改 `latest.json`。请从本页 Assets 手动下载，并在安装前核对 SHA-256。",
+              f"{channel} 请从本页 Assets 手动下载，并在安装前核对 SHA-256。",
               "",
               "## 下载与校验",
               "",
@@ -1930,7 +2036,7 @@ jobs:
               f"- 源码引用：`{os.environ['SOURCE_REF']}`",
               f"- 源码提交：`{os.environ['SOURCE_COMMIT']}`",
               f"- 构建平台：{os.environ['PLATFORMS']}",
-              f"- 稳定版保持为：`{os.environ.get('STABLE_TAG') or '尚无稳定版'}`",
+              f"- 当前稳定更新通道保持为：`{os.environ.get('STABLE_TAG') or '尚无稳定版'}`",
               f"- 可下载安装包数量：{len(installers)}",
               "",
           ]
@@ -1946,7 +2052,7 @@ jobs:
           gh release upload "${TAG_NAME}" SHA256SUMS-unsigned.txt \
             --repo "${GH_REPO}" --clobber
 
-      - name: Publish unsigned prerelease
+      - name: Publish unsigned release
         id: publish
         shell: bash
         env:
@@ -1954,32 +2060,86 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
           VERSION: ${{ needs.prepare.outputs.version }}
+          UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
+          UNSIGNED_RELEASE: ${{ inputs.publish_unsigned_release }}
         run: |
           set -euo pipefail
-          is_prerelease="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json isPrerelease --jq .isPrerelease)"
-          if [[ "${is_prerelease}" != "true" ]]; then
-            echo "Unsigned release lost its prerelease flag: ${TAG_NAME}"
-            exit 1
-          fi
+          if [[ "${UNSIGNED_PRERELEASE}" == "true" ]]; then
+            is_prerelease="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json isPrerelease --jq .isPrerelease)"
+            if [[ "${is_prerelease}" != "true" ]]; then
+              echo "Unsigned release lost its prerelease flag: ${TAG_NAME}"
+              exit 1
+            fi
 
-          gh release edit "${TAG_NAME}" --repo "${GH_REPO}" \
-            --title "番茄小说下载器 未签名测试版 ${VERSION}" \
-            --notes-file release-notes.md \
-            --draft=false \
-            --prerelease
+            gh release edit "${TAG_NAME}" --repo "${GH_REPO}" \
+              --title "番茄小说下载器 未签名测试版 ${VERSION}" \
+              --notes-file release-notes.md \
+              --draft=false \
+              --prerelease
 
-          state="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json isDraft,isPrerelease --jq '[.isDraft, .isPrerelease] | @tsv')"
-          if [[ "${state}" != $'false\ttrue' ]]; then
-            echo "Unsigned release is not a published prerelease: ${state}"
-            exit 1
+            state="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json isDraft,isPrerelease --jq '[.isDraft, .isPrerelease] | @tsv')"
+            if [[ "${state}" != $'false\ttrue' ]]; then
+              echo "Unsigned release is not a published prerelease: ${state}"
+              exit 1
+            fi
+          else
+            is_prerelease="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json isPrerelease --jq .isPrerelease)"
+            if [[ "${is_prerelease}" != "false" ]]; then
+              echo "Unsigned formal release must not be a prerelease: ${TAG_NAME}"
+              exit 1
+            fi
+            # Publish as a normal, non-prerelease Release but explicitly keep
+            # GitHub's `latest` pointer on the signed updater channel.  The
+            # unsigned assets never contain latest.json, so they must not make
+            # existing clients switch to a broken automatic-update endpoint.
+            python - <<'PY'
+            import json
+            import os
+            import urllib.request
+            from pathlib import Path
+
+            repo = os.environ["GH_REPO"]
+            release_id = os.environ["RELEASE_ID"]
+            token = os.environ["GH_TOKEN"]
+            payload = {
+                "name": f"番茄小说下载器 未签名版 {os.environ['VERSION']}",
+                "body": Path("release-notes.md").read_text(encoding="utf-8"),
+                "draft": False,
+                "prerelease": False,
+                "make_latest": False,
+            }
+            request = urllib.request.Request(
+                f"https://api.github.com/repos/{repo}/releases/{release_id}",
+                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                    "Content-Type": "application/json",
+                    "User-Agent": "fanqie-unsigned-release",
+                },
+                method="PATCH",
+            )
+            with urllib.request.urlopen(request) as response:
+                published = json.load(response)
+            if published.get("draft") or published.get("prerelease"):
+                raise SystemExit("GitHub did not publish the unsigned formal release")
+            print("Published unsigned normal Release with make_latest=false")
+            PY
+
+            state="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json isDraft,isPrerelease --jq '[.isDraft, .isPrerelease] | @tsv')"
+            if [[ "${state}" != $'false\tfalse' ]]; then
+              echo "Unsigned formal release is not a published normal Release: ${state}"
+              exit 1
+            fi
           fi
           stable_after="$(gh api "repos/${GH_REPO}/releases/latest" --jq .tag_name 2>/dev/null || true)"
           if [[ "${stable_after}" != "${STABLE_TAG}" ]]; then
-            echo "Stable latest changed while publishing unsigned prerelease: ${STABLE_TAG} -> ${stable_after}"
+            echo "Stable latest changed while publishing unsigned release: ${STABLE_TAG} -> ${stable_after}"
             exit 1
           fi
           if gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json assets --jq '.assets[].name' | grep -Eiq '(^latest\.json$|\.sig$|\.nsis\.zip$|\.msi\.zip$|\.app\.tar\.gz$|\.appimage\.tar\.gz$)'; then
-            echo "Unsigned prerelease contains forbidden updater assets."
+            echo "Unsigned release contains forbidden updater assets."
             exit 1
           fi
           asset_count="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json assets --jq '.assets | length')"
@@ -1988,13 +2148,15 @@ jobs:
       - name: Unsigned release summary
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          ## Unsigned Tauri Prerelease
+           ## Unsigned Tauri Release
 
           - Release: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.tag_name }}
           - Version: \`${{ needs.prepare.outputs.version }}\`
           - Tag: \`${{ needs.prepare.outputs.tag_name }}\`
           - Private source: \`${{ env.PRIVATE_SOURCE_REPOSITORY }}@${{ needs.prepare.outputs.source_commit }}\`
-          - Platforms: ${{ needs.prepare.outputs.selected_platforms }}
+           - Platforms: ${{ needs.prepare.outputs.selected_platforms }}
+           - Prerelease: `${{ inputs.publish_unsigned_prerelease }}`
+           - Normal Release mode: `${{ inputs.publish_unsigned_release }}`
           - Assets: \`${{ steps.publish.outputs.asset_count }}\`
           - Updater metadata: \`false\`
           - Stable latest preserved: \`${STABLE_TAG:-none}\`
