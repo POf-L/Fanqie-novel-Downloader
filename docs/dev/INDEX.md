@@ -7,6 +7,10 @@
   checksums, release notes, publication, and failure recovery.
 - [Unsigned macOS Release](modules/macos-unsigned-release.md): isolated
   prerelease packaging for Intel and Apple Silicon without Apple credentials.
+- [Unsigned Tauri Prerelease](modules/unsigned-prerelease.md): full-platform
+  manual-download prerelease path without updater or official signing keys.
 - [Legacy Release-Note Tools](modules/legacy-release-notes.md): historical
   one-off scripts kept separate from the supported publication path.
+- [Issue Star Gate](modules/issue-star-gate.md): automatic public-star checks
+  for newly opened Issues.
 - [Repository README](../../README.md): user-facing features and downloads.
