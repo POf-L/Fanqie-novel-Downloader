@@ -67,6 +67,12 @@ The dispatch form keeps platform selection in one validated `platforms` string
 so it stays within GitHub's workflow input limit. Release jobs pin Rust to the
 same `1.97.0` toolchain declared by the Tauri source repository.
 
+For a manual-download build without release signing credentials, dispatch the
+same workflow with `publish_release=false` and
+`publish_unsigned_prerelease=true`. That path is intentionally separate from
+the finalizer above; its contract and forbidden asset list are documented in
+[Unsigned Tauri Prerelease](modules/unsigned-prerelease.md).
+
 ## Stable macOS publication gate
 
 A published macOS APP/DMG must use a Developer ID certificate, complete Apple
@@ -100,11 +106,14 @@ expected x86_64/arm64 Mach-O executable, bundle identifier, version, icon, and
 DMG. They remain seven-day workflow artifacts and were not attached to a
 Release.
 
-The verified packaging path is now implemented as the dedicated `Publish
-Unsigned macOS Client` workflow. It publishes only a clearly labeled
-prerelease and checks that GitHub's latest stable tag remains unchanged. See
-[Unsigned macOS Release](modules/macos-unsigned-release.md) for its complete
-contract; do not weaken this stable signing gate to publish unsigned assets.
+The dedicated `Publish Unsigned macOS Client` workflow remains available for a
+macOS-only smoke-test channel. The main build workflow also has the explicitly
+opt-in `publish_unsigned_prerelease` path for full-platform manual downloads;
+both paths publish only clearly labeled prereleases and check that GitHub's
+latest stable tag remains unchanged. Neither path weakens the stable signing
+gate. See [Unsigned macOS Release](modules/macos-unsigned-release.md) and
+[Unsigned Tauri Prerelease](modules/unsigned-prerelease.md) for their separate
+contracts.
 
 ## Source isolation
 

@@ -43,11 +43,17 @@ https://github.com/POf-L/Fanqie-novel-Downloader/releases
 - Android：通用 APK / 分架构 APK，以及 AAB
 - iOS 提供 **无签名 IPA**（需自行侧载安装，不上架 App Store）
 
-发布文件统一使用 `FanqieNovelDownloader-tauri-` 前缀；macOS 未签名渠道使用 `FanqieNovelDownloader-macos-` 前缀并在文件名中明确标注 `unsigned`。Windows 用户应按 CPU 架构选择 x64 或 ARM64 安装程序；Linux 用户可按发行版选择 DEB 或 AppImage；macOS 用户应区分 Intel 与 Apple Silicon。
+主流程发布文件统一使用 `FanqieNovelDownloader-tauri-` 前缀；独立的 macOS 未签名 workflow 使用 `FanqieNovelDownloader-macos-` 前缀并在文件名中明确标注 `unsigned`。Windows 用户应按 CPU 架构选择 x64 或 ARM64 安装程序；Linux 用户可按发行版选择 DEB 或 AppImage；macOS 用户应区分 Intel 与 Apple Silicon。
 
 Android 普通用户下载 APK 即可（优先 `arm64-v8a`），AAB 主要用于应用商店。
 
 iOS 提供的是 **无 Apple 签名** 的 IPA，不支持上架 App Store；有条件的用户可自行侧载安装，安装后需在「设置 → 通用 → VPN 与设备管理」中信任证书。
+
+维护者也可以发布全平台的“未签名测试版” prerelease，供用户从 Release
+Assets 手动下载。此类版本明确标注“未签名版本，仅供测试，不支持自动更新”，
+不会生成 `latest.json` 或替代稳定版；Windows 可能显示“未知发布者”/SmartScreen
+警告，macOS 首次打开会触发 Gatekeeper。下载后请先核对 Release 中的
+`SHA256SUMS-unsigned.txt`。
 
 ### macOS 未签名客户端
 

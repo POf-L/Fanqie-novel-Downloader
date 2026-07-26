@@ -31,7 +31,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         cls.finalizer = FINALIZER.read_text(encoding="utf-8")
         cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
-    def render_draft_notes(self, asset_names):
+    def render_draft_notes(self, asset_names, *, unsigned=False):
         script = self.workflow.split("          python - <<'PY'\n", 1)[1]
         script = textwrap.dedent(script.split("\n          PY", 1)[0])
         releases = [
@@ -58,6 +58,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             "SOURCE_REF": "main",
             "SOURCE_COMMIT": "0123456789ab",
             "PLATFORMS": "android,ios",
+            "PUBLISH_UNSIGNED_PRERELEASE": str(unsigned).lower(),
         }
         with (
             patch.dict(os.environ, environment),
@@ -76,6 +77,140 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertLessEqual(len(inputs), 10)
         self.assertIn("      platforms:\n", input_block)
         self.assertNotIn("platform_windows_x64", input_block)
+
+    def test_unsigned_prerelease_has_an_explicit_exclusive_publish_mode(self):
+        input_block = self.workflow.split("permissions:", 1)[0]
+        self.assertIn("      publish_unsigned_prerelease:\n", input_block)
+        unsigned_input = input_block.split(
+            "      publish_unsigned_prerelease:\n", 1
+        )[1].split("      prerelease:\n", 1)[0]
+        self.assertIn("        default: false\n", unsigned_input)
+        self.assertIn("        type: boolean\n", unsigned_input)
+        self.assertIn(
+            "publish_release and publish_unsigned_prerelease are mutually exclusive.",
+            self.workflow,
+        )
+        self.assertIn('tag_name = f"unsigned-v{version}-r', self.workflow)
+        self.assertIn('tag_name = f"v{version}"', self.workflow)
+
+    def test_unsigned_prerelease_disables_updater_and_official_signing_inputs(self):
+        self.assertIn("create_updater_artifacts=false", self.workflow)
+        self.assertEqual(
+            self.workflow.count(
+                "CREATE_UPDATER_ARTIFACTS: "
+                "${{ needs.prepare.outputs.create_updater_artifacts }}"
+            ),
+            2,
+        )
+        self.assertEqual(
+            self.workflow.count(
+                "uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease }}"
+            ),
+            2,
+        )
+        self.assertEqual(
+            self.workflow.count(
+                "uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease }}"
+            ),
+            2,
+        )
+        for secret in (
+            "TAURI_SIGNING_PRIVATE_KEY",
+            "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+            "APPLE_SIGNING_IDENTITY",
+            "ANDROID_KEYSTORE_BASE64",
+        ):
+            self.assertIn(
+                f"!inputs.publish_unsigned_prerelease && secrets.{secret}",
+                self.workflow,
+            )
+        self.assertIn(
+            "inputs.publish_unsigned_prerelease == true || "
+            "needs.prepare.outputs.ios_signing != 'true'",
+            self.workflow,
+        )
+        self.assertEqual(
+            self.workflow.count("- name: Verify unsigned macOS bundle"),
+            2,
+        )
+        self.assertEqual(
+            self.workflow.count(
+                'test ! -d "${app_path}/Contents/_CodeSignature"'
+            ),
+            2,
+        )
+
+    def test_unsigned_prerelease_uploads_release_assets_for_every_platform(self):
+        release_enabled = (
+            "inputs.publish_release == true || "
+            "inputs.publish_unsigned_prerelease == true"
+        )
+        self.assertGreaterEqual(self.workflow.count(release_enabled), 3)
+        self.assertEqual(
+            self.workflow.count(
+                "inputs.publish_release && needs.prepare.outputs.tag_name || ''"
+            ),
+            2,
+        )
+        self.assertEqual(
+            self.workflow.count("- name: Upload unsigned desktop installers"),
+            2,
+        )
+        self.assertEqual(
+            self.workflow.count('"gh",\n                  "release",\n                  "upload"'),
+            2,
+        )
+        self.assertEqual(self.workflow.count('single_directory(source / "macos", ".app")'), 2)
+        self.assertGreaterEqual(self.workflow.count('stem = f"FanqieNovelDownloader-tauri-linux-{arch}"'), 2)
+        self.assertIn(
+            '".sig", ".nsis.zip", ".msi.zip", ".app.tar.gz", ".appimage.tar.gz"',
+            self.workflow,
+        )
+        self.assertIn('if not tag.startswith("unsigned-v")', self.workflow)
+        self.assertIn('expected="FanqieNovelDownloader-tauri-linux-${expected_arch}.deb"', self.workflow)
+        self.assertIn(
+            "prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}",
+            self.workflow,
+        )
+
+    def test_unsigned_finalizer_never_enters_stable_updater_channel(self):
+        unsigned = self.workflow.split("\n  finalize-unsigned:\n", 1)[1]
+        self.assertNotIn("scripts/finalize-release.py", unsigned)
+        self.assertNotIn("normalize-updater-metadata.py", unsigned)
+        self.assertNotIn("--latest", unsigned)
+        self.assertIn("SHA256SUMS-unsigned.txt", unsigned)
+        self.assertIn('lowered in {"latest.json", "sha256sums-release.txt"}', unsigned)
+        self.assertIn('or lowered.endswith(".sig")', unsigned)
+        self.assertIn('or lowered.endswith(".msi.zip")', unsigned)
+        self.assertIn("def require_asset(label, *needles, suffix=None):", unsigned)
+        self.assertIn('"linux-x64": ("Linux x64", ("linux-amd64",), ".deb")', unsigned)
+        self.assertIn("--draft=false", unsigned)
+        self.assertIn("--prerelease", unsigned)
+        self.assertIn(
+            "未签名版本，仅供测试，不支持自动更新",
+            unsigned,
+        )
+        self.assertIn("未知发布者", unsigned)
+        self.assertIn("Gatekeeper", unsigned)
+        self.assertIn(
+            'releases/latest" --jq .tag_name',
+            unsigned,
+        )
+        self.assertIn(
+            'if [[ "${stable_after}" != "${STABLE_TAG}" ]]',
+            unsigned,
+        )
+        self.assertIn('gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json databaseId', unsigned)
+        self.assertIn('release = api(f"releases/{release_id}")', unsigned)
+        self.assertNotIn('api(f"releases/tags/', unsigned)
+
+    def test_unsigned_draft_notes_warn_before_assets_finish(self):
+        notes = self.render_draft_notes([], unsigned=True)
+        self.assertIn("未签名版本，仅供测试，不支持自动更新", notes)
+        self.assertIn("不会替代稳定版", notes)
+        self.assertIn("不会生成或上传 `latest.json`", notes)
+        self.assertIn("未知发布者", notes)
+        self.assertIn("Gatekeeper", notes)
 
     def test_release_jobs_use_the_pinned_rust_toolchain(self):
         self.assertNotIn("dtolnay/rust-toolchain@stable", self.workflow)
