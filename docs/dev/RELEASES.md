@@ -150,6 +150,11 @@ abandoned `untagged-*` drafts; never delete a named stable or historical
 prerelease release as part of this cleanup. The current stable release must be
 rechecked after any draft deletion.
 
+An `unsigned-*` draft with complete installers is recovered through
+`Finalize Unsigned Draft Release`; that workflow invokes the dedicated
+unsigned finalizer and never calls the updater metadata normalizer. The signed
+`Finalize Draft Release` workflow remains limited to signed `v*` drafts.
+
 ## Local validation
 
 ```powershell

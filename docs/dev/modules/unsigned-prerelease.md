@@ -86,7 +86,11 @@ Release Assets page and verify the unsigned checksum manifest manually.
 ## Failure recovery
 
 Failures before publication leave a draft tagged `unsigned-*`. Inspect the
-asset list and rerun the same dispatch after fixing the build. Do not use the
-normal `Finalize Draft Release` workflow for this tag: it intentionally expects
-signed updater metadata. Delete an abandoned unsigned draft only after
-confirming that the current stable release tag is unchanged.
+asset list before deciding whether another build is needed. If every requested
+installer is already attached, dispatch `Finalize Unsigned Draft Release` with
+the existing tag and the original mode; it reuses
+`scripts/finalize-unsigned-release.py`, revalidates every asset and publishes
+without rebuilding. Do not use the normal `Finalize Draft Release` workflow
+for this tag: it intentionally expects signed updater metadata. Delete an
+abandoned unsigned draft only after confirming that the current stable release
+tag is unchanged.

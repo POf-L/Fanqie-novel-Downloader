@@ -16,6 +16,10 @@ UNSIGNED_MACOS_WORKFLOW = (
 REPAIR_WORKFLOW = ROOT / ".github" / "workflows" / "repair-updater-metadata.yml"
 FINALIZE_WORKFLOW = ROOT / ".github" / "workflows" / "finalize-draft-release.yml"
 FINALIZER = ROOT / "scripts" / "finalize-release.py"
+UNSIGNED_FINALIZER = ROOT / "scripts" / "finalize-unsigned-release.py"
+UNSIGNED_FINALIZE_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "finalize-unsigned-draft.yml"
+)
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
@@ -29,6 +33,10 @@ class ReleaseWorkflowTest(unittest.TestCase):
         cls.repair_workflow = REPAIR_WORKFLOW.read_text(encoding="utf-8")
         cls.finalize_workflow = FINALIZE_WORKFLOW.read_text(encoding="utf-8")
         cls.finalizer = FINALIZER.read_text(encoding="utf-8")
+        cls.unsigned_finalizer = UNSIGNED_FINALIZER.read_text(encoding="utf-8")
+        cls.unsigned_finalize_workflow = UNSIGNED_FINALIZE_WORKFLOW.read_text(
+            encoding="utf-8"
+        )
         cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     def render_draft_notes(self, asset_names, *, unsigned=False, unsigned_release=False):
@@ -169,7 +177,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             '".sig", ".nsis.zip", ".msi.zip", ".app.tar.gz", ".appimage.tar.gz"',
             self.workflow,
         )
-        self.assertIn('if not tag.startswith("unsigned-v")', self.workflow)
+        self.assertIn('r"unsigned-v[^/]+-r[1-9][0-9]*"', self.unsigned_finalizer)
         self.assertIn('expected="FanqieNovelDownloader-tauri-linux-${expected_arch}.deb"', self.workflow)
         self.assertIn(
             "prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}",
@@ -177,16 +185,18 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
 
     def test_unsigned_finalizer_never_enters_stable_updater_channel(self):
-        unsigned = self.workflow.split("\n  finalize-unsigned:\n", 1)[1]
+        unsigned_job = self.workflow.split("\n  finalize-unsigned:\n", 1)[1]
+        unsigned = self.unsigned_finalizer
+        self.assertIn("scripts/finalize-unsigned-release.py", unsigned_job)
         self.assertNotIn("scripts/finalize-release.py", unsigned)
         self.assertNotIn("normalize-updater-metadata.py", unsigned)
         self.assertNotIn("--latest", unsigned)
         self.assertIn("SHA256SUMS-unsigned.txt", unsigned)
-        self.assertIn('lowered in {"latest.json", "sha256sums-release.txt"}', unsigned)
-        self.assertIn('or lowered.endswith(".sig")', unsigned)
-        self.assertIn('or lowered.endswith(".msi.zip")', unsigned)
-        self.assertIn("def require_asset(label, *needles, suffix=None):", unsigned)
-        self.assertIn('"linux-x64": ("Linux x64", ("linux-amd64",), ".deb")', unsigned)
+        self.assertIn('FORBIDDEN_EXACT = {"latest.json", "sha256sums-release.txt"}', unsigned)
+        self.assertIn('".sig",', unsigned)
+        self.assertIn('".msi.zip",', unsigned)
+        self.assertIn("def require_asset(", unsigned)
+        self.assertIn('"linux-x64": ("Linux x64", ("linux-amd64",), (".deb",))', unsigned)
         self.assertIn("--draft=false", unsigned)
         self.assertIn("--prerelease", unsigned)
         self.assertIn(
@@ -196,16 +206,16 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("未知发布者", unsigned)
         self.assertIn("Gatekeeper", unsigned)
         self.assertIn(
-            'releases/latest" --jq .tag_name',
+            'f"repos/{repo}/releases/latest"',
             unsigned,
         )
         self.assertIn(
-            'if [[ "${stable_after}" != "${STABLE_TAG}" ]]',
+            "if stable_after != stable_before:",
             unsigned,
         )
-        self.assertIn('gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json databaseId', unsigned)
-        self.assertIn('release = api(f"releases/{release_id}")', unsigned)
-        self.assertNotIn('api(f"releases/tags/', unsigned)
+        self.assertIn('"databaseId,tagName"', unsigned)
+        self.assertIn('f"repos/{repo}/releases/{database_id}"', unsigned)
+        self.assertNotIn('releases/tags/', unsigned)
 
     def test_unsigned_draft_notes_warn_before_assets_finish(self):
         notes = self.render_draft_notes([], unsigned=True)
@@ -221,14 +231,22 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn(
             "publish_unsigned_release requires publish_release=true.", self.workflow
         )
-        self.assertIn('"make_latest": False', self.workflow)
-        self.assertIn("$'false\\tfalse'", self.workflow)
+        self.assertIn('"make_latest": False', self.unsigned_finalizer)
+        self.assertIn('published.get("prerelease")', self.unsigned_finalizer)
         self.assertIn("inputs.publish_unsigned_release == true", self.workflow)
         notes = self.render_draft_notes([], unsigned_release=True)
         self.assertIn("未签名版本，不支持自动更新", notes)
         self.assertIn("普通 GitHub Release", notes)
         self.assertIn("不会生成或上传 `latest.json`", notes)
         self.assertNotIn("不会替代稳定版", notes)
+
+    def test_unsigned_draft_recovery_reuses_the_unsigned_finalizer(self):
+        workflow = self.unsigned_finalize_workflow
+        self.assertIn("name: Finalize Unsigned Draft Release", workflow)
+        self.assertIn("scripts/finalize-unsigned-release.py", workflow)
+        self.assertIn("permissions:\n  contents: write", workflow)
+        self.assertNotIn("PRIVATE_SOURCE_REPOSITORY", workflow)
+        self.assertNotIn("tauri-apps/tauri-action", workflow)
 
     def test_release_jobs_use_the_pinned_rust_toolchain(self):
         self.assertNotIn("dtolnay/rust-toolchain@stable", self.workflow)
