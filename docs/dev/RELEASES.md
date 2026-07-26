@@ -2,22 +2,47 @@
 
 ## Latest Verified Release
 
-[`v2026.7.23-1739`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/v2026.7.23-1739)
+[`v2026.7.26-709`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/v2026.7.26-709)
 was published by Actions run
-[`30030326151`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30030326151)
-from private Tauri source commit `742ef58639200e891e2f80e8129173e2dac5b87f`.
-The release contains 26 assets, 12 working user download links for Windows,
-Linux, Android and unsigned iOS, complete SHA-256 manifests, and canonical
-updater URLs. macOS is intentionally absent until Developer ID signing and
-notarization credentials are configured. The build and release jobs passed;
-Android 14 API 34 emulator tap-through has also passed, including a real SAF
-directory export. OEM document providers and physical display cutouts remain
-separate device checks.
+[`30192288645`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30192288645)
+from private Tauri source commit `d48e82791b04dce7fee4025ee54f8b5263f3a29c`.
+The release contains 24 assets for Windows x64/ARM64, Linux x64/ARM64, Android
+all ABIs/AAB, and unsigned iOS, plus updater signatures, `latest.json`, and
+complete SHA-256 manifests. Every build and finalization job passed, the
+release is non-draft/non-prerelease, and GitHub's `releases/latest` endpoint
+resolves to this tag. It includes the Android 12 WebView scrolling fix and the
+device-registration fallback hosts/network diagnostics. macOS is absent from
+the signed stable asset set until Developer ID signing and notarization
+credentials are configured.
 
 macOS users are served through the separate unsigned prerelease channel while
 the stable release remains gated on Apple signing. Its workflow contract,
 asset set, source-isolation rules, and recovery procedure are documented in
 [Unsigned macOS Release](modules/macos-unsigned-release.md).
+
+## Latest Verified Unsigned Full-Platform Release
+
+[`unsigned-v2026.7.26-742-r635`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/unsigned-v2026.7.26-742-r635)
+was built by Actions run
+[`30193277041`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30193277041)
+from wrapper commit `51af36caae8a6566261ee99dc146ac7ebaab89c9` and
+private Tauri source commit `d48e82791b04dce7fee4025ee54f8b5263f3a29c`.
+All Windows, Linux, macOS Intel/Apple Silicon, Android, and unsigned iOS jobs
+passed. The build run's original inline publish step then failed before its API
+call because a nested shell heredoc terminator was indented. Wrapper commit
+`c58bcca1eee6b29d89bfb4e90f4f84729a253018` extracted the logic into
+`scripts/finalize-unsigned-release.py`; recovery run
+[`30195164073`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30195164073)
+reused the existing draft assets and published without rebuilding.
+
+The result is a normal GitHub Release (`draft=false`, `prerelease=false`) with
+21 assets, including both macOS DMG/APP ZIP architectures and the unsigned IPA.
+It is deliberately `make_latest=false`: the signed updater channel remains
+`v2026.7.26-709`. The release contains no `latest.json`, updater archive, or
+`.sig` asset. `SHA256SUMS-unsigned.txt` matches all 20 other GitHub asset
+digests, all 21 anonymous download URLs return HTTP 200, and the notes document
+Windows unknown-publisher warnings, macOS Gatekeeper handling, and iOS
+AltStore/Sideloadly/TrollStore side-loading.
 
 ## Latest Verified Unsigned macOS Client
 
@@ -36,7 +61,7 @@ startup log. They also verified the expected Mach-O architecture, version
 checks confirmed all four anonymous DMG/APP ZIP links and the checksum link
 return 200. The exact asset set carries GitHub SHA-256 digests and a checked
 release manifest. The release is non-draft and prerelease; GitHub's latest
-stable release remains `v2026.7.23-1739`. The superseded packaging-only r1
+stable release remains `v2026.7.26-709`. The superseded packaging-only r1
 prerelease and tag were deleted after r2 passed.
 
 ## Asset flow
