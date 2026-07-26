@@ -115,6 +115,15 @@ gate. See [Unsigned macOS Release](modules/macos-unsigned-release.md) and
 [Unsigned Tauri Prerelease](modules/unsigned-prerelease.md) for their separate
 contracts.
 
+The first end-to-end main-workflow smoke run used private source commit
+`65723ef2f763b66276053a04c69e4d59312f4281` and published the Windows-only
+[`unsigned-v2026.7.26-642-r633`](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/unsigned-v2026.7.26-642-r633)
+prerelease from Actions run
+[`30191501813`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30191501813).
+Its installer and `SHA256SUMS-unsigned.txt` both return HTTP 200; the manifest
+digest matches GitHub's asset digest, and the stable `latest` tag remains
+`v2026.7.23-1739`.
+
 ## Source isolation
 
 The public wrapper is an orchestration repository, not a mirror of the private
