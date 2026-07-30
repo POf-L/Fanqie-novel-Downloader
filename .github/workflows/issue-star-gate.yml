@@ -4,6 +4,20 @@ on:
   issues:
     types: [opened]
 
+# IMPORTANT: GitHub restricted the stargazers API (June 2026) to only admins/collaborators.
+# The default GITHUB_TOKEN from Actions often fails listStargazersForRepo now.
+#
+# 你可以复用现有的 PRIVATE_SOURCE_TOKEN（用来从隐身仓库拉源码的那个），
+# 因为它通常是由仓库 owner 创建的，具有足够的权限。
+#
+# 推荐做法（优先级）：
+# 1. 新建一个专用的 STAR_GATE_TOKEN（最小权限，最安全）
+# 2. 或者直接复用 PRIVATE_SOURCE_TOKEN
+# 3. 最后回退到 GITHUB_TOKEN（大概率失败）
+#
+# 如果复用 PRIVATE_SOURCE_TOKEN，建议检查它的 fine-grained PAT 设置：
+#   - 包含对本公开仓库（Fanqie-novel-Downloader）的访问
+#   - 至少给 Contents = Read-only
 permissions:
   contents: read
   issues: write
@@ -15,13 +29,16 @@ concurrency:
 jobs:
   check-star:
     name: Check issue author's star
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check the public stargazer list
-        uses: actions/github-script@v7
+      - name: Check the stargazer list
+        uses: actions/github-script@v9
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # 优先使用专用 token，其次复用你现有的 PRIVATE_SOURCE_TOKEN
+          # （因为它通常是 owner 创建的 PAT，对本仓库也有访问权限，能读取 stargazers）
+          # 最后才回退 GITHUB_TOKEN（大概率失败）
+          github-token: ${{ secrets.STAR_GATE_TOKEN || secrets.PRIVATE_SOURCE_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             const issue = context.payload.issue;
             const author = issue?.user?.login;
