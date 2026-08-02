@@ -1,97 +1,141 @@
 # 番茄小说下载器
 
-番茄小说下载器是一款基于 Rust + Tauri v2 的全平台客户端，用于搜索小说、查看书籍信息、管理书架，并将小说内容下载到本地阅读。
+基于 **Rust + Tauri v2** 的跨平台小说工具，提供搜索、书籍详情、在线阅读、书架管理，
+以及 TXT / EPUB 下载。桌面端与移动端共用同一套前端和 Rust 后端，不依赖 Go sidecar。
 
-项目目标是尽量做到打开即用，减少命令行和复杂配置，让不熟悉开发环境的用户也能直接使用。
+[![最新稳定版](https://img.shields.io/github/v/release/POf-L/Fanqie-novel-Downloader?display_name=tag&sort=date)](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
+[![仓库校验](https://github.com/POf-L/Fanqie-novel-Downloader/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/POf-L/Fanqie-novel-Downloader/actions/workflows/ci.yml)
 
-## 软件界面
+- [下载最新稳定版](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
+- [查看全部版本](https://github.com/POf-L/Fanqie-novel-Downloader/releases)
+- [提交问题或建议](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose)
 
-![番茄小说下载器桌面客户端首页](docs/images/desktop-home.png)
+## 界面预览
 
-上图为当前桌面客户端首页界面，包含搜索、书架、历史、设置、下载进度与更新入口等常用功能区域。
+### 桌面端
+
+![番茄小说下载器桌面端搜索与书籍详情](docs/images/desktop-home.png)
+
+### Android
+
+<p align="center">
+  <img src="docs/images/mobile-home.png" width="320" alt="番茄小说下载器 Android 搜索界面">
+</p>
+
+> 截图由当前界面代码生成。书名、作者和书籍 ID 均为演示数据，不对应真实作品。
 
 ## 主要功能
 
-- 小说搜索与书籍详情查看
-- 书籍封面、作者、状态、简介等信息展示
-- 在线阅读与阅读进度记录
-- 书架管理
-- TXT / EPUB 下载
-- 下载历史记录
-- Windows / Linux 桌面客户端签名自动更新
-- 支持 Windows、Linux、macOS、Android
-- macOS 提供独立的 Intel / Apple Silicon 未签名预发布客户端
-- Android 可导出并通过系统应用打开 TXT / EPUB
-- iOS 提供 **无签名 IPA**，需自行侧载安装（不上架 App Store）
+- 通过关键词、番茄小说链接或书籍 ID 搜索和直接载入书籍
+- 查看封面、作者、分类、字数、状态、简介和章节目录
+- 在线阅读、章节切换、阅读主题与字号调整、阅读进度记录
+- 书架管理，点击书籍继续阅读或发起下载
+- 单本下载与批量导入，支持指定章节范围
+- 下载任务暂停、继续、取消，以及失败或缺失章节重试
+- 导出 TXT / EPUB，保存下载历史并检查本地文件状态
+- Windows、Linux 桌面端签名更新包与应用内更新检查
+- 浅色 / 深色主题，以及中文、English、Русский 界面
+- Android 共享目录导出和系统阅读器打开；iOS 文件导出与系统分享
 
-## 下载使用
+## 下载与平台支持
 
-普通用户建议直接前往本仓库的 Releases 页面下载对应平台的安装包。
+普通用户应优先从[最新稳定版](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
+下载。每个 Release 的说明会列出实际附件、签名状态、安装限制和校验文件；没有发布的
+平台或架构不要使用其他安装包代替。
 
-发布下载地址：
+| 平台 | 支持架构 | 普通用户选择 | 当前发布方式 |
+| --- | --- | --- | --- |
+| Windows | x64、ARM64 | `windows-*-setup.exe` | 稳定版；支持应用内更新 |
+| Linux | x64、ARM64 | Debian / Ubuntu 选 `.deb`，其他发行版可选 `.AppImage` | 稳定版；支持应用内更新 |
+| Android | arm64-v8a、armeabi-v7a、x86_64、universal | 优先 `arm64-v8a.apk`，不确定架构时选 `universal.apk` | 稳定版；Android 7.0 / API 24 起 |
+| macOS | Intel、Apple Silicon | 对应架构的 unsigned DMG；需要时再选 APP ZIP | 独立未签名 prerelease；不进入自动更新 |
+| iOS | ARM64 | 无签名 IPA | 需要自行侧载；不上架 App Store |
 
-https://github.com/POf-L/Fanqie-novel-Downloader/releases
+### Windows
 
-每个已发布版本的说明都会列出实际提供的平台、签名/公证状态、侧载要求和
-自动更新边界；没有附件的平台不会从其他架构包推断下载地址。
+大多数电脑选择 `x64`，Windows on ARM 设备选择 `ARM64`。当前安装程序尚未配置
+Authenticode 发行商证书，因此 Windows 可能提示“未知发布者”或触发 SmartScreen；
+这与 Tauri 自动更新包使用的更新签名不是同一套凭据。安装前请核对 Release 中的
+SHA-256 校验清单。
 
-当前工作流可以生成：
+### Linux
 
-- Windows x64 / ARM64：NSIS 安装程序
-- Linux x64 / ARM64：DEB 与 AppImage（需要 WebKitGTK 4.1）
-- macOS Intel / Apple Silicon：未签名预发布提供 APP ZIP 与 DMG；正式版待 Apple 签名与公证
-- Android：通用 APK / 分架构 APK，以及 AAB
-- iOS 提供 **无签名 IPA**（需自行侧载安装，不上架 App Store）
+桌面壳依赖 **WebKitGTK 4.1**。AppImage 首次运行前需要授予执行权限：
 
-主流程发布文件统一使用 `FanqieNovelDownloader-tauri-` 前缀；独立的 macOS 未签名 workflow 使用 `FanqieNovelDownloader-macos-` 前缀并在文件名中明确标注 `unsigned`。Windows 用户应按 CPU 架构选择 x64 或 ARM64 安装程序；Linux 用户可按发行版选择 DEB 或 AppImage；macOS 用户应区分 Intel 与 Apple Silicon。
+```bash
+chmod +x FanqieNovelDownloader-tauri-linux-*.AppImage
+```
 
-Android 普通用户下载 APK 即可（优先 `arm64-v8a`），AAB 主要用于应用商店。
+具体是否同时提供 DEB 与 AppImage，以对应 Release 的实际附件为准。
 
-iOS 提供的是 **无 Apple 签名** 的 IPA，不支持上架 App Store；有条件的用户可自行侧载安装，安装后需在「设置 → 通用 → VPN 与设备管理」中信任证书。
+### Android
 
-维护者也可以发布全平台的“未签名测试版” prerelease，供用户从 Release
-Assets 手动下载。此类版本明确标注“未签名版本，仅供测试，不支持自动更新”，
-不会生成 `latest.json` 或替代稳定版；Windows 可能显示“未知发布者”/SmartScreen
-警告，macOS 首次打开会触发 Gatekeeper。下载后请先核对 Release 中的
-`SHA256SUMS-unsigned.txt`。
+APK 可以直接安装；AAB 是应用商店上传产物，不能像 APK 一样直接打开安装。应用通过
+Android 系统目录选择器保存 TXT / EPUB，并可交给已安装的阅读器打开。安装 APK 时需要
+允许当前文件管理器或浏览器安装未知来源应用。
 
-### macOS 未签名客户端
+### macOS
 
-在 Apple Developer ID 签名与公证尚未配置期间，macOS 客户端通过 Releases 中标题含“macOS 未签名版”的 prerelease 优先提供。Apple Silicon 用户选择 `arm64`，Intel 用户选择 `x64`，通常优先下载 DMG；每个版本同时提供 APP ZIP 和 `SHA256SUMS-macos-unsigned.txt`。
+在 Apple Developer ID 签名与公证凭据配置完成前，macOS 只通过
+[Releases](https://github.com/POf-L/Fanqie-novel-Downloader/releases) 中标题含
+“macOS 未签名版”的 prerelease 提供。Apple Silicon 选择 `arm64`，Intel 选择 `x64`，
+通常优先下载 DMG。
 
-当前可用版本：[macOS 未签名客户端 2026.7.24-38](https://github.com/POf-L/Fanqie-novel-Downloader/releases/tag/macos-unsigned-v2026.7.24-38-r2)
+首次启动被 Gatekeeper 拦截时，先核对 SHA-256，再前往“系统设置 → 隐私与安全性”选择
+“仍要打开”。只有 Release 说明明确要求时，才对本应用单独移除隔离属性；不需要全局
+关闭 Gatekeeper。未签名 macOS 包不会生成 `latest.json`，也不支持应用内自动更新。
 
-首次启动被系统拦截时，请先核对 SHA-256，再前往「系统设置 → 隐私与安全性」选择「仍要打开」。发布说明中也提供只针对本应用移除隔离属性的方法；无需全局关闭 Gatekeeper。
+### iOS
 
-桌面端稳定 Release 会同时发布签名更新包及 `latest.json`，客户端可直接使用“一键更新”。macOS 未签名 prerelease 不生成 `latest.json`，不会进入稳定版自动更新通道。
+iOS 提供的是无 Apple 签名 IPA，需要使用 AltStore、Sideloadly 或其他受信任方式自行
+侧载。安装后可能需要在“设置 → 通用 → VPN 与设备管理”中信任对应证书。它不属于
+App Store 或 TestFlight 正式发布。
 
-维护者可从 [`docs/dev/INDEX.md`](docs/dev/INDEX.md) 查看发布流程；手动发布时，
-`platforms` 输入使用逗号分隔的平台名。已发布版本的更新元数据可通过
-`发布 / 维护工具` 工作流统一处理 updater 元数据修复和已有草稿的继续发布，
-不会重新构建平台附件。运行时按用途选择对应的 `operation` 即可。
+## 基本使用
 
-## 使用建议
+1. 安装与系统架构匹配的版本。
+2. 在“设置”中选择默认保存目录和 TXT / EPUB 格式。
+3. 使用关键词搜索，或直接粘贴番茄小说链接、书籍 ID。
+4. 在详情页选择在线阅读、加入书架、全本下载或章节范围下载。
+5. 从任务面板管理下载进度，在“历史”中查看或打开已导出的文件。
 
-- 下载前先在设置中确认保存目录。
-- 如果章节下载速度不稳定，可以适当降低单次请求章节数量。
-- 如果书籍信息显示异常，可以在详情页清除缓存后重新加载。
-- 遇到网络波动时，可以稍后重试，避免短时间内反复高频请求。
+遇到网络超时或上游接口暂时不可用时，请等待一段时间再重试，避免短时间内连续发起大量
+请求。诊断日志默认关闭；需要排查时可在设置中临时开启，日志会对接口参数、签名、Cookie
+和书籍标识进行脱敏。
+
+## 常见问题
+
+**macOS 提示应用已损坏**
+
+这通常是未签名、未公证应用被 Gatekeeper 拦截，不表示下载文件一定损坏。请确认架构、
+核对校验和，并按对应 Release 的安装说明处理。
+
+**Linux 无法启动**
+
+先确认系统已安装 WebKitGTK 4.1 运行库；AppImage 还需要执行权限。不同发行版的软件包
+名称不同，请使用发行版自己的包管理器查询。
+
+**搜索或下载持续超时**
+
+先确认正在使用最新稳定版，并排除代理、私有 DNS、防火墙或网络波动。仍可复现时，提交
+错误反馈并附上脱敏后的完整错误文本、平台、版本和复现步骤。
+
+**Android 找不到下载文件**
+
+请在应用内重新选择共享目录并保留系统授予的访问权限。导出完成后可从历史记录打开文件，
+或在系统文件管理器中进入所选目录查看。
 
 ## 问题反馈
 
-如果使用中遇到问题，请从 [Issues](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose)
-选择“错误反馈”“功能建议”或“使用求助”。仓库不接受空白 Issue，提交表单会引导你补齐必要信息。
+请从 [Issue 提交入口](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose)
+选择“错误反馈”“功能建议”或“使用求助”。仓库不接受空白 Issue，结构化表单会收集版本、
+平台、架构、复现步骤和必要的诊断信息。
 
-是否 Star 不影响 Issue 的受理和处理。如果项目确实帮到了你，欢迎在体验后自愿支持。
+是否 Star **不影响** Issue 的受理和处理。如果项目确实帮到了你，欢迎在体验后自愿支持。
 
-反馈时建议附带：
-
-- 使用的平台与系统版本
-- 下载的发布版本号
-- 问题复现步骤
-- 报错截图或日志
-
-公开内容中请删除 token、签名、Cookie、设备标识和其他个人数据；安全漏洞请使用私密报告入口。
+公开内容中请删除 token、签名、Cookie、设备标识和其他个人数据。安全漏洞请使用
+[私密漏洞报告](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)，
+不要创建公开 Issue。
 
 ## 支持与赞助
 
@@ -100,19 +144,22 @@ Assets 手动下载。此类版本明确标注“未签名版本，仅供测试�
 > 这是推广邀请链接。合作方目前标注通过该链接注册可获 **1 美元**，项目方也可能获得
 > 推广收益；是否使用该链接不影响软件功能、Issue 受理或问题处理。
 
-注册链接：
-
-https://999554.xyz/register?aff=Xf2p
+注册链接：<https://999554.xyz/register?aff=Xf2p>
 
 赞助与推广合作请通过[仓库所有者主页](https://github.com/POf-L)公开的联系方式沟通，
 不要提交为产品 Issue。
 
-## 仓库结构
+## 项目边界
 
-- **本仓库（公开）**：Releases、Issues 与 GitHub Actions 打包调度；**不包含**业务源码。
-- **私有核心源码**：[`POf-L/Fanqie-novel-Downloader-tauri`](https://github.com/POf-L/Fanqie-novel-Downloader-tauri)（Rust + Tauri v2）。
-- 历史 Go/Wails 私有仓 `Fanqie-novel-Downloader-actions` 已由 Tauri 版完全替代并下线。
+- **当前公开仓库**：负责 Releases、Issues、用户文档与 GitHub Actions 发布调度。
+- **Rust / Tauri 核心源码**：位于私有 `Fanqie-novel-Downloader-tauri` 仓库；发布时只在
+  临时 GitHub Runner 中只读检出，不复制到本公开仓库。
+- **发布产物**：仅包含安装包、更新签名、校验清单和必要的发布元数据。
 
-## 说明
+发布流程和维护说明见 [`docs/dev/INDEX.md`](docs/dev/INDEX.md)。参与贡献前请阅读
+[`CONTRIBUTING.md`](CONTRIBUTING.md) 与 [`SECURITY.md`](SECURITY.md)。
 
-请合理使用本工具，并遵守相关平台规则与当地法律法规。
+## 使用声明
+
+请合理使用本工具，并遵守相关平台规则与当地法律法规。项目不保证上游接口永久可用，
+也不建议将自动化下载用于高频、批量滥用或侵犯他人权益的场景。
