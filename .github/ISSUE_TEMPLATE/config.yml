@@ -1,8 +1,11 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: 安全漏洞报告
     url: https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new
     about: 请使用私密渠道报告安全问题，不要公开创建 Issue。
+  - name: 下载与安装说明
+    url: https://github.com/POf-L/Fanqie-novel-Downloader#下载使用
+    about: 创建 Issue 前，先确认安装方式、平台架构和当前最新版本。
   - name: 正式版下载
     url: https://github.com/POf-L/Fanqie-novel-Downloader/releases
-    about: 先从 Releases 下载最新稳定版本并确认版本号。
+    about: 从 Releases 下载最新稳定版本，并在反馈时填写完整版本号。

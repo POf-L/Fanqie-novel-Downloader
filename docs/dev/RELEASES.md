@@ -135,7 +135,7 @@ expected x86_64/arm64 Mach-O executable, bundle identifier, version, icon, and
 DMG. They remain seven-day workflow artifacts and were not attached to a
 Release.
 
-The dedicated `Publish Unsigned macOS Client` workflow remains available for a
+The dedicated `发布 / macOS 未签名` workflow remains available for a
 macOS-only smoke-test channel. The main build workflow also has explicitly
 opt-in `publish_unsigned_prerelease` and `publish_unsigned_release` paths for
 full-platform manual downloads; both disable updater metadata and check that
@@ -175,10 +175,9 @@ abandoned `untagged-*` drafts; never delete a named stable or historical
 prerelease release as part of this cleanup. The current stable release must be
 rechecked after any draft deletion.
 
-An `unsigned-*` draft with complete installers is recovered through
-`Finalize Unsigned Draft Release`; that workflow invokes the dedicated
-unsigned finalizer and never calls the updater metadata normalizer. The signed
-`Finalize Draft Release` workflow remains limited to signed `v*` drafts.
+附件完整的 `unsigned-*` 草稿通过 `发布 / 维护工具` 工作流的
+`finalize-unsigned-draft` 操作恢复；它只调用无签名发布收尾器，不会运行 updater 元数据
+规范化。签名 `v*` 草稿则使用同一工作流的 `finalize-signed-draft` 操作，两个路径不会混用。
 
 ## Local validation
 
@@ -195,28 +194,29 @@ uses its ephemeral `GITHUB_TOKEN` only through `gh api` and `gh release`.
 
 ## Recover a draft release
 
-A failure before `gh release edit --draft=false` intentionally leaves the
-release as a draft. Dispatch `Finalize Draft Release` with the existing tag to
-reuse all uploaded binaries and rerun only metadata generation, validation, and
-publication. The optional source fields fall back to the build information in
-the draft notes. The workflow refuses an already-published release.
+在 `gh release edit --draft=false` 之前失败时，Release 会有意保留为草稿。运行
+`发布 / 维护工具`，选择 `finalize-signed-draft` 并填写现有 tag，即可复用所有已上传
+附件，只重新执行元数据生成、校验和发布。可选源码字段会回退到草稿说明中的构建信息；
+工作流拒绝处理已经发布的 Release。
 
 ```powershell
 $env:DRAFT_TAG = Read-Host "Existing draft tag"
-gh workflow run "Finalize Draft Release" -f tag=$env:DRAFT_TAG
+gh workflow run release-maintenance.yml `
+  -f operation=finalize-signed-draft `
+  -f tag=$env:DRAFT_TAG
 ```
 
 ## Repair published updater metadata
 
-The `Repair Updater Metadata` workflow can be dispatched from the Actions tab
-with a release tag. Leave the tag empty to select the current stable release.
-It downloads only `latest.json`, resolves its asset IDs with the authenticated
-GitHub API, validates public browser URLs, and uploads the corrected metadata
-without rebuilding the binaries.
+在 Actions 中运行 `发布 / 维护工具` 并选择 `repair-updater-metadata`，即可修复指定
+Release；tag 留空时使用当前稳定版。该操作只下载 `latest.json`，通过已认证的 GitHub API
+解析附件 ID，校验公开下载 URL，再上传修正后的元数据，不会重新构建安装包。
 
 From an authenticated local GitHub CLI session, the same repair can be started
 with:
 
 ```powershell
-gh workflow run "Repair Updater Metadata" -f tag=v2026.7.21-1511
+gh workflow run release-maintenance.yml `
+  -f operation=repair-updater-metadata `
+  -f tag=v2026.7.21-1511
 ```

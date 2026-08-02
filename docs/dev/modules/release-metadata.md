@@ -21,8 +21,8 @@ requested repository and final tag instead.
    when they are selected as update packages.
 4. Write the normalized metadata and run `--check` before publishing.
 
-The `Repair Updater Metadata` workflow uses the same script against an existing
-release, so a URL mistake can be corrected without rebuilding binaries.
+`发布 / 维护工具` 工作流的 `repair-updater-metadata` 操作会对已有 Release 复用
+同一脚本，因此 URL 错误可以在不重新构建安装包的情况下修复。
 
 ## Verification
 

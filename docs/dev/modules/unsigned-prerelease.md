@@ -22,7 +22,7 @@ checks and `v<version>` tag format. Unsigned runs use an isolated
 From an authenticated GitHub CLI session, the essential dispatch fields are:
 
 ```powershell
-gh workflow run "Build and Release Tauri" `
+gh workflow run build-release.yml `
   -f publish_release=false `
   -f publish_unsigned_prerelease=true
 ```
@@ -31,7 +31,7 @@ For a normal (non-prerelease) GitHub Release that is still excluded from the
 stable `latest` pointer, use the explicit formal unsigned mode:
 
 ```powershell
-gh workflow run "Build and Release Tauri" `
+gh workflow run build-release.yml `
   -f publish_release=true `
   -f publish_unsigned_release=true `
   -f prerelease=false `
@@ -85,12 +85,8 @@ Release Assets page and verify the unsigned checksum manifest manually.
 
 ## Failure recovery
 
-Failures before publication leave a draft tagged `unsigned-*`. Inspect the
-asset list before deciding whether another build is needed. If every requested
-installer is already attached, dispatch `Finalize Unsigned Draft Release` with
-the existing tag and the original mode; it reuses
-`scripts/finalize-unsigned-release.py`, revalidates every asset and publishes
-without rebuilding. Do not use the normal `Finalize Draft Release` workflow
-for this tag: it intentionally expects signed updater metadata. Delete an
-abandoned unsigned draft only after confirming that the current stable release
-tag is unchanged.
+发布前失败会留下 `unsigned-*` 草稿。决定是否重新构建前，先检查附件列表。如果请求的安装包
+已经全部上传，运行 `release-maintenance.yml`，选择 `finalize-unsigned-draft`，并填写原 tag
+和发布模式。该操作复用 `scripts/finalize-unsigned-release.py`，重新校验全部附件后直接发布，
+不会重新构建。不要对该 tag 使用 `finalize-signed-draft`，因为签名路径要求 updater 元数据。
+删除废弃无签名草稿前，必须再次确认当前稳定版 tag 未发生变化。

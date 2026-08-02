@@ -13,13 +13,11 @@ WORKFLOW = ROOT / ".github" / "workflows" / "build-release.yml"
 UNSIGNED_MACOS_WORKFLOW = (
     ROOT / ".github" / "workflows" / "publish-unsigned-macos.yml"
 )
-REPAIR_WORKFLOW = ROOT / ".github" / "workflows" / "repair-updater-metadata.yml"
-FINALIZE_WORKFLOW = ROOT / ".github" / "workflows" / "finalize-draft-release.yml"
+MAINTENANCE_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "release-maintenance.yml"
+)
 FINALIZER = ROOT / "scripts" / "finalize-release.py"
 UNSIGNED_FINALIZER = ROOT / "scripts" / "finalize-unsigned-release.py"
-UNSIGNED_FINALIZE_WORKFLOW = (
-    ROOT / ".github" / "workflows" / "finalize-unsigned-draft.yml"
-)
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
@@ -30,13 +28,11 @@ class ReleaseWorkflowTest(unittest.TestCase):
         cls.unsigned_macos_workflow = UNSIGNED_MACOS_WORKFLOW.read_text(
             encoding="utf-8"
         )
-        cls.repair_workflow = REPAIR_WORKFLOW.read_text(encoding="utf-8")
-        cls.finalize_workflow = FINALIZE_WORKFLOW.read_text(encoding="utf-8")
-        cls.finalizer = FINALIZER.read_text(encoding="utf-8")
-        cls.unsigned_finalizer = UNSIGNED_FINALIZER.read_text(encoding="utf-8")
-        cls.unsigned_finalize_workflow = UNSIGNED_FINALIZE_WORKFLOW.read_text(
+        cls.maintenance_workflow = MAINTENANCE_WORKFLOW.read_text(
             encoding="utf-8"
         )
+        cls.finalizer = FINALIZER.read_text(encoding="utf-8")
+        cls.unsigned_finalizer = UNSIGNED_FINALIZER.read_text(encoding="utf-8")
         cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     def render_draft_notes(self, asset_names, *, unsigned=False, unsigned_release=False):
@@ -241,8 +237,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("不会替代稳定版", notes)
 
     def test_unsigned_draft_recovery_reuses_the_unsigned_finalizer(self):
-        workflow = self.unsigned_finalize_workflow
-        self.assertIn("name: Finalize Unsigned Draft Release", workflow)
+        workflow = self.maintenance_workflow
+        self.assertIn("name: 发布 / 维护工具", workflow)
+        self.assertIn("finalize-unsigned-draft", workflow)
         self.assertIn("scripts/finalize-unsigned-release.py", workflow)
         self.assertIn("permissions:\n  contents: write", workflow)
         self.assertNotIn("PRIVATE_SOURCE_REPOSITORY", workflow)
@@ -288,7 +285,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
 
     def test_unsigned_macos_channel_never_enters_stable_updater_flow(self):
         workflow = self.unsigned_macos_workflow
-        self.assertIn("name: Publish Unsigned macOS Client", workflow)
+        self.assertIn("name: 发布 / macOS 未签名", workflow)
         self.assertIn('tag = f"macos-unsigned-v{version}', workflow)
         self.assertIn("--draft=false", workflow)
         self.assertGreaterEqual(workflow.count("--prerelease"), 2)
@@ -423,12 +420,14 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("通用版 universal", notes)
 
     def test_draft_recovery_reuses_the_finalizer_without_rebuilding(self):
-        self.assertIn("name: Finalize Draft Release", self.finalize_workflow)
-        self.assertIn("permissions:\n  contents: write", self.finalize_workflow)
-        self.assertIn("scripts/finalize-release.py", self.finalize_workflow)
-        self.assertIn("source_commit:", self.finalize_workflow)
-        self.assertNotIn("tauri-apps/tauri-action", self.finalize_workflow)
-        self.assertNotIn("PRIVATE_SOURCE_REPOSITORY", self.finalize_workflow)
+        workflow = self.maintenance_workflow
+        self.assertIn("name: 发布 / 维护工具", workflow)
+        self.assertIn("finalize-signed-draft", workflow)
+        self.assertIn("permissions:\n  contents: write", workflow)
+        self.assertIn("scripts/finalize-release.py", workflow)
+        self.assertIn("source_commit:", workflow)
+        self.assertNotIn("tauri-apps/tauri-action", workflow)
+        self.assertNotIn("PRIVATE_SOURCE_REPOSITORY", workflow)
 
     def test_finalizer_fetches_drafts_by_database_id(self):
         self.assertIn('"databaseId,tagName"', self.finalizer)
@@ -438,17 +437,51 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("releases/tags/", self.finalizer)
 
     def test_wrapper_has_automatic_tooling_validation(self):
+        self.assertIn("name: CI / 仓库校验", self.ci_workflow)
         self.assertIn("pull_request:", self.ci_workflow)
+        self.assertEqual(self.ci_workflow.count("    paths-ignore:"), 2)
+        for documentation_path in (
+            '      - "README.md"',
+            '      - "CONTRIBUTING.md"',
+            '      - "SECURITY.md"',
+            '      - "docs/**"',
+        ):
+            self.assertEqual(self.ci_workflow.count(documentation_path), 2)
         self.assertIn("python -m unittest discover", self.ci_workflow)
         self.assertIn("rhysd/actionlint:1.7.7", self.ci_workflow)
 
-    def test_repair_workflow_reuses_normalizer_and_updates_checksums(self):
-        self.assertIn("name: Repair Updater Metadata", self.repair_workflow)
-        self.assertIn("permissions:\n  contents: write", self.repair_workflow)
-        self.assertIn("scripts/normalize-updater-metadata.py", self.repair_workflow)
-        self.assertIn("--check", self.repair_workflow)
-        self.assertIn("SHA256SUMS-release.txt", self.repair_workflow)
-        self.assertIn('gh release upload "${tag}"', self.repair_workflow)
+    def test_release_maintenance_combines_all_recovery_operations(self):
+        workflow = self.maintenance_workflow
+        input_block = workflow.split("permissions:", 1)[0]
+        inputs = re.findall(r"^      [a-z][a-z0-9_]*:\s*$", input_block, re.MULTILINE)
+
+        self.assertLessEqual(len(inputs), 10)
+        for operation in (
+            "finalize-signed-draft",
+            "finalize-unsigned-draft",
+            "repair-updater-metadata",
+        ):
+            self.assertIn(operation, workflow)
+        self.assertIn("scripts/finalize-release.py", workflow)
+        self.assertIn("scripts/finalize-unsigned-release.py", workflow)
+        self.assertIn("scripts/normalize-updater-metadata.py", workflow)
+        self.assertIn("--check", workflow)
+        self.assertIn("SHA256SUMS-release.txt", workflow)
+        self.assertIn('gh release upload "${tag}"', workflow)
+
+    def test_actions_are_grouped_into_four_active_workflows(self):
+        workflow_names = {
+            path.name for path in (ROOT / ".github" / "workflows").glob("*.yml")
+        }
+        self.assertEqual(
+            workflow_names,
+            {
+                "build-release.yml",
+                "ci.yml",
+                "publish-unsigned-macos.yml",
+                "release-maintenance.yml",
+            },
+        )
 
 
 if __name__ == "__main__":

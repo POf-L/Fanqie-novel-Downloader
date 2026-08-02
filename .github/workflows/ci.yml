@@ -1,16 +1,26 @@
-name: Validate Release Wrapper
+name: CI / 仓库校验
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "docs/**"
   pull_request:
+    paths-ignore:
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "docs/**"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: wrapper-ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

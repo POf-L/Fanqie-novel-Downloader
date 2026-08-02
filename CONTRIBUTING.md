@@ -1,15 +1,14 @@
-# Contributing
+# 参与贡献
 
-This public repository owns Issues, release notes, and GitHub Actions packaging.
-Application behavior belongs in the private Tauri source repository and is
-checked out by the release workflow; do not copy application source here.
+这个公开仓库负责 Issues、发布说明和 GitHub Actions 打包调度。应用行为由私有
+Tauri 源码仓库负责，发布工作流只在临时 Runner 中检出源码；不要把应用源码复制到这里。
 
-For an issue, include the release version, platform/architecture, reproduction
-steps, and a sanitized log or screenshot. For official API JSON errors, keep the
-diagnostic fields showing the endpoint path, HTTP status, Content-Type, and
-short body preview; remove query strings, signatures, tokens, and device IDs.
-For a workflow change, add or update an automated fixture and run the local
-Python tests and workflow lint:
+提交 Issue 时，请选择对应的结构化表单，并填写发布版本、平台与架构、复现步骤及脱敏后的
+日志或截图。是否 Star 不影响 Issue 的受理和处理。对于官方 API 的 JSON 错误，请保留
+endpoint 路径、HTTP 状态码、Content-Type 和简短响应预览；删除 query、签名、token、
+Cookie 和设备标识。
+
+修改工作流时，请同步增加或调整自动化测试，并运行：
 
 ```powershell
 python -m unittest discover -s tests -p 'test_*.py'
@@ -17,5 +16,5 @@ actionlint -no-color
 git diff --check
 ```
 
-Never commit release credentials, updater keys, private source snapshots, or
-downloaded artifacts. See `SECURITY.md` before reporting a sensitive problem.
+不要提交发布凭据、updater 私钥、私有源码快照或下载产物。报告敏感问题前请先阅读
+`SECURITY.md`，并使用私密漏洞报告入口。

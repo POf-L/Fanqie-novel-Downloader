@@ -1,4 +1,4 @@
-name: Publish Unsigned macOS Client
+name: 发布 / macOS 未签名
 
 # This public wrapper checks out the private source only on ephemeral runners.
 # Published artifacts are limited to user-installable bundles and checksums.

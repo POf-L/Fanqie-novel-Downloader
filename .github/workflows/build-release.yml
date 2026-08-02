@@ -1,4 +1,4 @@
-name: Build and Release Tauri
+name: 发布 / 全平台构建
 
 # 公开仓库只负责调度、打包和发布；核心源码在运行时从私有 Tauri
 # 仓库只读检出，不会提交到本仓库。
