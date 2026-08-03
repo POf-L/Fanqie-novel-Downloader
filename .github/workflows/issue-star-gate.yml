@@ -15,20 +15,22 @@ permissions:
 
 concurrency:
   group: issue-star-gate-${{ github.event.issue.number || github.run_id }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   enforce-star:
     name: 核验 Issue 提交者的公开 Star
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: 核验并处理 Issue
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const marker = '<!-- fanqie-star-gate:v1 -->';
+            const marker = '<!-- fanqie-star-gate:v2 -->';
+            const legacyMarker = '<!-- fanqie-star-gate:v1 -->';
+            const gracePeriodMs = 10 * 60 * 1000;
             const { owner, repo } = context.repo;
             const repositoryUrl = `https://github.com/${owner}/${repo}`;
             const targetFullName = `${owner}/${repo}`.toLowerCase();
@@ -48,73 +50,148 @@ jobs:
               return false;
             }
 
-            async function hasGateComment(issueNumber) {
+            async function gateComments(issueNumber) {
               const comments = await github.paginate(
                 github.rest.issues.listComments,
                 { owner, repo, issue_number: issueNumber, per_page: 100 },
               );
-              return comments.some((comment) => (
-                comment.user?.type === 'Bot'
+              return comments.filter((comment) => (
+                comment.user?.login === 'github-actions[bot]'
                 && typeof comment.body === 'string'
-                && comment.body.includes(marker)
+                && (comment.body.includes(marker) || comment.body.includes(legacyMarker))
               ));
             }
 
+            async function hasVerifiableStar(author, issueNumber) {
+              try {
+                return await hasPublicStar(author);
+              } catch (error) {
+                const status = Number(error?.status || 0);
+                if (status === 404 || status === 451) {
+                  core.warning(
+                    `Issue #${issueNumber}: 无法读取 ${author} 的公开 Star，按未公开 Star 处理。`,
+                  );
+                  return false;
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+            async function deleteGateComments(issueNumber) {
+              const comments = await gateComments(issueNumber);
+              for (const comment of comments) {
+                try {
+                  await github.rest.issues.deleteComment({
+                    owner,
+                    repo,
+                    comment_id: comment.id,
+                  });
+                } catch (error) {
+                  if (Number(error?.status || 0) !== 404) throw error;
+                }
+              }
+              return comments.length;
+            }
+
+            async function deleteCommentIfPresent(commentId) {
+              try {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: commentId });
+              } catch (error) {
+                if (Number(error?.status || 0) !== 404) throw error;
+              }
+            }
+
+            async function ensureCurrentGateComment(issue, forceNew = false) {
+              const comments = await gateComments(issue.number);
+              const current = comments.find((comment) => comment.body.includes(marker));
+
+              for (const comment of comments) {
+                const legacy = comment.body.includes(legacyMarker);
+                const staleCurrent = forceNew && comment.body.includes(marker);
+                if (legacy || staleCurrent) await deleteCommentIfPresent(comment.id);
+              }
+              if (current && !forceNew) return current;
+
+              // 新流程会清理 v1 回复；重新打开时也重置 v2 提醒，给予完整 10 分钟宽限期。
+              const author = issue.user.login;
+              const body = [
+                marker,
+                `@${author}，感谢你花时间提交 Issue。`,
+                '',
+                `为了让 Issue 支持优先服务于关注项目的用户，请先为当前项目点一个公开 Star：${repositoryUrl}`,
+                '',
+                '本 Issue 目前会保持开放，请在收到本提醒后的 10 分钟内完成 Star。工作流随后会自动复查；核验通过后会删除本条提醒，并继续保持 Issue 开放。',
+                '',
+                '如果超过 10 分钟仍未检测到公开 Star，本 Issue 将以 `not planned` 暂时关闭。',
+                '',
+                '如果已经 Star 但仍未通过，请确认该 Star 可通过 GitHub 公开接口查询。感谢理解与支持。',
+              ].join('\n');
+              const created = await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body,
+              });
+              return created.data;
+            }
+
             async function enforce(issue) {
-              if (!issue || issue.pull_request) return;
+              if (!issue || issue.pull_request || issue.state !== 'open') return;
               const author = issue.user?.login;
               if (typeof author !== 'string' || author.length === 0) {
                 throw new Error(`Issue #${issue.number} 缺少提交者登录名`);
               }
 
-              let starred = false;
-              try {
-                starred = await hasPublicStar(author);
-              } catch (error) {
-                const status = Number(error?.status || 0);
-                if (status === 404 || status === 451) {
-                  core.warning(
-                    `Issue #${issue.number}: 无法读取 ${author} 的公开 Star，按未公开 Star 处理。`,
-                  );
-                } else {
-                  throw error;
-                }
-              }
-
-              if (starred) {
-                core.info(`Issue #${issue.number}: ${author} 已公开 Star，保留为开放状态。`);
+              if (await hasVerifiableStar(author, issue.number)) {
+                const deleted = await deleteGateComments(issue.number);
+                core.info(
+                  `Issue #${issue.number}: ${author} 已公开 Star，删除 ${deleted} 条门禁提醒并保持开放。`,
+                );
                 return;
               }
 
-              if (!(await hasGateComment(issue.number))) {
-                const body = [
-                  marker,
-                  `@${author}，感谢你花时间提交 Issue。`,
-                  '',
-                  `为了让 Issue 支持优先服务于关注项目的用户，请先为当前项目点一个公开 Star：${repositoryUrl}`,
-                  '',
-                  '完成后请直接重新打开本 Issue，工作流会再次自动核验；内容会完整保留，无需重复提交。',
-                  '',
-                  '如果已经 Star 但仍未通过，请确认该 Star 在你的 GitHub 个人资料中公开可见。感谢理解与支持。',
-                ].join('\n');
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number: issue.number,
-                  body,
-                });
+              const forceNewReminder = context.eventName === 'issues'
+                && context.payload.action === 'reopened';
+              const reminder = await ensureCurrentGateComment(issue, forceNewReminder);
+              const remindedAt = Date.parse(reminder.created_at || '');
+              if (!Number.isFinite(remindedAt)) {
+                throw new Error(`Issue #${issue.number} 的门禁提醒缺少有效创建时间`);
+              }
+              const waitMs = Math.max(0, remindedAt + gracePeriodMs - Date.now());
+              if (waitMs > 0) {
+                core.info(
+                  `Issue #${issue.number}: 已礼貌提醒，等待 ${Math.ceil(waitMs / 1000)} 秒后复查。`,
+                );
+                await new Promise((resolve) => setTimeout(resolve, waitMs));
               }
 
-              if (issue.state !== 'closed') {
-                await github.rest.issues.update({
-                  owner,
-                  repo,
-                  issue_number: issue.number,
-                  state: 'closed',
-                  state_reason: 'not_planned',
-                });
+              const refreshed = (await github.rest.issues.get({
+                owner,
+                repo,
+                issue_number: issue.number,
+              })).data;
+              if (refreshed.state !== 'open') {
+                core.info(`Issue #${issue.number}: 宽限期内已由其他操作关闭，不再修改状态。`);
+                return;
               }
-              core.info(`Issue #${issue.number}: ${author} 尚未公开 Star，已暂时关闭。`);
+
+              if (await hasVerifiableStar(author, issue.number)) {
+                const deleted = await deleteGateComments(issue.number);
+                core.info(
+                  `Issue #${issue.number}: ${author} 已在宽限期内公开 Star，删除 ${deleted} 条提醒并保持开放。`,
+                );
+                return;
+              }
+
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'not_planned',
+              });
+              core.info(`Issue #${issue.number}: 宽限 10 分钟后仍未公开 Star，已暂时关闭。`);
             }
 
             if (context.eventName === 'issues') {
@@ -126,5 +203,5 @@ jobs:
               );
               const openIssues = openItems.filter((item) => !item.pull_request);
               core.info(`开始审核 ${openIssues.length} 个开放 Issue。`);
-              for (const issue of openIssues) await enforce(issue);
+              await Promise.all(openIssues.map((issue) => enforce(issue)));
             }

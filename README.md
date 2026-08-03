@@ -132,7 +132,8 @@ App Store 或 TestFlight 正式发布。
 平台、架构、复现步骤和必要的诊断信息。
 
 提交 Issue 前需要先公开 Star 当前项目。Issue 创建或重新打开后会由 Actions 自动核验；
-未通过时会收到礼貌提醒并暂时关闭，公开 Star 后可直接重新打开原 Issue，无需重复提交。
+未通过时会先收到礼貌提醒，Issue 在 10 分钟宽限期内保持开放。宽限期内核验通过后，
+提醒会自动删除且 Issue 继续开放；超过 10 分钟仍未公开 Star 才会以 `not planned` 关闭。
 
 公开内容中请删除 token、签名、Cookie、设备标识和其他个人数据。安全漏洞请使用
 [私密漏洞报告](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)，

@@ -4,8 +4,9 @@
 Tauri 源码仓库负责，发布工作流只在临时 Runner 中检出源码；不要把应用源码复制到这里。
 
 提交 Issue 时，请选择对应的结构化表单，并填写发布版本、平台与架构、复现步骤及脱敏后的
-日志或截图。提交 Issue 前需要先公开 Star 当前项目；自动核验未通过时，Issue 会保留内容
-并暂时关闭，公开 Star 后可直接重新打开。对于官方 API 的 JSON 错误，请保留
+日志或截图。提交 Issue 前需要先公开 Star 当前项目；首次核验未通过时，Actions 会礼貌
+提醒并保留 Issue 开放 10 分钟。宽限期内通过复查会删除提醒并继续开放，超时仍未通过才
+以 `not planned` 关闭。对于官方 API 的 JSON 错误，请保留
 endpoint 路径、HTTP 状态码、Content-Type 和简短响应预览；删除 query、签名、token、
 Cookie 和设备标识。
 

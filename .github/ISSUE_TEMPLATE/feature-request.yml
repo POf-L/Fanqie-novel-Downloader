@@ -8,13 +8,13 @@ body:
       value: |
         感谢你的建议。请先说清要解决的实际问题，再描述希望采用的方案。
 
-        提交 Issue 前请先公开 Star 当前项目。Issue 创建后会自动核验；未通过时会保留内容并暂时关闭，公开 Star 后可直接重新打开。
+        提交 Issue 前请先公开 Star 当前项目。Issue 创建后会自动核验；未通过时会先礼貌提醒并保持开放，10 分钟后仍未公开 Star 才会暂时关闭。
   - type: checkboxes
     id: preflight
     attributes:
       label: 提交前确认
       options:
-        - label: 我已公开 Star 当前项目，并了解未通过自动核验的 Issue 会被暂时关闭。
+        - label: 我已公开 Star 当前项目，并了解收到提醒后超过 10 分钟仍未通过核验的 Issue 会被暂时关闭。
           required: true
         - label: 我已搜索现有 Issue，确认没有相同或高度相似的建议。
           required: true

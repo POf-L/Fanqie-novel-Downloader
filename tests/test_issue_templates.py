@@ -47,7 +47,7 @@ class IssueTemplateTest(unittest.TestCase):
                 self.assertIn("提交 Issue 前请先公开 Star 当前项目", form)
                 self.assertRegex(
                     form,
-                    r"我已公开 Star 当前项目[^\n]*\n\s+required: true",
+                    r"我已公开 Star 当前项目[^\n]*10 分钟[^\n]*\n\s+required: true",
                 )
 
         github_config = "\n".join(
@@ -61,6 +61,7 @@ class IssueTemplateTest(unittest.TestCase):
         workflow = self.star_workflow
         self.assertIn("types: [opened, reopened]", workflow)
         self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("cancel-in-progress: true", workflow)
         self.assertIn('paths:\n      - ".github/workflows/issue-star-gate.yml"', workflow)
         self.assertIn("github.rest.issues.listForRepo", workflow)
         self.assertIn("state: 'open'", workflow)
@@ -75,16 +76,32 @@ class IssueTemplateTest(unittest.TestCase):
         self.assertNotIn("STAR_GATE_TOKEN", workflow)
         self.assertIn("permissions:\n  contents: read\n  issues: write", workflow)
 
-    def test_star_gate_closes_gently_and_allows_the_same_issue_to_reopen(self):
+    def test_star_gate_warns_waits_rechecks_and_only_then_closes(self):
         workflow = self.star_workflow
+        self.assertIn("fanqie-star-gate:v2", workflow)
         self.assertIn("fanqie-star-gate:v1", workflow)
-        self.assertIn("hasGateComment", workflow)
+        self.assertIn("const gracePeriodMs = 10 * 60 * 1000", workflow)
+        self.assertIn("ensureCurrentGateComment", workflow)
+        self.assertIn("context.payload.action === 'reopened'", workflow)
         self.assertIn("status === 404 || status === 451", workflow)
         self.assertIn("感谢你花时间提交 Issue", workflow)
-        self.assertIn("重新打开本 Issue", workflow)
-        self.assertIn("无需重复提交", workflow)
+        self.assertIn("本 Issue 目前会保持开放", workflow)
+        self.assertIn("await new Promise((resolve) => setTimeout(resolve, waitMs))", workflow)
+        self.assertGreaterEqual(workflow.count("hasVerifiableStar(author, issue.number)"), 2)
+        self.assertLess(
+            workflow.index("ensureCurrentGateComment(issue, forceNewReminder)"),
+            workflow.index("state: 'closed'"),
+        )
         self.assertIn("state: 'closed'", workflow)
         self.assertIn("state_reason: 'not_planned'", workflow)
+
+    def test_star_gate_deletes_its_reminder_when_the_author_stars(self):
+        workflow = self.star_workflow
+        self.assertIn("deleteGateComments", workflow)
+        self.assertIn("github.rest.issues.deleteComment", workflow)
+        self.assertIn("已在宽限期内公开 Star", workflow)
+        self.assertIn("保持开放", workflow)
+        self.assertNotIn("重新打开本 Issue", workflow)
 
     def test_form_field_ids_are_unique_and_well_formed(self):
         for name, form in self.forms.items():
