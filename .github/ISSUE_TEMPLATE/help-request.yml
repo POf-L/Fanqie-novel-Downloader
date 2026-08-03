@@ -8,7 +8,7 @@ body:
       value: |
         这里适合提交安装、配置和使用问题。能够稳定复现的软件故障请改用“错误反馈”。
 
-        是否 Star **不影响** Issue 的受理和处理。如果项目确实帮到了你，欢迎在体验后自愿支持。
+        提交 Issue 前请先公开 Star 当前项目。Issue 创建后会自动核验；未通过时会保留内容并暂时关闭，公开 Star 后可直接重新打开。
 
         请勿提交 token、签名、私钥、设备标识、Cookie 或其他个人数据。
   - type: checkboxes
@@ -16,6 +16,8 @@ body:
     attributes:
       label: 提交前确认
       options:
+        - label: 我已公开 Star 当前项目，并了解未通过自动核验的 Issue 会被暂时关闭。
+          required: true
         - label: 我已阅读 README 的下载与使用说明，并搜索过现有 Issue。
           required: true
         - label: 我已删除日志、截图和链接中的敏感信息。

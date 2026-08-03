@@ -1,0 +1,130 @@
+name: Issue / Star 门禁
+
+on:
+  issues:
+    types: [opened, reopened]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/issue-star-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-star-gate-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  enforce-star:
+    name: 核验 Issue 提交者的公开 Star
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 核验并处理 Issue
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const marker = '<!-- fanqie-star-gate:v1 -->';
+            const { owner, repo } = context.repo;
+            const repositoryUrl = `https://github.com/${owner}/${repo}`;
+            const targetFullName = `${owner}/${repo}`.toLowerCase();
+
+            async function hasPublicStar(login) {
+              for await (const response of github.paginate.iterator(
+                github.rest.activity.listReposStarredByUser,
+                { username: login, per_page: 100 },
+              )) {
+                const found = response.data.some((entry) => {
+                  const repository = entry?.repo || entry;
+                  return typeof repository?.full_name === 'string'
+                    && repository.full_name.toLowerCase() === targetFullName;
+                });
+                if (found) return true;
+              }
+              return false;
+            }
+
+            async function hasGateComment(issueNumber) {
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number: issueNumber, per_page: 100 },
+              );
+              return comments.some((comment) => (
+                comment.user?.type === 'Bot'
+                && typeof comment.body === 'string'
+                && comment.body.includes(marker)
+              ));
+            }
+
+            async function enforce(issue) {
+              if (!issue || issue.pull_request) return;
+              const author = issue.user?.login;
+              if (typeof author !== 'string' || author.length === 0) {
+                throw new Error(`Issue #${issue.number} 缺少提交者登录名`);
+              }
+
+              let starred = false;
+              try {
+                starred = await hasPublicStar(author);
+              } catch (error) {
+                const status = Number(error?.status || 0);
+                if (status === 404 || status === 451) {
+                  core.warning(
+                    `Issue #${issue.number}: 无法读取 ${author} 的公开 Star，按未公开 Star 处理。`,
+                  );
+                } else {
+                  throw error;
+                }
+              }
+
+              if (starred) {
+                core.info(`Issue #${issue.number}: ${author} 已公开 Star，保留为开放状态。`);
+                return;
+              }
+
+              if (!(await hasGateComment(issue.number))) {
+                const body = [
+                  marker,
+                  `@${author}，感谢你花时间提交 Issue。`,
+                  '',
+                  `为了让 Issue 支持优先服务于关注项目的用户，请先为当前项目点一个公开 Star：${repositoryUrl}`,
+                  '',
+                  '完成后请直接重新打开本 Issue，工作流会再次自动核验；内容会完整保留，无需重复提交。',
+                  '',
+                  '如果已经 Star 但仍未通过，请确认该 Star 在你的 GitHub 个人资料中公开可见。感谢理解与支持。',
+                ].join('\n');
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  body,
+                });
+              }
+
+              if (issue.state !== 'closed') {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  state: 'closed',
+                  state_reason: 'not_planned',
+                });
+              }
+              core.info(`Issue #${issue.number}: ${author} 尚未公开 Star，已暂时关闭。`);
+            }
+
+            if (context.eventName === 'issues') {
+              await enforce(context.payload.issue);
+            } else {
+              const openItems = await github.paginate(
+                github.rest.issues.listForRepo,
+                { owner, repo, state: 'open', per_page: 100 },
+              );
+              const openIssues = openItems.filter((item) => !item.pull_request);
+              core.info(`开始审核 ${openIssues.length} 个开放 Issue。`);
+              for (const issue of openIssues) await enforce(issue);
+            }

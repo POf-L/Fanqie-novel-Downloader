@@ -8,12 +8,14 @@ body:
       value: |
         感谢你的建议。请先说清要解决的实际问题，再描述希望采用的方案。
 
-        是否 Star **不影响** Issue 的受理和处理。如果项目确实帮到了你，欢迎在体验后自愿支持。
+        提交 Issue 前请先公开 Star 当前项目。Issue 创建后会自动核验；未通过时会保留内容并暂时关闭，公开 Star 后可直接重新打开。
   - type: checkboxes
     id: preflight
     attributes:
       label: 提交前确认
       options:
+        - label: 我已公开 Star 当前项目，并了解未通过自动核验的 Issue 会被暂时关闭。
+          required: true
         - label: 我已搜索现有 Issue，确认没有相同或高度相似的建议。
           required: true
         - label: 这是一项具体的软件功能建议，不是安全漏洞、推广或商务合作信息。

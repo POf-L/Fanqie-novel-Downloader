@@ -6,5 +6,5 @@
 - [macOS 未签名发布](modules/macos-unsigned-release.md)：无 Apple 凭据时，为 Intel 和 Apple Silicon 独立打包预发布。
 - [Tauri 未签名发布](modules/unsigned-prerelease.md)：无 updater 或官方签名密钥时的全平台手动下载发布路径。
 - [历史发布说明工具](modules/legacy-release-notes.md)：与正式发布路径隔离的一次性历史脚本。
-- [Issue 提交入口](modules/issue-intake.md)：结构化表单、必填信息和 Star 自愿原则。
+- [Issue 提交入口](modules/issue-intake.md)：结构化表单、必填信息和公开 Star 门禁。
 - [项目 README](../../README.md)：面向用户的功能和下载说明。

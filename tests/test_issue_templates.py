@@ -17,6 +17,9 @@ class IssueTemplateTest(unittest.TestCase):
             for path in TEMPLATE_DIR.glob("*.yml")
             if path.name != "config.yml"
         }
+        cls.star_workflow = (WORKFLOW_DIR / "issue-star-gate.yml").read_text(
+            encoding="utf-8"
+        )
 
     def test_only_structured_issue_forms_are_enabled(self):
         self.assertIn("blank_issues_enabled: false", self.config)
@@ -38,18 +41,50 @@ class IssueTemplateTest(unittest.TestCase):
                 self.assertIn(title, form)
                 self.assertIn(f'labels: ["{label}"]', form)
 
-    def test_forms_explain_that_stars_are_optional(self):
+    def test_forms_require_a_public_star(self):
         for name, form in self.forms.items():
             with self.subTest(name=name):
-                self.assertIn("是否 Star **不影响** Issue 的受理和处理", form)
+                self.assertIn("提交 Issue 前请先公开 Star 当前项目", form)
+                self.assertRegex(
+                    form,
+                    r"我已公开 Star 当前项目[^\n]*\n\s+required: true",
+                )
 
         github_config = "\n".join(
             path.read_text(encoding="utf-8")
             for path in (ROOT / ".github").rglob("*")
             if path.is_file()
         )
-        self.assertNotIn("listStargazersForRepo", github_config)
-        self.assertFalse((WORKFLOW_DIR / "issue-star-gate.yml").exists())
+        self.assertNotIn("是否 Star **不影响** Issue 的受理和处理", github_config)
+
+    def test_star_gate_checks_new_reopened_and_existing_issues(self):
+        workflow = self.star_workflow
+        self.assertIn("types: [opened, reopened]", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn('paths:\n      - ".github/workflows/issue-star-gate.yml"', workflow)
+        self.assertIn("github.rest.issues.listForRepo", workflow)
+        self.assertIn("state: 'open'", workflow)
+        self.assertIn("!item.pull_request", workflow)
+
+    def test_star_gate_uses_public_user_stars_and_default_token(self):
+        workflow = self.star_workflow
+        self.assertIn("github.rest.activity.listReposStarredByUser", workflow)
+        self.assertNotIn("listStargazersForRepo", workflow)
+        self.assertIn("github-token: ${{ secrets.GITHUB_TOKEN }}", workflow)
+        self.assertNotIn("PRIVATE_SOURCE_TOKEN", workflow)
+        self.assertNotIn("STAR_GATE_TOKEN", workflow)
+        self.assertIn("permissions:\n  contents: read\n  issues: write", workflow)
+
+    def test_star_gate_closes_gently_and_allows_the_same_issue_to_reopen(self):
+        workflow = self.star_workflow
+        self.assertIn("fanqie-star-gate:v1", workflow)
+        self.assertIn("hasGateComment", workflow)
+        self.assertIn("status === 404 || status === 451", workflow)
+        self.assertIn("感谢你花时间提交 Issue", workflow)
+        self.assertIn("重新打开本 Issue", workflow)
+        self.assertIn("无需重复提交", workflow)
+        self.assertIn("state: 'closed'", workflow)
+        self.assertIn("state_reason: 'not_planned'", workflow)
 
     def test_form_field_ids_are_unique_and_well_formed(self):
         for name, form in self.forms.items():

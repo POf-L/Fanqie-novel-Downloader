@@ -469,7 +469,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("SHA256SUMS-release.txt", workflow)
         self.assertIn('gh release upload "${tag}"', workflow)
 
-    def test_actions_are_grouped_into_four_active_workflows(self):
+    def test_actions_are_grouped_into_expected_active_workflows(self):
         workflow_names = {
             path.name for path in (ROOT / ".github" / "workflows").glob("*.yml")
         }
@@ -478,6 +478,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             {
                 "build-release.yml",
                 "ci.yml",
+                "issue-star-gate.yml",
                 "publish-unsigned-macos.yml",
                 "release-maintenance.yml",
             },

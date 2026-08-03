@@ -28,12 +28,12 @@
 
 - 通过关键词、番茄小说链接或书籍 ID 搜索和直接载入书籍
 - 查看封面、作者、分类、字数、状态、简介和章节目录
-- 在线阅读、章节切换、阅读主题与字号调整、阅读进度记录
+- 在线阅读、章节切换、阅读主题与字号调整、阅读进度记录，以及默认关闭的沉浸阅读模式
 - 书架管理，点击书籍继续阅读或发起下载
 - 单本下载与批量导入，支持指定章节范围
 - 下载任务暂停、继续、取消，以及失败或缺失章节重试
 - 导出 TXT / EPUB，保存下载历史并检查本地文件状态
-- Windows、Linux 桌面端签名更新包与应用内更新检查
+- Windows、Linux 桌面端签名更新包与一键更新；Android、iOS 稳定版检查与下载提醒
 - 浅色 / 深色主题，以及中文、English、Русский 界面
 - Android 共享目录导出和系统阅读器打开；iOS 文件导出与系统分享
 
@@ -47,9 +47,9 @@
 | --- | --- | --- | --- |
 | Windows | x64、ARM64 | `windows-*-setup.exe` | 稳定版；支持应用内更新 |
 | Linux | x64、ARM64 | Debian / Ubuntu 选 `.deb`，其他发行版可选 `.AppImage` | 稳定版；支持应用内更新 |
-| Android | arm64-v8a、armeabi-v7a、x86_64、universal | 优先 `arm64-v8a.apk`，不确定架构时选 `universal.apk` | 稳定版；Android 7.0 / API 24 起 |
+| Android | arm64-v8a、armeabi-v7a、x86_64、universal | 优先 `arm64-v8a.apk`，不确定架构时选 `universal.apk` | 稳定版；应用内提示新版本；Android 7.0 / API 24 起 |
 | macOS | Intel、Apple Silicon | 对应架构的 unsigned DMG；需要时再选 APP ZIP | 独立未签名 prerelease；不进入自动更新 |
-| iOS | ARM64 | 无签名 IPA | 需要自行侧载；不上架 App Store |
+| iOS | ARM64 | 无签名 IPA | 应用内提示新版本；需要自行侧载；不上架 App Store |
 
 ### Windows
 
@@ -131,7 +131,8 @@ App Store 或 TestFlight 正式发布。
 选择“错误反馈”“功能建议”或“使用求助”。仓库不接受空白 Issue，结构化表单会收集版本、
 平台、架构、复现步骤和必要的诊断信息。
 
-是否 Star **不影响** Issue 的受理和处理。如果项目确实帮到了你，欢迎在体验后自愿支持。
+提交 Issue 前需要先公开 Star 当前项目。Issue 创建或重新打开后会由 Actions 自动核验；
+未通过时会收到礼貌提醒并暂时关闭，公开 Star 后可直接重新打开原 Issue，无需重复提交。
 
 公开内容中请删除 token、签名、Cookie、设备标识和其他个人数据。安全漏洞请使用
 [私密漏洞报告](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)，

@@ -11,9 +11,16 @@
 删除 token、签名、Cookie、设备标识和个人数据。表单使用仓库已有的 `错误反馈`、`增强功能`
 和 `求助` 标签，不依赖额外的自动分类 Action。
 
-Issue 的受理和处理与作者是否 Star 无关。仓库不查询 stargazer 列表、不要求公开 Star，
-也不会因为未 Star 自动留言或关闭 Issue。这样既减少每次提交产生的 Actions 运行，也避免
-把问题支持变成交换 Star 的条件。
+所有公开 Issue 都要求提交者先公开 Star 当前仓库。`issue-star-gate.yml` 在 Issue 新建或
+重新打开时查询提交者公开 Star 的仓库列表；未通过时只发布一次礼貌提醒并以 `not_planned`
+暂时关闭，公开 Star 后可直接重新打开原 Issue。工作流不读取整个仓库的 stargazer 列表，
+也不使用私有源码 Token，只使用当前运行的 `GITHUB_TOKEN` 读取公开资料并写入 Issue。
 
-`tests/test_issue_templates.py` 固定表单集合、必需字段、标签和上述自愿原则，并确保旧的
-Star 核验工作流不会被重新引入。
+工作流首次合入 `main` 时会审核当前全部开放 Issue，也支持通过 `workflow_dispatch` 手动
+重复审核；Pull Request 不属于审核对象。隐藏标记用于避免重新打开时重复留言，查询或写入
+失败会让 Action 明确失败，不会把接口异常误判成未 Star。
+
+GitHub 对不可公开读取的 Star 列表会返回 `404` 或 `451`，这两种情况按“未公开 Star”处理
+并使用同一条温和提醒；限流、网络错误和其他接口故障仍会让 Action 明确失败，避免误处理。
+
+`tests/test_issue_templates.py` 固定表单集合、必需字段、标签、Star 确认项和工作流契约。
