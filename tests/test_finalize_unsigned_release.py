@@ -19,9 +19,13 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
     def fixture(self):
         names = [
             "FanqieNovelDownloader-tauri-windows-x64-setup.exe",
+            "FanqieNovelDownloader-tauri-windows-x64-portable.exe",
             "FanqieNovelDownloader-tauri-windows-arm64-setup.exe",
+            "FanqieNovelDownloader-tauri-windows-arm64-portable.exe",
             "FanqieNovelDownloader-tauri-linux-amd64.deb",
+            "FanqieNovelDownloader-tauri-linux-amd64.AppImage",
             "FanqieNovelDownloader-tauri-linux-arm64.deb",
+            "FanqieNovelDownloader-tauri-linux-arm64.AppImage",
             "FanqieNovelDownloader-tauri-darwin-x64.dmg",
             "FanqieNovelDownloader-tauri-darwin-x64.zip",
             "FanqieNovelDownloader-tauri-darwin-aarch64.dmg",
@@ -46,8 +50,8 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             "macos-x64, macos-arm64, android, ios"
         )
         assets, installers = MODULE.validate_assets(self.fixture(), platforms)
-        self.assertEqual(len(assets), 14)
-        self.assertEqual(len(installers), 12)
+        self.assertEqual(len(assets), 18)
+        self.assertEqual(len(installers), 18)
 
     def test_updater_metadata_is_rejected(self):
         release = self.fixture()

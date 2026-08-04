@@ -35,6 +35,7 @@ INSTALLER_SUFFIXES = (
     ".msi",
     ".rpm",
 )
+CLI_ASSET_RE = re.compile(r"(?:^|[-_. ])cli(?:[-_. ]|$)", re.IGNORECASE)
 
 
 def fail(message: str) -> None:
@@ -227,23 +228,43 @@ def validate_assets(release: dict, platforms: str) -> tuple[list[dict], list[str
     forbidden = sorted(name for name in names if is_updater_asset(name))
     if forbidden:
         fail("unsigned release contains updater assets: " + ", ".join(forbidden))
+    internal_cli = sorted(name for name in names if CLI_ASSET_RE.search(name))
+    if internal_cli:
+        fail(
+            "unsigned release contains internal CLI assets: "
+            + ", ".join(internal_cli)
+        )
 
     selected = selected_platforms(platforms)
     desktop = {
-        "windows-x64": ("Windows x64", ("windows-x64",), (".exe",)),
-        "windows-arm64": ("Windows ARM64", ("windows-arm64",), (".exe",)),
-        "linux-x64": ("Linux x64", ("linux-amd64",), (".deb",)),
-        "linux-arm64": ("Linux ARM64", ("linux-arm64",), (".deb",)),
-        "macos-x64": ("macOS Intel", ("darwin-x64",), (".dmg", ".zip")),
+        "windows-x64": (
+            ("Windows x64 installer", ("windows-x64", "setup"), ".exe"),
+            ("Windows x64 portable", ("windows-x64", "portable"), ".exe"),
+        ),
+        "windows-arm64": (
+            ("Windows ARM64 installer", ("windows-arm64", "setup"), ".exe"),
+            ("Windows ARM64 portable", ("windows-arm64", "portable"), ".exe"),
+        ),
+        "linux-x64": (
+            ("Linux x64 DEB", ("linux-amd64",), ".deb"),
+            ("Linux x64 AppImage", ("linux-amd64",), ".appimage"),
+        ),
+        "linux-arm64": (
+            ("Linux ARM64 DEB", ("linux-arm64",), ".deb"),
+            ("Linux ARM64 AppImage", ("linux-arm64",), ".appimage"),
+        ),
+        "macos-x64": (
+            ("macOS Intel DMG", ("darwin-x64",), ".dmg"),
+            ("macOS Intel APP ZIP", ("darwin-x64",), ".zip"),
+        ),
         "macos-arm64": (
-            "macOS Apple Silicon",
-            ("darwin-aarch64",),
-            (".dmg", ".zip"),
+            ("macOS Apple Silicon DMG", ("darwin-aarch64",), ".dmg"),
+            ("macOS Apple Silicon APP ZIP", ("darwin-aarch64",), ".zip"),
         ),
     }
-    for platform, (label, needles, suffixes) in desktop.items():
+    for platform, requirements in desktop.items():
         if platform in selected:
-            for suffix in suffixes:
+            for label, needles, suffix in requirements:
                 require_asset(names, label, *needles, suffix=suffix)
     if "android" in selected:
         require_asset(names, "Android arm64-v8a", "arm64-v8a", suffix=".apk")
@@ -255,7 +276,16 @@ def validate_assets(release: dict, platforms: str) -> tuple[list[dict], list[str
         require_asset(names, "iOS IPA", suffix=".ipa")
 
     installers = [
-        name for name in names if name.lower().endswith(INSTALLER_SUFFIXES)
+        name
+        for name in names
+        if name.lower().endswith(INSTALLER_SUFFIXES)
+        or (
+            name.lower().endswith(".zip")
+            and (
+                "darwin-x64" in name.lower()
+                or "darwin-aarch64" in name.lower()
+            )
+        )
     ]
     if not installers:
         fail("unsigned release has no downloadable installer")

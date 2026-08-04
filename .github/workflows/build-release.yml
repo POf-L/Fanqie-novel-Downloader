@@ -76,6 +76,7 @@ jobs:
       create_updater_artifacts: ${{ steps.secrets.outputs.create_updater_artifacts }}
       android_signing: ${{ steps.secrets.outputs.android_signing }}
       ios_signing: ${{ steps.secrets.outputs.ios_signing }}
+      macos_signing: ${{ steps.secrets.outputs.macos_signing }}
       unsigned_mode: ${{ steps.secrets.outputs.unsigned_mode }}
     steps:
       - name: Validate private source token
@@ -358,23 +359,21 @@ jobs:
             echo "unsigned_mode=${unsigned_mode}"
           } >> "${GITHUB_OUTPUT}"
 
-          if [[ "${PUBLISH_RELEASE}" == "true" && "${unsigned_mode}" != "true" && "${updater}" != "true" &&
-                "${{ steps.platforms.outputs.desktop_count }}" != "0" ]]; then
-            echo "Desktop publishing requires TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD."
-            exit 1
+          # Signing is opportunistic.  Every selected platform must still produce
+          # a user-downloadable artifact when optional signing credentials are
+          # absent; the release notes and signing marker files explain the mode.
+          if [[ "${PUBLISH_RELEASE}" == "true" && "${unsigned_mode}" != "true" ]]; then
+            [[ "${updater}" == "true" ]] || echo "Updater signing secrets missing; publishing desktop packages without updater metadata."
+            if [[ "${ANDROID_ENABLED}" == "true" && "${android}" != "true" ]]; then
+              echo "Android release keystore missing; using an ephemeral CI signing key."
+            fi
+            if [[ "${MACOS_ENABLED}" == "true" && "${macos}" != "true" ]]; then
+              echo "Apple signing/notarization secrets missing; publishing unsigned macOS DMG and APP ZIP."
+            fi
+            if [[ "${IOS_ENABLED}" == "true" && "${ios}" != "true" ]]; then
+              echo "Apple iOS signing secrets missing; publishing an unsigned IPA for sideloading."
+            fi
           fi
-          if [[ "${PUBLISH_RELEASE}" == "true" && "${unsigned_mode}" != "true" &&
-                "${ANDROID_ENABLED}" == "true" && "${android}" != "true" ]]; then
-            echo "Android publishing requires all four Android signing secrets."
-            exit 1
-          fi
-          if [[ "${PUBLISH_RELEASE}" == "true" && "${unsigned_mode}" != "true" &&
-                "${MACOS_ENABLED}" == "true" && "${macos}" != "true" ]]; then
-            echo "macOS publishing requires Apple certificate, Developer ID, notarization, and team secrets."
-            exit 1
-          fi
-          # iOS unsigned IPA is allowed without Apple signing secrets.
-          # Users sideload it themselves (AltStore / Sideloadly / TrollStore).
 
   verify:
     needs: prepare
@@ -896,6 +895,23 @@ jobs:
           releaseDraft: true
           prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}
 
+      - name: Upload signed Windows portable executable
+        if: runner.os == 'Windows' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          $arch = if ($env:TARGET.StartsWith('aarch64-')) { 'arm64' } else { 'x64' }
+          $binary = Join-Path $env:SOURCE_PATH ("src-tauri/target/{0}/release/fanqie-desktop.exe" -f $env:TARGET)
+          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "缺少便捷版可执行文件: $binary" }
+          $portable = Join-Path $env:RUNNER_TEMP ("FanqieNovelDownloader-tauri-windows-{0}-portable.exe" -f $arch)
+          Copy-Item -LiteralPath $binary -Destination $portable -Force
+          gh release upload $env:TAG_NAME $portable --repo $env:GH_REPO --clobber
+
       - name: Verify unsigned macOS bundle before upload
         if: runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
         shell: bash
@@ -969,6 +985,13 @@ jobs:
               source_file = single(source / "nsis", "-setup.exe")
               destination = output / f"FanqieNovelDownloader-tauri-windows-{arch}-setup.exe"
               shutil.copy2(source_file, destination)
+              portable = source.parent / "fanqie-desktop.exe"
+              if not portable.is_file():
+                  raise SystemExit(f"missing portable desktop binary: {portable}")
+              shutil.copy2(
+                  portable,
+                  output / f"FanqieNovelDownloader-tauri-windows-{arch}-portable.exe",
+              )
           elif target.endswith("-unknown-linux-gnu"):
               arch = "arm64" if target.startswith("aarch64-") else "amd64"
               stem = f"FanqieNovelDownloader-tauri-linux-{arch}"
@@ -1266,6 +1289,23 @@ jobs:
           releaseDraft: true
           prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}
 
+      - name: Upload signed Windows portable executable
+        if: steps.need.outputs.run == 'true' && runner.os == 'Windows' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          $arch = if ($env:TARGET.StartsWith('aarch64-')) { 'arm64' } else { 'x64' }
+          $binary = Join-Path $env:SOURCE_PATH ("src-tauri/target/{0}/release/fanqie-desktop.exe" -f $env:TARGET)
+          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "缺少便捷版可执行文件: $binary" }
+          $portable = Join-Path $env:RUNNER_TEMP ("FanqieNovelDownloader-tauri-windows-{0}-portable.exe" -f $arch)
+          Copy-Item -LiteralPath $binary -Destination $portable -Force
+          gh release upload $env:TAG_NAME $portable --repo $env:GH_REPO --clobber
+
       - name: Verify unsigned macOS bundle before upload
         if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
         shell: bash
@@ -1339,6 +1379,13 @@ jobs:
               source_file = single(source / "nsis", "-setup.exe")
               destination = output / f"FanqieNovelDownloader-tauri-windows-{arch}-setup.exe"
               shutil.copy2(source_file, destination)
+              portable = source.parent / "fanqie-desktop.exe"
+              if not portable.is_file():
+                  raise SystemExit(f"missing portable desktop binary: {portable}")
+              shutil.copy2(
+                  portable,
+                  output / f"FanqieNovelDownloader-tauri-windows-{arch}-portable.exe",
+              )
           elif target.endswith("-unknown-linux-gnu"):
               arch = "arm64" if target.startswith("aarch64-") else "amd64"
               stem = f"FanqieNovelDownloader-tauri-linux-{arch}"

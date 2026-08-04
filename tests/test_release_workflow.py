@@ -192,7 +192,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('".sig",', unsigned)
         self.assertIn('".msi.zip",', unsigned)
         self.assertIn("def require_asset(", unsigned)
-        self.assertIn('"linux-x64": ("Linux x64", ("linux-amd64",), (".deb",))', unsigned)
+        self.assertIn('"linux-x64": (', unsigned)
+        self.assertIn('"Linux x64 DEB"', unsigned)
         self.assertIn("--draft=false", unsigned)
         self.assertIn("--prerelease", unsigned)
         self.assertIn(
