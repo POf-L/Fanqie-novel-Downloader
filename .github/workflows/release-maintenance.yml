@@ -228,6 +228,8 @@ jobs:
           set -euo pipefail
           tag="${REQUESTED_TAG}"
           if [[ -z "${tag}" ]]; then
+            # sed 正则中的行尾锚点是字面量，不需要 shell 展开。
+            # shellcheck disable=SC2016
             tag="$(gh api "repos/${GH_REPO}/releases/tags/stable" --jq '.body' | sed -n 's/^- 稳定源 Release：`\([^`]*\)`.*/\1/p' | head -n 1)"
           fi
           test -n "${tag}"
