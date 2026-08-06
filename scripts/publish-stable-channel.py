@@ -242,6 +242,11 @@ def upsert_alias(
     source_release: dict,
 ) -> dict:
     source_tag = str(source_release.get("tag_name") or "")
+    target_commitish = str(source_release.get("target_commitish") or "").strip()
+    if not target_commitish:
+        fail(
+            "source release has no target commit; cannot create the stable alias"
+        )
     title = "番茄小说下载器稳定更新通道"
     body = "\n".join(
         [
@@ -256,7 +261,10 @@ def upsert_alias(
     payload = json.dumps(
         {
             "tag_name": alias_tag,
-            "target_commitish": source_tag,
+            # The release API accepts a branch or commit here, but not another
+            # tag name. GitHub stores the source release's resolved commit in
+            # target_commitish, so preserve that exact commit for the alias.
+            "target_commitish": target_commitish,
             "name": title,
             "body": body,
             "draft": False,

@@ -21,6 +21,7 @@ class PublishStableChannelTest(unittest.TestCase):
         return {
             "id": 10,
             "tag_name": tag,
+            "target_commitish": "0123456789abcdef0123456789abcdef01234567",
             "draft": False,
             "prerelease": False,
             "published_at": "2099-01-01T00:00:00Z",
@@ -118,6 +119,10 @@ class PublishStableChannelTest(unittest.TestCase):
         self.assertEqual(payload["prerelease"], True)
         self.assertEqual(payload["make_latest"], "false")
         self.assertEqual(payload["draft"], False)
+        self.assertEqual(
+            payload["target_commitish"],
+            "0123456789abcdef0123456789abcdef01234567",
+        )
 
     def test_endpoint_url_uses_alias_only_for_metadata(self):
         self.assertEqual(

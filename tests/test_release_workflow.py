@@ -481,6 +481,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('METADATA_NAME in names', self.stable_publisher)
         self.assertIn('name.lower().endswith(".sig")', self.stable_publisher)
         self.assertIn('"make_latest": "false"', self.stable_publisher)
+        self.assertIn('"target_commitish": target_commitish', self.stable_publisher)
         self.assertIn('"prerelease": True', self.stable_publisher)
         self.assertIn("Stable channel refreshed", self.stable_publisher)
 
