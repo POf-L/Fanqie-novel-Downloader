@@ -304,6 +304,27 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "digest does not match"):
                 MODULE.verify_manifest_asset(release, path)
 
+    def test_existing_manifest_can_resume_channel_without_republishing(self):
+        release = self.fixture()
+        assets = MODULE.payload_assets(release)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / MODULE.MANIFEST_NAME
+            MODULE.write_manifest(assets, path)
+            digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+            release["assets"].append(
+                {
+                    "name": MODULE.MANIFEST_NAME,
+                    "digest": digest,
+                }
+            )
+        self.assertTrue(MODULE.existing_manifest_is_current(release, assets))
+
+        release["assets"][0]["digest"] = "sha256:" + "f" * 64
+        changed_assets = MODULE.payload_assets(release)
+        self.assertFalse(
+            MODULE.existing_manifest_is_current(release, changed_assets)
+        )
+
     def test_finalizer_markers_identify_an_already_finalized_release(self):
         body = (
             "原始 Draft 正文\n\n"
