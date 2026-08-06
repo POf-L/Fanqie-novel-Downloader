@@ -15,6 +15,7 @@ on:
         options:
           - finalize-signed-draft
           - finalize-unsigned-draft
+          - append-unsigned-finalizer
           - rewrite-release-notes
           - refresh-stable-channel
           - refresh-unsigned-channel
@@ -82,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           case "${OPERATION}" in
-            finalize-signed-draft|finalize-unsigned-draft|rewrite-release-notes)
+            finalize-signed-draft|finalize-unsigned-draft|append-unsigned-finalizer|rewrite-release-notes)
               if [[ -z "${TAG_NAME//[[:space:]]/}" ]]; then
                 echo "${OPERATION} 必须填写已有草稿的 tag。"
                 exit 1
@@ -151,6 +152,35 @@ jobs:
             arguments+=(--highlights-file release-highlights.md)
           fi
           python scripts/finalize-unsigned-release.py "${arguments[@]}"
+
+      - name: 为已发布无签名版本追加或刷新 finalizer
+        if: inputs.operation == 'append-unsigned-finalizer'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PLATFORMS: ${{ inputs.platforms }}
+          HIGHLIGHTS: ${{ inputs.highlights }}
+        run: |
+          set -euo pipefail
+          arguments=(
+            --repo "${GH_REPO}"
+            --tag "${TAG_NAME}"
+            --version "${VERSION}"
+            --source-ref "${SOURCE_REF}"
+            --source-commit "${SOURCE_COMMIT}"
+            --platforms "${PLATFORMS}"
+            --work-dir "${RUNNER_TEMP}/unsigned-finalizer-check"
+          )
+          if [[ -n "${HIGHLIGHTS//[[:space:]]/}" ]]; then
+            printf '%s\n' "${HIGHLIGHTS}" > release-highlights.md
+            arguments+=(--highlights-file release-highlights.md)
+          fi
+          python scripts/append-unsigned-finalizer.py "${arguments[@]}"
 
       - name: 刷新 stable 自动更新通道
         if: inputs.operation == 'refresh-stable-channel'

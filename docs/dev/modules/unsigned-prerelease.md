@@ -5,7 +5,9 @@
 `.github/workflows/build-release.yml` has explicit unsigned publication modes
 for testing builds when the Tauri updater key, Android release keystore, or
 Apple signing credentials are unavailable. Both modes publish named GitHub
-Release assets for manual downloads and never enter the updater channel.
+Release assets for manual downloads. Full-platform unsigned builds also use an
+isolated `unsigned` updater channel whose payloads are signed by the Tauri
+updater key; they never enter the signed `stable` channel.
 
 ## Dispatch contract
 
@@ -27,8 +29,9 @@ gh workflow run build-release.yml `
   -f publish_unsigned_prerelease=true
 ```
 
-For a normal (non-prerelease) GitHub Release that is still excluded from the
-stable `latest` pointer, use the explicit formal unsigned mode:
+For a normal (non-prerelease) GitHub Release that becomes GitHub Latest while
+remaining isolated from the signed `stable` updater channel, use the explicit
+formal unsigned mode:
 
 ```powershell
 gh workflow run build-release.yml `
@@ -39,20 +42,18 @@ gh workflow run build-release.yml `
 ```
 
 `publish_unsigned_release` is mutually exclusive with
-`publish_unsigned_prerelease`, requires `publish_release=true`, and keeps the
-GitHub `latest` pointer on the signed updater release. This prevents existing
-clients from requesting a missing `latest.json` while still making the
-ordinary Release page and all assets publicly downloadable.
+`publish_unsigned_prerelease` and requires `publish_release=true`. The formal
+unsigned Release becomes GitHub Latest for manual downloads, while signed
+clients continue to read `stable/latest.json` and unsigned clients read
+`unsigned/latest.json`.
 
 ## Build and upload flow
 
-Unsigned mode forces `createUpdaterArtifacts` to false and does not pass Tauri,
-Apple, or official Android signing secrets to build commands. Tauri action is
-used only for compilation and short-lived Actions artifacts. Its release
-upload is disabled because the action can package a macOS `.app` as an
-`.app.tar.gz` even when updater artifacts are disabled. The custom upload path
-includes unsigned macOS APP/DMG bundles and the `--no-sign` iOS IPA, so users
-can install them with the documented Gatekeeper/side-loading steps.
+Unsigned mode still requires the Tauri updater signing key and enables
+`createUpdaterArtifacts`, but it deliberately omits Windows Authenticode,
+macOS Developer ID/notarization, and iOS Apple signing. The custom upload path
+adds user-facing unsigned installers alongside the Minisign-protected updater
+payloads, plus the `--no-sign` iOS IPA.
 
 The workflow then uploads only filtered installers to the draft release:
 
@@ -61,27 +62,36 @@ The workflow then uploads only filtered installers to the draft release:
 - macOS `.dmg` plus an APP `.zip`
 - Android APK/AAB and iOS IPA from their existing collection steps
 
-`finalize-unsigned` obtains GitHub SHA-256 digests, writes
-`SHA256SUMS-unsigned.txt`, rejects `latest.json`, updater archives, and
-signature files, and publishes the draft either as a prerelease or as a
-normal Release according to the selected mode. It does not call
-`scripts/finalize-release.py` or `scripts/normalize-updater-metadata.py`.
+The independently named `finalize-unsigned-release` job invokes only
+`scripts/finalize-unsigned-release.py`; it does not replace or enter the signed
+`finalize` job. It normalizes updater metadata, writes
+`SHA256SUMS-unsigned.txt`, publishes the draft, refreshes the fixed `unsigned`
+metadata alias, and appends a managed finalizer block to the original Draft
+body. The block contains the actual device/architecture links and is verified
+again after publication. A published Release can have only that managed block
+refreshed through maintenance operation `append-unsigned-finalizer`.
 
 ## Release invariants
 
-The prerelease notes contain the exact warning
-`未签名版本，仅供测试，不支持自动更新`; the formal unsigned notes contain
-`未签名版本，不支持自动更新`.
+The notes explain that OS/vendor signing is absent while updater payloads remain
+verified by the project Minisign key. They include Windows x64/ARM64, macOS
+Intel/Apple Silicon, Linux x64/ARM64, every Android ABI/universal choice, and
+the unsigned iOS side-loading guide. Missing device-guide headings or update
+channel links are a hard finalizer failure.
 
 They also explain that Windows may show an Authenticode/SmartScreen
 “未知发布者” warning, macOS may block the app with Gatekeeper because there
 is no Developer ID signature or notarization, Android uses a one-off CI test
-certificate, and iOS requires sideloading. The stable `releases/latest` tag is
-read before and after publication and the job fails if it changes.
+certificate, and iOS requires sideloading. The signed `stable` alias is read
+before and after publication and the job fails if its source changes. Formal
+unsigned publication separately verifies GitHub Latest and the public
+`unsigned/latest.json` endpoint.
 
-No unsigned release may contain `latest.json`, `.sig`, `.nsis.zip`,
-`.msi.zip`, `.app.tar.gz`, or `.AppImage.tar.gz`. Users must download from the
-Release Assets page and verify the unsigned checksum manifest manually.
+Unsigned Releases contain `latest.json`, `.sig`, and updater payloads only when
+the Tauri signing key is available. `latest.json` must map exclusively to assets
+on the same Release and every entry must carry a signature. User-facing
+installers and `SHA256SUMS-unsigned.txt` remain available for manual download
+and side-loading.
 
 ## Failure recovery
 

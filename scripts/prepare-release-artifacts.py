@@ -340,11 +340,17 @@ def platform_status_lines(
         )
 
     if channel == "unsigned" and updater_available:
-        lines.append(
-            "- **自动更新**：这是无厂商/系统签名的构建，但桌面 updater 使用独立的 "
-            "Minisign 密钥签名 \u0060latest.json\u0060 和更新包；客户端会从 \u0060unsigned/latest.json\u0060 "
-            "读取并验证，不能把普通 GitHub Latest 当作未校验的更新源。"
-        )
+        if prerelease:
+            lines.append(
+                "- **自动更新**：这是无厂商/系统签名的测试预发布，updater 包仍由独立的 "
+                "Minisign 密钥签名；它不会进入固定 `unsigned` 别名，正式无签名客户端不会自动收到。"
+            )
+        else:
+            lines.append(
+                "- **自动更新**：这是无厂商/系统签名的构建，但桌面 updater 使用独立的 "
+                "Minisign 密钥签名 `latest.json` 和更新包；客户端会从 `unsigned/latest.json` "
+                "读取并验证，不能把普通 GitHub Latest 当作未校验的更新源。"
+            )
     elif channel == "unsigned":
         lines.append(
             "- **自动更新**：这个历史无签名版本没有 `latest.json` / updater 签名，"
@@ -467,6 +473,14 @@ def generate_notes(
             f"> 📦 **本版本实际产出**：{shipped_text}。",
             "> iOS 为无签名 IPA，需自行侧载，不上架 App Store。",
         ]
+        if updater_available:
+            lines.extend(
+                [
+                    ">",
+                    "> 🔄 已安装本无签名通道旧版的用户，可直接在软件内使用「一键更新」；",
+                    "> 更新包仍由项目 updater 密钥校验，不会从普通 GitHub Latest 盲目安装。",
+                ]
+            )
         if prerelease:
             lines.extend(
                 [

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -13,6 +14,7 @@ from urllib.parse import quote, unquote, urlparse
 
 
 API_ASSET_RE = re.compile(r"/releases/assets/(\d+)(?:/|$)")
+SIGNATURE_FILE_RE = re.compile(r"(?:^|[\t ])file:([^\r\n]+)", re.MULTILINE)
 
 
 def release_version_for_tag(tag: str) -> str:
@@ -78,6 +80,80 @@ def public_asset_url(asset: dict, prefix: str) -> str:
     return prefix + quote(name, safe="")
 
 
+def updater_signature_filename(entry: dict) -> str:
+    """Return Tauri's original payload filename embedded in the signature.
+
+    tauri-action uploads an updater asset and then the custom unsigned upload
+    replaces the same installer name. GitHub gives that replacement a new asset
+    ID, so latest.json can legitimately contain the deleted draft asset ID. The
+    Minisign trusted comment retains the exact signed filename and is therefore
+    the authoritative fallback for mapping the entry to the replacement asset.
+    """
+
+    encoded = str(entry.get("signature") or "").strip()
+    if not encoded:
+        return ""
+    try:
+        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return ""
+    match = SIGNATURE_FILE_RE.search(decoded)
+    return match.group(1).strip() if match else ""
+
+
+def asset_for_signature_filename(
+    entry: dict, by_name: dict[str, dict]
+) -> dict | None:
+    signed_name = updater_signature_filename(entry)
+    if not signed_name:
+        return None
+    exact = by_name.get(signed_name)
+    if exact is not None:
+        return exact
+
+    lowered = signed_name.lower()
+    suffix = Path(signed_name).suffix.lower()
+    candidates = [
+        asset
+        for name, asset in by_name.items()
+        if name.lower().endswith(suffix)
+        and name.lower() != "latest.json"
+        and not name.lower().endswith(".sig")
+    ]
+    if "setup.exe" in lowered:
+        architecture = "arm64" if "arm64" in lowered else "x64"
+        candidates = [
+            asset
+            for asset in candidates
+            if "windows" in str(asset.get("name") or "").lower()
+            and architecture in str(asset.get("name") or "").lower()
+            and "setup" in str(asset.get("name") or "").lower()
+        ]
+    elif lowered.endswith(".deb"):
+        architecture = "arm64" if "arm64" in lowered or "aarch64" in lowered else "amd64"
+        candidates = [
+            asset
+            for asset in candidates
+            if "linux" in str(asset.get("name") or "").lower()
+            and architecture in str(asset.get("name") or "").lower()
+        ]
+    elif lowered.endswith(".appimage"):
+        architecture_markers = ("arm64", "aarch64") if "aarch64" in lowered else ("amd64", "x64")
+        candidates = [
+            asset
+            for asset in candidates
+            if "linux" in str(asset.get("name") or "").lower()
+            and any(
+                marker in str(asset.get("name") or "").lower()
+                for marker in architecture_markers
+            )
+        ]
+    else:
+        return None
+
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def asset_for_entry(
     entry: dict, by_id: dict[str, dict], by_name: dict[str, dict]
 ) -> dict:
@@ -87,8 +163,12 @@ def asset_for_entry(
         asset = by_id.get(match.group(1))
         if asset is not None:
             return asset
+        replacement = asset_for_signature_filename(entry, by_name)
+        if replacement is not None:
+            return replacement
         raise SystemExit(
-            f"updater URL references missing release asset id {match.group(1)}"
+            "updater URL references a replaced release asset and its signed "
+            f"filename cannot be mapped: id {match.group(1)}"
         )
 
     # Tauri versions that already emit browser URLs can be normalized again.

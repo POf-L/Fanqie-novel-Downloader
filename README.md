@@ -83,7 +83,8 @@ Android 系统目录选择器保存 TXT / EPUB，并可交给已安装的阅读�
 
 首次启动被 Gatekeeper 拦截时，先核对 SHA-256，再前往“系统设置 → 隐私与安全性”选择
 “仍要打开”。只有 Release 说明明确要求时，才对本应用单独移除隔离属性；不需要全局
-关闭 Gatekeeper。未签名 macOS 包不会生成 `latest.json`，也不支持应用内自动更新。
+关闭 Gatekeeper。当前全平台无签名正式版使用独立的 `unsigned` 更新通道；系统/厂商签名仍然缺失，
+但 updater 包由项目 Minisign 密钥校验。历史上没有 `latest.json` 的无签名包仍需手动覆盖安装。
 
 ### iOS
 

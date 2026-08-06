@@ -1,4 +1,5 @@
 import json
+import base64
 import subprocess
 import sys
 import tempfile
@@ -119,6 +120,41 @@ class NormalizeUpdaterMetadataTest(unittest.TestCase):
         result, _ = self.run_normalizer(metadata, {"assets": []})
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("named assets", result.stderr)
+
+    def test_replaced_draft_asset_is_mapped_from_signed_filename(self):
+        signature = base64.b64encode(
+            (
+                "untrusted comment: signature from tauri secret key\n"
+                "placeholder\n"
+                "trusted comment: timestamp:1\t"
+                "file:Fanqie Novel Downloader_2026.7.23-1200_x64-setup.exe\n"
+            ).encode("utf-8")
+        ).decode("ascii")
+        metadata = {
+            "version": "2026.7.23-1200",
+            "platforms": {
+                "windows-x86_64": {
+                    "signature": signature,
+                    "url": "https://api.github.com/repos/POf-L/Fanqie-novel-Downloader/releases/assets/999",
+                }
+            },
+        }
+        assets = {
+            "assets": [
+                {
+                    "id": 1001,
+                    "name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe",
+                }
+            ]
+        }
+
+        result, normalized = self.run_normalizer(metadata, assets)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            normalized["platforms"]["windows-x86_64"]["url"],
+            "https://github.com/POf-L/Fanqie-novel-Downloader/releases/download/v2026.7.23-1200/FanqieNovelDownloader-tauri-windows-x64-setup.exe",
+        )
 
     def test_signature_asset_cannot_be_selected_as_the_update_payload(self):
         metadata = {

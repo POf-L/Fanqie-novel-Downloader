@@ -105,6 +105,12 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
         )
         self.assertIn("可以在应用内更新", updatable_notes)
         self.assertIn("`unsigned/latest.json`", updatable_notes)
+        MODULE.verify_device_guide(
+            updatable_notes,
+            platforms=platforms,
+            updater_available=True,
+            mode="formal",
+        )
 
     def test_unsigned_finalizer_appends_device_guide_without_overwriting_draft(self):
         release = self.fixture()
@@ -158,6 +164,92 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
         rerun = MODULE.append_finalizer(notes, appendix.replace("下载时以本区块为准", "重跑已刷新"))
         self.assertEqual(rerun.count(MODULE.FINALIZER_START), 1)
         self.assertIn("重跑已刷新", rerun)
+        MODULE.verify_device_guide(
+            rerun,
+            platforms=(
+                "windows-x64, windows-arm64, linux-x64, linux-arm64, "
+                "macos-x64, macos-arm64, android, ios"
+            ),
+            updater_available=False,
+            mode="formal",
+        )
+
+    def test_partial_platform_guide_requires_only_selected_device_variants(self):
+        release = self.fixture()
+        release["assets"] = [
+            asset
+            for asset in release["assets"]
+            if "windows-x64" in str(asset["name"])
+        ]
+        release["prerelease"] = False
+        notes = MODULE.generate_finalizer_appendix(
+            release=release,
+            repo="POf-L/Fanqie-novel-Downloader",
+            tag="unsigned-v2099.1.3-r3",
+            version="2099.1.3",
+            source_ref="main",
+            source_commit="0123456789ab",
+            platforms="windows-x64",
+            mode="formal",
+            highlights=[],
+        )
+        for heading in ("Windows", "macOS", "Linux", "Android", "iOS"):
+            self.assertIn(heading, notes)
+        self.assertIn("64位（常用）", notes)
+        self.assertIn("windows-x64-portable.exe", notes)
+        self.assertNotIn("Apple M 芯片", notes)
+        self.assertNotIn("64位 arm64-v8a", notes)
+        MODULE.verify_device_guide(
+            notes,
+            platforms="windows-x64",
+            updater_available=False,
+            mode="formal",
+        )
+
+    def test_append_preserves_original_draft_body_byte_for_byte(self):
+        original = "## 原 Draft 正文\n\n保留尾随空格。  \n"
+        appendix = (
+            MODULE.FINALIZER_START
+            + "\n设备指引\n"
+            + MODULE.FINALIZER_END
+        )
+        notes = MODULE.append_finalizer(original, appendix)
+        self.assertTrue(notes.startswith(original))
+        refreshed = MODULE.append_finalizer(
+            notes, appendix.replace("设备指引", "刷新后的设备指引")
+        )
+        self.assertTrue(refreshed.startswith(original))
+        self.assertEqual(refreshed.count(MODULE.FINALIZER_START), 1)
+        self.assertIn("刷新后的设备指引", refreshed)
+
+    def test_unsigned_prerelease_guide_does_not_claim_fixed_alias_ownership(self):
+        release = self.fixture()
+        release["prerelease"] = True
+        release["assets"].extend(
+            [
+                {"name": "latest.json", "digest": "sha256:" + "1" * 64},
+                {
+                    "name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe.sig",
+                    "digest": "sha256:" + "2" * 64,
+                },
+            ]
+        )
+        notes = MODULE.generate_finalizer_appendix(
+            release=release,
+            repo="POf-L/Fanqie-novel-Downloader",
+            tag="unsigned-v2099.1.2-r2",
+            version="2099.1.2",
+            source_ref="main",
+            source_commit="0123456789ab",
+            platforms=(
+                "windows-x64, windows-arm64, linux-x64, linux-arm64, "
+                "macos-x64, macos-arm64, android, ios"
+            ),
+            mode="prerelease",
+            highlights=[],
+        )
+        self.assertIn("不进入固定 `unsigned` 别名", notes)
+        self.assertNotIn("客户端通过固定 `unsigned/latest.json`", notes)
 
     def test_formal_publication_sets_make_latest_true(self):
         captured = {}
@@ -211,6 +303,16 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             release["assets"][0]["digest"] = "sha256:" + "f" * 64
             with self.assertRaisesRegex(SystemExit, "digest does not match"):
                 MODULE.verify_manifest_asset(release, path)
+
+    def test_finalizer_markers_identify_an_already_finalized_release(self):
+        body = (
+            "原始 Draft 正文\n\n"
+            + MODULE.FINALIZER_START
+            + "\n设备指引\n"
+            + MODULE.FINALIZER_END
+        )
+        self.assertIn(MODULE.FINALIZER_START, body)
+        self.assertEqual(body.count(MODULE.FINALIZER_START), 1)
 
 
 if __name__ == "__main__":

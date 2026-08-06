@@ -18,6 +18,7 @@ MAINTENANCE_WORKFLOW = (
 )
 FINALIZER = ROOT / "scripts" / "finalize-release.py"
 UNSIGNED_FINALIZER = ROOT / "scripts" / "finalize-unsigned-release.py"
+UNSIGNED_APPEND_FINALIZER = ROOT / "scripts" / "append-unsigned-finalizer.py"
 STABLE_PUBLISHER = ROOT / "scripts" / "publish-stable-channel.py"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
@@ -34,6 +35,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
         cls.finalizer = FINALIZER.read_text(encoding="utf-8")
         cls.unsigned_finalizer = UNSIGNED_FINALIZER.read_text(encoding="utf-8")
+        cls.unsigned_append_finalizer = UNSIGNED_APPEND_FINALIZER.read_text(
+            encoding="utf-8"
+        )
         cls.stable_publisher = STABLE_PUBLISHER.read_text(encoding="utf-8")
         cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
@@ -185,9 +189,19 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
 
     def test_unsigned_finalizer_has_an_isolated_updater_channel_and_appends_guides(self):
-        unsigned_job = self.workflow.split("\n  finalize-unsigned:\n", 1)[1]
+        unsigned_job = self.workflow.split("\n  finalize-unsigned-release:\n", 1)[1]
         unsigned = self.unsigned_finalizer
         self.assertIn("scripts/finalize-unsigned-release.py", unsigned_job)
+        self.assertIn(
+            "Verify published device guide and unsigned updater channel", unsigned_job
+        )
+        self.assertIn("PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}", unsigned_job)
+        self.assertIn("body.count(required[0]) != 1", unsigned_job)
+        self.assertIn("platform_requirements", unsigned_job)
+        signed_job = self.workflow.split("\n  finalize:\n", 1)[1].split(
+            "\n  finalize-unsigned-release:\n", 1
+        )[0]
+        self.assertNotIn("finalize-unsigned-release.py", signed_job)
         self.assertNotIn("scripts/finalize-release.py", unsigned)
         self.assertIn("normalize-updater-metadata.py", unsigned)
         self.assertNotIn("--latest", unsigned)
@@ -253,6 +267,10 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("scripts/rewrite-release-notes.py", workflow)
         self.assertIn("refresh-unsigned-channel", workflow)
         self.assertIn("scripts/publish-unsigned-channel.py", workflow)
+        self.assertIn("append-unsigned-finalizer", workflow)
+        self.assertIn("scripts/append-unsigned-finalizer.py", workflow)
+        self.assertIn("append-unsigned-finalizer only handles a published Release", self.unsigned_append_finalizer)
+        self.assertIn("finalizer.append_finalizer", self.unsigned_append_finalizer)
 
     def test_release_jobs_use_the_pinned_rust_toolchain(self):
         self.assertNotIn("dtolnay/rust-toolchain@stable", self.workflow)
@@ -465,6 +483,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         for operation in (
             "finalize-signed-draft",
             "finalize-unsigned-draft",
+            "append-unsigned-finalizer",
             "rewrite-release-notes",
             "refresh-stable-channel",
             "refresh-unsigned-channel",

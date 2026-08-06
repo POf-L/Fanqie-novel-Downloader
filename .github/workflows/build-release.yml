@@ -1849,7 +1849,9 @@ jobs:
           - Desktop fallback result: \`${{ needs.desktop-fallback.result }}\`
           EOF
 
-  finalize-unsigned:
+  # 无签名发布是在原有签名 finalizer 之外追加的独立收尾器。它拥有独立
+  # 的脚本、清单、说明区块和更新通道，不能复用或覆盖 finalize job。
+  finalize-unsigned-release:
     needs: [prepare, verify, release-bootstrap, desktop, desktop-fallback, android, ios]
     if: >-
       always() &&
@@ -1909,3 +1911,88 @@ jobs:
             arguments+=(--highlights-file release-highlights.md)
           fi
           python scripts/finalize-unsigned-release.py "${arguments[@]}"
+
+      - name: Verify published device guide and unsigned updater channel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
+          UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
+        run: |
+          set -euo pipefail
+          release_json="${RUNNER_TEMP}/published-unsigned-release.json"
+          release_id="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json databaseId --jq .databaseId)"
+          gh api "repos/${GH_REPO}/releases/${release_id}" > "${release_json}"
+          python - "${release_json}" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          release = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if release.get("draft") is not False:
+              raise SystemExit("无签名 Release 仍是 Draft")
+          body = str(release.get("body") or "")
+          required = [
+              "<!-- fanqie:unsigned-finalizer:start -->",
+              "<!-- fanqie:unsigned-finalizer:end -->",
+              "## 平台状态与安装限制",
+              "## 下载地址",
+              "### 🪟 Windows", "### 🍎 macOS", "### 🐧 Linux",
+              "### 🤖 Android", "### 📱 iOS",
+              "SHA-256 完整清单",
+          ]
+          if body.count(required[0]) != 1 or body.count(required[1]) != 1:
+              raise SystemExit("已发布无签名 finalizer 托管区块数量不正确")
+          selected = {
+              value.strip().lower()
+              for value in os.environ.get("PLATFORMS", "").split(",")
+              if value.strip()
+          }
+          platform_requirements = {
+              "windows-x64": ("64位（常用）", "windows-x64-portable.exe"),
+              "windows-arm64": ("ARM64（Surface / 骁龙本）", "windows-arm64-portable.exe"),
+              "linux-x64": ("linux-amd64.deb", "linux-amd64.AppImage"),
+              "linux-arm64": ("linux-arm64.deb", "linux-arm64.AppImage"),
+              "macos-x64": ("Intel 芯片", "darwin-x64.dmg", "darwin-x64.zip"),
+              "macos-arm64": ("Apple M 芯片", "darwin-aarch64.dmg", "darwin-aarch64.zip"),
+              "android": (
+                  "64位 arm64-v8a", "32位 armeabi-v7a",
+                  "通用版 universal", "x86_64（模拟器 / 部分平板）",
+              ),
+              "ios": ("无签名 IPA（需自行侧载）",),
+          }
+          for platform in selected:
+              if platform not in platform_requirements:
+                  raise SystemExit("发布后检查遇到未知平台：" + platform)
+              required.extend(platform_requirements[platform])
+          missing = [value for value in required if value not in body]
+          if missing:
+              raise SystemExit("已发布设备指引缺项：" + ", ".join(missing))
+          if os.environ.get("UNSIGNED_PRERELEASE", "false") != "true" and "unsigned/latest.json" not in body:
+              raise SystemExit("正式无签名 Release 缺少 unsigned/latest.json 通道说明")
+          PY
+          if [[ "${UNSIGNED_PRERELEASE}" != "true" ]]; then
+            curl --fail --location --silent --show-error \
+              --output "${RUNNER_TEMP}/unsigned-latest.json" \
+              "https://github.com/${GH_REPO}/releases/download/unsigned/latest.json"
+            python - "${RUNNER_TEMP}/unsigned-latest.json" "${TAG_NAME}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          metadata = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          source_tag = sys.argv[2]
+          entries = metadata.get("platforms")
+          if not isinstance(entries, dict) or not entries:
+              raise SystemExit("unsigned/latest.json 没有平台条目")
+          if any(
+              f"/download/{source_tag}/" not in str(entry.get("url") or "")
+              or not str(entry.get("signature") or "").strip()
+              for entry in entries.values()
+          ):
+              raise SystemExit("unsigned/latest.json 未完整指向本次无签名 Release")
+          PY
+          fi

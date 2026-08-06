@@ -35,11 +35,12 @@ call because a nested shell heredoc terminator was indented. Wrapper commit
 [`30195164073`](https://github.com/POf-L/Fanqie-novel-Downloader/actions/runs/30195164073)
 reused the existing draft assets and published without rebuilding.
 
-The result is a normal GitHub Release (`draft=false`, `prerelease=false`) with
+That historical result is a normal GitHub Release (`draft=false`, `prerelease=false`) with
 21 assets, including both macOS DMG/APP ZIP architectures and the unsigned IPA.
-It is deliberately `make_latest=false`: the signed updater channel remains
-`v2026.7.26-709`. The release contains no `latest.json`, updater archive, or
-`.sig` asset. `SHA256SUMS-unsigned.txt` matches all 20 other GitHub asset
+It used the superseded historical contract `make_latest=false`; current formal
+unsigned Releases instead become GitHub Latest and use their own `unsigned`
+updater alias. This historical Release contains no `latest.json`, updater
+archive, or `.sig` asset. `SHA256SUMS-unsigned.txt` matches all 20 other GitHub asset
 digests, all 21 anonymous download URLs return HTTP 200, and the notes document
 Windows unknown-publisher warnings, macOS Gatekeeper handling, and iOS
 AltStore/Sideloadly/TrollStore side-loading.
@@ -84,7 +85,7 @@ fetches the authenticated asset list, normalizes and re-uploads `latest.json`,
 and creates `SHA256SUMS-release.txt` from GitHub's asset digests. It then
 generates final Chinese release notes, including a platform status and signing
 limitations block, and validates every generated artifact.
-Only a fully validated draft is published. The finalizer checks the published
+Only a fully validated draft is published. The signed finalizer checks the published
 asset URLs, updater metadata, checksum manifest, source commit, and stable
 `latest` state once more after publication.
 
@@ -92,15 +93,18 @@ The dispatch form keeps platform selection in one validated `platforms` string
 so it stays within GitHub's workflow input limit. Release jobs pin Rust to the
 same `1.97.0` toolchain declared by the Tauri source repository.
 
-For a manual-download build without release signing credentials, dispatch the
+For a build without OS/vendor signing credentials, dispatch the
 same workflow with `publish_release=false` and
 `publish_unsigned_prerelease=true` for a prerelease, or with
 `publish_release=true` and `publish_unsigned_release=true` for a normal
 non-prerelease Release. Both paths are intentionally separate from the signed
 finalizer; their contract and forbidden asset list are documented in
 [Unsigned Tauri Releases](modules/unsigned-prerelease.md). The formal unsigned
-mode keeps GitHub's `latest` pointer on the signed updater release so it cannot
-break automatic-update requests.
+mode becomes GitHub Latest for manual download. Signed clients remain pinned to
+the `stable` metadata alias; unsigned clients are compiled for the separate
+`unsigned` alias. The unsigned finalizer is an additional job and script, not a
+replacement for the signed finalizer, and it appends a verified device guide to
+the original Draft body.
 
 ## Stable macOS publication gate
 
