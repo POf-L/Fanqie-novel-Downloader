@@ -15,7 +15,9 @@ on:
         options:
           - finalize-signed-draft
           - finalize-unsigned-draft
+          - rewrite-release-notes
           - refresh-stable-channel
+          - refresh-unsigned-channel
           - repair-updater-metadata
       tag:
         description: "Release tag；修复 updater 时留空表示当前稳定版"
@@ -80,13 +82,13 @@ jobs:
         run: |
           set -euo pipefail
           case "${OPERATION}" in
-            finalize-signed-draft|finalize-unsigned-draft)
+            finalize-signed-draft|finalize-unsigned-draft|rewrite-release-notes)
               if [[ -z "${TAG_NAME//[[:space:]]/}" ]]; then
                 echo "${OPERATION} 必须填写已有草稿的 tag。"
                 exit 1
               fi
               ;;
-            refresh-stable-channel)
+            refresh-stable-channel|refresh-unsigned-channel)
               ;;
             repair-updater-metadata)
               ;;
@@ -167,6 +169,53 @@ jobs:
             arguments+=(--source-tag "${REQUESTED_TAG}")
           fi
           python scripts/publish-stable-channel.py "${arguments[@]}"
+
+      - name: 刷新 unsigned 自动更新通道
+        if: inputs.operation == 'refresh-unsigned-channel'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          arguments=(
+            --repo "${GH_REPO}"
+            --work-dir "${RUNNER_TEMP}/unsigned-channel-check"
+          )
+          if [[ -n "${REQUESTED_TAG//[[:space:]]/}" ]]; then
+            arguments+=(--source-tag "${REQUESTED_TAG}")
+          fi
+          python scripts/publish-unsigned-channel.py "${arguments[@]}"
+
+      - name: 重写已有 Release 的完整下载说明
+        if: inputs.operation == 'rewrite-release-notes'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PLATFORMS: ${{ inputs.platforms }}
+          HIGHLIGHTS: ${{ inputs.highlights }}
+        run: |
+          set -euo pipefail
+          arguments=(
+            --repo "${GH_REPO}"
+            --tag "${TAG_NAME}"
+            --version "${VERSION}"
+            --source-ref "${SOURCE_REF}"
+            --source-commit "${SOURCE_COMMIT}"
+            --platforms "${PLATFORMS}"
+            --work-dir "${RUNNER_TEMP}/release-notes-check"
+          )
+          if [[ -n "${HIGHLIGHTS//[[:space:]]/}" ]]; then
+            printf '%s\n' "${HIGHLIGHTS}" > release-highlights.md
+            arguments+=(--highlights-file release-highlights.md)
+          fi
+          python scripts/rewrite-release-notes.py "${arguments[@]}"
 
       - name: 修复 updater 元数据
         if: inputs.operation == 'repair-updater-metadata'

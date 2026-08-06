@@ -104,8 +104,11 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('tag_name = f"unsigned-v{version}-r', self.workflow)
         self.assertIn('tag_name = f"v{version}"', self.workflow)
 
-    def test_unsigned_prerelease_disables_updater_and_official_signing_inputs(self):
-        self.assertIn("create_updater_artifacts=false", self.workflow)
+    def test_unsigned_releases_keep_updater_signing_and_os_signing_is_separate(self):
+        self.assertIn("update_channel=unsigned", self.workflow)
+        self.assertIn(
+            "Unsigned releases require TAURI_SIGNING_PRIVATE_KEY", self.workflow
+        )
         self.assertEqual(
             self.workflow.count(
                 "CREATE_UPDATER_ARTIFACTS: "
@@ -115,26 +118,21 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(
             self.workflow.count(
-                "uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}"
+                "uploadUpdaterJson: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}"
             ),
             2,
         )
         self.assertEqual(
             self.workflow.count(
-                "uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}"
+                "uploadUpdaterSignatures: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}"
             ),
             2,
         )
-        for secret in (
-            "TAURI_SIGNING_PRIVATE_KEY",
-            "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
-            "APPLE_SIGNING_IDENTITY",
-            "ANDROID_KEYSTORE_BASE64",
-        ):
-            self.assertIn(
-                f"!inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.{secret}",
-                self.workflow,
-            )
+        self.assertGreaterEqual(
+            self.workflow.count("TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"),
+            2,
+        )
+        self.assertIn("ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}", self.workflow)
         self.assertIn(
             "inputs.publish_unsigned_prerelease == true || "
             "inputs.publish_unsigned_release == true || "
@@ -161,7 +159,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertGreaterEqual(self.workflow.count(release_enabled), 2)
         self.assertEqual(
             self.workflow.count(
-                "!inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && inputs.publish_release && needs.prepare.outputs.tag_name || ''"
+                "(inputs.publish_release || inputs.publish_unsigned_prerelease) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || ''"
             ),
             2,
         )
@@ -186,12 +184,12 @@ class ReleaseWorkflowTest(unittest.TestCase):
             self.workflow,
         )
 
-    def test_unsigned_finalizer_never_enters_stable_updater_channel(self):
+    def test_unsigned_finalizer_has_an_isolated_updater_channel_and_appends_guides(self):
         unsigned_job = self.workflow.split("\n  finalize-unsigned:\n", 1)[1]
         unsigned = self.unsigned_finalizer
         self.assertIn("scripts/finalize-unsigned-release.py", unsigned_job)
         self.assertNotIn("scripts/finalize-release.py", unsigned)
-        self.assertNotIn("normalize-updater-metadata.py", unsigned)
+        self.assertIn("normalize-updater-metadata.py", unsigned)
         self.assertNotIn("--latest", unsigned)
         self.assertIn("SHA256SUMS-unsigned.txt", unsigned)
         self.assertIn('FORBIDDEN_EXACT = {"latest.json", "sha256sums-release.txt"}', unsigned)
@@ -202,12 +200,12 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('"Linux x64 DEB"', unsigned)
         self.assertIn("--draft=false", unsigned)
         self.assertIn("--prerelease", unsigned)
-        self.assertIn(
-            "未签名版本，仅供测试，不支持自动更新",
-            unsigned,
-        )
-        self.assertIn("未知发布者", unsigned)
-        self.assertIn("Gatekeeper", unsigned)
+        self.assertIn("FINALIZER_START", unsigned)
+        self.assertIn("def append_finalizer", unsigned)
+        self.assertIn("## 无签名 Release Finalizer", unsigned)
+        self.assertIn("publish-unsigned-channel.py", unsigned)
+        self.assertIn("prepare-release-artifacts.py", unsigned)
+        self.assertIn("generate_finalizer_appendix", unsigned)
         self.assertIn(
             'f"repos/{repo}/releases/latest"',
             unsigned,
@@ -222,13 +220,13 @@ class ReleaseWorkflowTest(unittest.TestCase):
 
     def test_unsigned_draft_notes_warn_before_assets_finish(self):
         notes = self.render_draft_notes([], unsigned=True)
-        self.assertIn("未签名版本，仅供测试，不支持自动更新", notes)
+        self.assertIn("更新包仍由项目 updater 密钥校验", notes)
         self.assertIn("不会替代稳定版", notes)
-        self.assertIn("不会生成或上传 `latest.json`", notes)
+        self.assertIn("`unsigned/latest.json`", notes)
         self.assertIn("未知发布者", notes)
         self.assertIn("Gatekeeper", notes)
 
-    def test_unsigned_formal_release_is_normal_but_stays_out_of_updater_channel(self):
+    def test_unsigned_formal_release_is_latest_and_uses_isolated_updater_channel(self):
         input_block = self.workflow.split("permissions:", 1)[0]
         self.assertIn("      publish_unsigned_release:\n", input_block)
         self.assertIn(
@@ -238,9 +236,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('published.get("prerelease")', self.unsigned_finalizer)
         self.assertIn("inputs.publish_unsigned_release == true", self.workflow)
         notes = self.render_draft_notes([], unsigned_release=True)
-        self.assertIn("未签名版本，不支持自动更新", notes)
+        self.assertIn("支持经过 Minisign 校验的应用内更新", notes)
         self.assertIn("GitHub Latest", notes)
-        self.assertIn("不会生成或上传 `latest.json`", notes)
+        self.assertIn("`unsigned/latest.json`", notes)
         self.assertNotIn("不会替代稳定版", notes)
 
     def test_unsigned_draft_recovery_reuses_the_unsigned_finalizer(self):
@@ -251,6 +249,10 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("permissions:\n  contents: write", workflow)
         self.assertNotIn("PRIVATE_SOURCE_REPOSITORY", workflow)
         self.assertNotIn("tauri-apps/tauri-action", workflow)
+        self.assertIn("rewrite-release-notes", workflow)
+        self.assertIn("scripts/rewrite-release-notes.py", workflow)
+        self.assertIn("refresh-unsigned-channel", workflow)
+        self.assertIn("scripts/publish-unsigned-channel.py", workflow)
 
     def test_release_jobs_use_the_pinned_rust_toolchain(self):
         self.assertNotIn("dtolnay/rust-toolchain@stable", self.workflow)
@@ -463,13 +465,17 @@ class ReleaseWorkflowTest(unittest.TestCase):
         for operation in (
             "finalize-signed-draft",
             "finalize-unsigned-draft",
+            "rewrite-release-notes",
             "refresh-stable-channel",
+            "refresh-unsigned-channel",
             "repair-updater-metadata",
         ):
             self.assertIn(operation, workflow)
         self.assertIn("scripts/finalize-release.py", workflow)
         self.assertIn("scripts/finalize-unsigned-release.py", workflow)
         self.assertIn("scripts/publish-stable-channel.py", workflow)
+        self.assertIn("scripts/publish-unsigned-channel.py", workflow)
+        self.assertIn("scripts/rewrite-release-notes.py", workflow)
         self.assertIn("scripts/normalize-updater-metadata.py", workflow)
         self.assertIn("--check", workflow)
         self.assertIn("SHA256SUMS-release.txt", workflow)

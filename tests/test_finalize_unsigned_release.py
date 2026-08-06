@@ -61,27 +61,103 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "contains updater assets"):
             MODULE.validate_assets(release, "windows-x64")
 
-    def test_formal_notes_explain_manual_installation(self):
-        notes = MODULE.generate_notes(
+    def test_unsigned_finalizer_reports_real_updater_availability(self):
+        platforms = (
+            "windows-x64, windows-arm64, linux-x64, linux-arm64, "
+            "macos-x64, macos-arm64, android, ios"
+        )
+        historical = self.fixture()
+        historical["prerelease"] = False
+        historical_notes = MODULE.generate_finalizer_appendix(
+            release=historical,
             repo="POf-L/Fanqie-novel-Downloader",
             tag="unsigned-v2099.1.1-r1",
             version="2099.1.1",
             source_ref="main",
             source_commit="0123456789ab",
-            platforms="windows-x64, macos-arm64, ios",
-            stable_tag="v2098.1.1",
-            installers=["app.exe", "app.dmg", "app.ipa"],
+            platforms=platforms,
             mode="formal",
             highlights=[],
         )
-        self.assertIn("未签名版本，不支持自动更新", notes)
-        self.assertIn("GitHub Latest", notes)
-        self.assertIn("stable/latest.json", notes)
+        self.assertIn("历史版本没有 updater 元数据", historical_notes)
+
+        updatable = self.fixture()
+        updatable["prerelease"] = False
+        updatable["assets"].extend(
+            [
+                {"name": "latest.json", "digest": "sha256:" + "1" * 64},
+                {
+                    "name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe.sig",
+                    "digest": "sha256:" + "2" * 64,
+                },
+            ]
+        )
+        updatable_notes = MODULE.generate_finalizer_appendix(
+            release=updatable,
+            repo="POf-L/Fanqie-novel-Downloader",
+            tag="unsigned-v2099.1.2-r2",
+            version="2099.1.2",
+            source_ref="main",
+            source_commit="0123456789ab",
+            platforms=platforms,
+            mode="formal",
+            highlights=[],
+        )
+        self.assertIn("可以在应用内更新", updatable_notes)
+        self.assertIn("`unsigned/latest.json`", updatable_notes)
+
+    def test_unsigned_finalizer_appends_device_guide_without_overwriting_draft(self):
+        release = self.fixture()
+        release["prerelease"] = False
+        appendix = MODULE.generate_finalizer_appendix(
+            release=release,
+            repo="POf-L/Fanqie-novel-Downloader",
+            tag="unsigned-v2099.1.1-r1",
+            version="2099.1.1",
+            source_ref="main",
+            source_commit="0123456789ab",
+            platforms=(
+                "windows-x64, windows-arm64, linux-x64, linux-arm64, "
+                "macos-x64, macos-arm64, android, ios"
+            ),
+            mode="formal",
+            highlights=[],
+        )
+        original = "## 原 Draft 正文\n\n这是用户在构建期间看到的正文。"
+        notes = MODULE.append_finalizer(original, appendix)
+        self.assertTrue(notes.startswith(original))
+        self.assertIn(MODULE.FINALIZER_START, notes)
+        self.assertIn("## 下载地址", notes)
         self.assertIn("未知发布者", notes)
         self.assertIn("Gatekeeper", notes)
-        self.assertIn("AltStore", notes)
-        self.assertIn("`latest.json`", notes)
-        self.assertIn("0123456789ab", notes)
+        for label in (
+            "Windows",
+            "macOS",
+            "Linux",
+            "Android",
+            "iOS",
+            "64位 arm64-v8a",
+            "32位 armeabi-v7a",
+            "x86_64",
+            "通用版 universal",
+            "Apple M 芯片",
+            "Intel 芯片",
+            "便携版（无需安装）",
+            "APP 压缩包",
+        ):
+            self.assertIn(label, notes)
+        windows_installer = notes.split("#### 安装包（推荐）", 1)[1].split(
+            "#### 便携版（无需安装）", 1
+        )[0]
+        self.assertNotIn("portable.exe", windows_installer)
+        macos_guide = notes.split("### 🍎 macOS", 1)[1].split(
+            "### 🐧 Linux", 1
+        )[0]
+        self.assertIn("darwin-aarch64.zip", macos_guide)
+        self.assertIn("darwin-x64.zip", macos_guide)
+        rerun = MODULE.append_finalizer(notes, appendix.replace("下载时以本区块为准", "重跑已刷新"))
+        self.assertEqual(rerun.count(MODULE.FINALIZER_START), 1)
+        self.assertIn("重跑已刷新", rerun)
 
     def test_formal_publication_sets_make_latest_true(self):
         captured = {}

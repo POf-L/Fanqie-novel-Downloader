@@ -21,7 +21,7 @@ on:
         default: false
         type: boolean
       publish_unsigned_release:
-        description: "发布无签名正式 Release（普通 Release，不生成 updater；请同时将 publish_release 设为 true）"
+        description: "发布无厂商/系统签名正式 Release（仍生成加密校验的 updater；请同时将 publish_release 设为 true）"
         required: true
         default: false
         type: boolean
@@ -78,6 +78,7 @@ jobs:
       ios_signing: ${{ steps.secrets.outputs.ios_signing }}
       macos_signing: ${{ steps.secrets.outputs.macos_signing }}
       unsigned_mode: ${{ steps.secrets.outputs.unsigned_mode }}
+      update_channel: ${{ steps.secrets.outputs.update_channel }}
     steps:
       - name: Validate private source token
         env:
@@ -346,8 +347,13 @@ jobs:
             unsigned_mode=true
           fi
           create_updater_artifacts="${updater}"
+          update_channel=stable
           if [[ "${unsigned_mode}" == "true" ]]; then
-            create_updater_artifacts=false
+            update_channel=unsigned
+            if [[ "${updater}" != "true" ]]; then
+              echo "Unsigned releases require TAURI_SIGNING_PRIVATE_KEY so updates remain cryptographically verified."
+              exit 1
+            fi
           fi
 
           {
@@ -357,6 +363,7 @@ jobs:
             echo "ios_signing=${ios}"
             echo "macos_signing=${macos}"
             echo "unsigned_mode=${unsigned_mode}"
+            echo "update_channel=${update_channel}"
           } >> "${GITHUB_OUTPUT}"
 
           # Signing is opportunistic.  Every selected platform must still produce
@@ -538,17 +545,16 @@ jobs:
           ]
           if unsigned:
               channel_notice = (
-                  "这是 GitHub Latest 中供手动下载的普通 Release，不会进入稳定版自动更新通道；"
-                  "自动更新仍通过 `stable/latest.json` 读取签名版本，不会使用本 Release；本 Release 不会生成或上传 `latest.json`。"
+                  "这是 GitHub Latest 中供手动下载的普通 Release，同时会把由项目 updater 密钥签名的元数据发布到 `unsigned/latest.json`。"
                   if unsigned_release
                   else
-                  "这是独立的 GitHub prerelease，不会替代稳定版，也不会生成或上传 `latest.json`。"
+                  "这是独立的 GitHub prerelease，不会替代稳定版；无签名客户端通过独立的 `unsigned/latest.json` 通道更新。"
               )
               warning = (
-                  "**未签名版本，不支持自动更新。**"
+                  "**未含厂商/系统签名，但支持经过 Minisign 校验的应用内更新。**"
                   if unsigned_release
                   else
-                  "**未签名版本，仅供测试，不支持自动更新。**"
+                  "**未签名测试版本；更新包仍由项目 updater 密钥校验。**"
               )
               lines += [
                   f"> {warning}",
@@ -821,6 +827,7 @@ jobs:
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
+          UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
           APPLE_SIGNING_IDENTITY: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: |
           import json
@@ -835,8 +842,19 @@ jobs:
           identity = os.environ.get("APPLE_SIGNING_IDENTITY", "").strip()
           if identity:
               bundle["macOS"] = {"signingIdentity": identity}
+          endpoint = (
+              "https://github.com/POf-L/Fanqie-novel-Downloader/releases/download/"
+              f"{os.environ['UPDATE_CHANNEL']}/latest.json"
+          )
           path.write_text(
-              json.dumps({"version": os.environ["APP_VERSION"], "bundle": bundle}, ensure_ascii=False),
+              json.dumps(
+                  {
+                      "version": os.environ["APP_VERSION"],
+                      "bundle": bundle,
+                      "plugins": {"updater": {"endpoints": [endpoint]}},
+                  },
+                  ensure_ascii=False,
+              ),
               encoding="utf-8",
           )
 
@@ -883,8 +901,9 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          FANQIE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
         with:
           projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
           args: >-
@@ -892,14 +911,13 @@ jobs:
             --bundles ${{ matrix.bundles }}
             --config src-tauri/tauri.release.conf.json
           uploadWorkflowArtifacts: true
-          uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}
-          uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}
+          uploadUpdaterJson: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
+          uploadUpdaterSignatures: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
           workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-[bundle]
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
-          # Unsigned builds upload a deliberately filtered set below.  Leaving
-          # tagName empty prevents tauri-action from publishing its generated
-          # updater archives (notably macOS .app.tar.gz).
-          tagName: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
+          # User installers may have no OS/vendor signature, but updater assets
+          # are still signed by the dedicated Tauri key and uploaded to the draft.
+          tagName: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || '' }}
           releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
           releaseBody: Rust + Tauri v2 全平台正式构建。
           releaseDraft: true
@@ -1214,6 +1232,7 @@ jobs:
         env:
           APP_VERSION: ${{ needs.prepare.outputs.version }}
           CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
+          UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
           APPLE_SIGNING_IDENTITY: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: |
           import json
@@ -1228,8 +1247,19 @@ jobs:
           identity = os.environ.get("APPLE_SIGNING_IDENTITY", "").strip()
           if identity:
               bundle["macOS"] = {"signingIdentity": identity}
+          endpoint = (
+              "https://github.com/POf-L/Fanqie-novel-Downloader/releases/download/"
+              f"{os.environ['UPDATE_CHANNEL']}/latest.json"
+          )
           path.write_text(
-              json.dumps({"version": os.environ["APP_VERSION"], "bundle": bundle}, ensure_ascii=False),
+              json.dumps(
+                  {
+                      "version": os.environ["APP_VERSION"],
+                      "bundle": bundle,
+                      "plugins": {"updater": {"endpoints": [endpoint]}},
+                  },
+                  ensure_ascii=False,
+              ),
               encoding="utf-8",
           )
 
@@ -1277,8 +1307,9 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          FANQIE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
         with:
           projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
           args: >-
@@ -1286,14 +1317,13 @@ jobs:
             --bundles ${{ matrix.bundles }}
             --config src-tauri/tauri.release.conf.json
           uploadWorkflowArtifacts: true
-          uploadUpdaterJson: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}
-          uploadUpdaterSignatures: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release }}
+          uploadUpdaterJson: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
+          uploadUpdaterSignatures: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
           workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-fallback-[bundle]
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
-          # Unsigned builds upload a deliberately filtered set below.  Leaving
-          # tagName empty prevents tauri-action from publishing its generated
-          # updater archives (notably macOS .app.tar.gz).
-          tagName: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && inputs.publish_release && needs.prepare.outputs.tag_name || '' }}
+          # User installers may have no OS/vendor signature, but updater assets
+          # are still signed by the dedicated Tauri key and uploaded to the draft.
+          tagName: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || '' }}
           releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
           releaseBody: Rust + Tauri v2 全平台正式构建（含稀缺 runner 交叉回退）。
           releaseDraft: true
@@ -1533,16 +1563,16 @@ jobs:
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
-          FANQIE_ANDROID_KEY_ALIAS: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.ANDROID_KEY_ALIAS || '' }}
-          FANQIE_ANDROID_KEYSTORE_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
-          FANQIE_ANDROID_KEY_PASSWORD: ${{ !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && secrets.ANDROID_KEY_PASSWORD || '' }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          FANQIE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          FANQIE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FANQIE_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x scripts/ci-ensure-android-signing.sh
           ./scripts/ci-ensure-android-signing.sh
 
       - name: Require official signing for published Android release
-        if: inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release && steps.signing.outputs.mode != 'release-secret'
+        if: inputs.publish_release == true && steps.signing.outputs.mode != 'release-secret'
         run: |
           echo "Publishing Android requires ANDROID_KEYSTORE_BASE64 and related secrets."
           exit 1
@@ -1551,6 +1581,7 @@ jobs:
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.ANDROID_NDK_VERSION }}
+          FANQIE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
         run: |
           set -euo pipefail
           # Gradle splits.abi produces three small single-ABI APKs plus a
@@ -1703,6 +1734,8 @@ jobs:
       - name: Build unsigned iOS IPA
         if: inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true || needs.prepare.outputs.ios_signing != 'true'
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        env:
+          FANQIE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
         run: >-
           cargo tauri ios build
           --target aarch64
@@ -1714,6 +1747,7 @@ jobs:
         if: inputs.publish_unsigned_prerelease == false && inputs.publish_unsigned_release == false && needs.prepare.outputs.ios_signing == 'true'
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         env:
+          FANQIE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
           IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}

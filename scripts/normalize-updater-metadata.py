@@ -15,6 +15,14 @@ from urllib.parse import quote, unquote, urlparse
 API_ASSET_RE = re.compile(r"/releases/assets/(\d+)(?:/|$)")
 
 
+def release_version_for_tag(tag: str) -> str:
+    value = tag.strip()
+    unsigned = re.fullmatch(r"unsigned-v(.+)-r[1-9][0-9]*", value)
+    if unsigned:
+        return unsigned.group(1)
+    return value.removeprefix("v")
+
+
 def read_json(path: Path) -> object:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -183,7 +191,7 @@ def main() -> int:
         by_id,
         by_name,
         prefix,
-        args.tag.removeprefix("v"),
+        release_version_for_tag(args.tag),
         check=args.check,
     )
     if not args.check and changed:

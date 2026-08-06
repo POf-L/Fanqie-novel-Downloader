@@ -133,7 +133,7 @@ class PrepareReleaseArtifactsTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         notes = notes_path.read_text(encoding="utf-8")
-        self.assertIn("未签名、未公证的预发布包", notes)
+        self.assertIn("未签名、未公证的侧载包", notes)
         self.assertIn("使用发布密钥签名并经 `apksigner` 验证", notes)
         self.assertIn("无 Apple 签名侧载模式", notes)
         self.assertIn("这是 prerelease", notes)

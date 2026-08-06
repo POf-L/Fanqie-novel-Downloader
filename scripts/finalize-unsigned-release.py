@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -16,6 +17,8 @@ from urllib.parse import quote
 
 
 MANIFEST_NAME = "SHA256SUMS-unsigned.txt"
+FINALIZER_START = "<!-- fanqie:unsigned-finalizer:start -->"
+FINALIZER_END = "<!-- fanqie:unsigned-finalizer:end -->"
 DIGEST_RE = re.compile(r"sha256:([0-9a-f]{64})\Z")
 FORBIDDEN_EXACT = {"latest.json", "sha256sums-release.txt"}
 FORBIDDEN_SUFFIXES = (
@@ -266,6 +269,44 @@ def is_updater_asset(name: str) -> bool:
     return lowered in FORBIDDEN_EXACT or lowered.endswith(FORBIDDEN_SUFFIXES)
 
 
+def has_updater_metadata(release: dict) -> bool:
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        return False
+    names = {
+        str(asset.get("name") or "").lower()
+        for asset in assets
+        if isinstance(asset, dict)
+    }
+    return "latest.json" in names and any(name.endswith(".sig") for name in names)
+
+
+def validate_updater_metadata(release: dict) -> None:
+    if not has_updater_metadata(release):
+        fail("unsigned release updater metadata is incomplete")
+    names = {
+        str(asset.get("name") or "")
+        for asset in release.get("assets", [])
+        if isinstance(asset, dict)
+    }
+    signatures = [name for name in names if name.lower().endswith(".sig")]
+    for signature in signatures:
+        if signature[:-4] not in names:
+            fail(f"updater signature has no matching payload asset: {signature}")
+
+    metadata_asset = next(
+        (
+            asset
+            for asset in release.get("assets", [])
+            if isinstance(asset, dict)
+            and str(asset.get("name") or "").lower() == "latest.json"
+        ),
+        None,
+    )
+    if metadata_asset is None:
+        fail("unsigned release updater metadata is incomplete")
+
+
 def require_asset(
     names: list[str], label: str, *needles: str, suffix: str | None = None
 ) -> None:
@@ -286,12 +327,18 @@ def selected_platforms(value: str) -> set[str]:
     return selected
 
 
-def validate_assets(release: dict, platforms: str) -> tuple[list[dict], list[str]]:
+def validate_assets(
+    release: dict, platforms: str, *, allow_updater: bool = False
+) -> tuple[list[dict], list[str]]:
     payload = payload_assets(release)
     names = [str(asset["name"]) for asset in payload]
-    forbidden = sorted(name for name in names if is_updater_asset(name))
+    forbidden = sorted(
+        name for name in names if is_updater_asset(name) and not allow_updater
+    )
     if forbidden:
         fail("unsigned release contains updater assets: " + ", ".join(forbidden))
+    if allow_updater:
+        validate_updater_metadata(release)
     internal_cli = sorted(name for name in names if CLI_ASSET_RE.search(name))
     if internal_cli:
         fail(
@@ -380,6 +427,58 @@ def verify_manifest_asset(release: dict, path: Path) -> None:
         fail("published unsigned manifest digest does not match local content")
 
 
+def normalize_unsigned_updater_metadata(
+    *, repo: str, tag: str, release: dict, work_dir: Path
+) -> bool:
+    """Normalize Tauri's draft URLs before the manifest is generated."""
+    if not has_updater_metadata(release):
+        return False
+    metadata_path = work_dir / "latest.json"
+    run(
+        [
+            "gh",
+            "release",
+            "download",
+            tag,
+            "--repo",
+            repo,
+            "--pattern",
+            "latest.json",
+            "--dir",
+            str(work_dir),
+            "--clobber",
+        ]
+    )
+    normalizer = Path(__file__).with_name("normalize-updater-metadata.py")
+    run(
+        [
+            sys.executable,
+            str(normalizer),
+            "--metadata",
+            str(metadata_path),
+            "--assets",
+            str(work_dir / "release.json"),
+            "--repo",
+            repo,
+            "--tag",
+            tag,
+        ]
+    )
+    run(
+        [
+            "gh",
+            "release",
+            "upload",
+            tag,
+            str(metadata_path),
+            "--repo",
+            repo,
+            "--clobber",
+        ]
+    )
+    return True
+
+
 def normalized_highlights(path: Path | None) -> list[str]:
     if path is None:
         return []
@@ -407,87 +506,129 @@ def public_url(repo: str, tag: str, name: str) -> str:
     )
 
 
-def generate_notes(
+def generate_full_notes(
     *,
+    release: dict,
     repo: str,
     tag: str,
     version: str,
     source_ref: str,
     source_commit: str,
     platforms: str,
-    stable_tag: str,
-    installers: list[str],
     mode: str,
     highlights: list[str],
 ) -> str:
-    formal = mode == "formal"
-    title = (
-        f"番茄小说下载器未签名版 {version}"
-        if formal
-        else f"番茄小说下载器未签名测试版 {version}"
-    )
-    warning = (
-        "> **未签名版本，不支持自动更新。**"
-        if formal
-        else "> **未签名版本，仅供测试，不支持自动更新。**"
-    )
-    channel = (
-        "这是 GitHub Latest 中供手动下载的普通 Release，但不会成为自动更新来源；"
-        "自动更新仍通过 `stable` 元数据别名读取签名版本。"
-        if formal
-        else "这是独立的 GitHub prerelease，不会替代稳定版，也不会生成、上传或修改 `latest.json`。"
-    )
-    lines = [
-        f"## {title}",
-        "",
-        warning,
-        "",
-        f"{channel} 请从本页 Assets 手动下载，并在安装前核对 SHA-256。",
-        "",
-        "## 下载与校验",
-        "",
-        f"- [SHA-256 校验清单]({public_url(repo, tag, MANIFEST_NAME)})",
-        "- 其余安装包请在本页 Assets 中按操作系统和 CPU 架构选择。",
-    ]
-    if highlights:
-        lines += ["", "## 本次修复", "", *highlights]
+    """Use the same asset-aware renderer as signed releases.
 
-    selected = selected_platforms(platforms)
-    lines += ["", "## 安装限制", ""]
-    if any(value.startswith("windows-") for value in selected):
-        lines.append(
-            "- **Windows**：安装包没有 Authenticode 签名，系统显示“未知发布者”或 SmartScreen 警告属于预期；核对 SHA-256 后再手动运行。"
-        )
-    if any(value.startswith("macos-") for value in selected):
-        lines.append(
-            "- **macOS**：APP 未经 Developer ID 签名或 Apple 公证，首次打开会触发 Gatekeeper；请在“系统设置 → 隐私与安全性”中确认“仍要打开”，不要全局关闭 Gatekeeper。"
-        )
-    if any(value.startswith("linux-") for value in selected):
-        lines.append(
-            "- **Linux**：DEB / AppImage 不带项目级发行商签名；AppImage 需要手动添加执行权限。"
-        )
-    if "android" in selected:
-        lines.append(
-            "- **Android**：APK/AAB 使用本次 CI 生成的一次性测试证书以保证可安装；不同运行的证书不一致，升级前可能需要卸载旧测试版。"
-        )
-    if "ios" in selected:
-        lines.append(
-            "- **iOS**：IPA 未经 Apple 签名，只能使用 AltStore、Sideloadly 或 TrollStore 等工具侧载。"
-        )
-    lines += [
-        "- **自动更新**：本版本没有 updater 签名和 `latest.json`，只能手动下载覆盖安装。",
-        "",
-        "## 构建信息",
-        "",
-        f"- Tag：`{tag}`",
-        f"- 源码引用：`{source_ref}`",
-        f"- 源码提交：`{source_commit}`",
-        f"- 构建平台：{platforms}",
-        f"- 当前稳定更新通道：`{stable_tag or '尚无稳定版'}`（桌面 updater 使用 `stable/latest.json`）",
-        f"- 可下载安装包数量：{len(installers)}",
-        "",
-    ]
-    return "\n".join(lines)
+    The old unsigned finalizer had a second short template which overwrote the
+    draft's device/architecture guide.  Loading the shared renderer here keeps
+    the published body in sync with the actual assets.
+    """
+    preparer_path = Path(__file__).with_name("prepare-release-artifacts.py")
+    spec = importlib.util.spec_from_file_location(
+        "fanqie_prepare_release_artifacts", preparer_path
+    )
+    if spec is None or spec.loader is None:
+        fail(f"cannot load shared release notes renderer: {preparer_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.generate_notes(
+        release,
+        repo=repo,
+        tag=tag,
+        version=version,
+        source_ref=source_ref,
+        source_commit=source_commit,
+        platforms=platforms,
+        highlights=highlights,
+        channel="unsigned",
+        manifest_name=MANIFEST_NAME,
+        updater_available=has_updater_metadata(release),
+    )
+
+
+def generate_finalizer_appendix(
+    *,
+    release: dict,
+    repo: str,
+    tag: str,
+    version: str,
+    source_ref: str,
+    source_commit: str,
+    platforms: str,
+    mode: str,
+    highlights: list[str],
+) -> str:
+    rendered = generate_full_notes(
+        release=release,
+        repo=repo,
+        tag=tag,
+        version=version,
+        source_ref=source_ref,
+        source_commit=source_commit,
+        platforms=platforms,
+        mode=mode,
+        highlights=highlights,
+    )
+    guide_start = rendered.find("## 平台状态与安装限制")
+    guide_end = rendered.find("\n---\n\n### ❓ 常见问题", guide_start)
+    if guide_start < 0 or guide_end < 0:
+        fail("shared release renderer did not produce the device guide")
+    device_guide = rendered[guide_start:guide_end].rstrip()
+    updater_available = has_updater_metadata(release)
+    update_line = (
+        f"- 无签名自动更新元数据：[latest.json]({public_url(repo, tag, 'latest.json')})；"
+        "客户端通过固定 `unsigned/latest.json` 别名读取，并使用项目 updater 公钥验签。"
+        if updater_available
+        else "- 这个历史版本没有 updater 元数据，只能手动覆盖安装；后续无签名构建会使用独立的 `unsigned` 更新通道。"
+    )
+    installer_count = len(
+        validate_assets(release, platforms, allow_updater=updater_available)[1]
+    )
+    return "\n".join(
+        [
+            FINALIZER_START,
+            "---",
+            "",
+            "## 无签名 Release Finalizer",
+            "",
+            "> 构建与附件校验已经完成。以下设备/架构链接由无签名专用 finalizer "
+            "根据本 Release 的实际 Assets 追加生成；下载时以本区块为准。",
+            "",
+            device_guide,
+            "",
+            "## 校验与更新通道",
+            "",
+            f"- [SHA-256 完整清单]({public_url(repo, tag, MANIFEST_NAME)})",
+            update_line,
+            "- 无签名指 Windows Authenticode、macOS Developer ID/公证和 iOS Apple 签名；"
+            "若提供 updater 元数据，更新包本身仍必须通过独立的 Minisign 签名校验。",
+            "",
+            "## Finalizer 构建信息",
+            "",
+            f"- 版本：`{version}`",
+            f"- Tag：`{tag}`",
+            f"- 源码引用：`{source_ref}`",
+            f"- 源码提交：`{source_commit}`",
+            f"- 构建平台：{platforms}",
+            f"- 可下载安装包数量：{installer_count}",
+            "",
+            FINALIZER_END,
+        ]
+    )
+
+
+def append_finalizer(body: str, appendix: str) -> str:
+    """Append the unsigned managed block without replacing the Draft body."""
+    body = body.rstrip()
+    start = body.find(FINALIZER_START)
+    end = body.find(FINALIZER_END, start + len(FINALIZER_START)) if start >= 0 else -1
+    if start >= 0:
+        if end < 0:
+            fail("release body contains an incomplete unsigned finalizer block")
+        end += len(FINALIZER_END)
+        body = (body[:start].rstrip() + "\n\n" + body[end:].lstrip()).rstrip()
+    return f"{body}\n\n{appendix.rstrip()}\n" if body else f"{appendix.rstrip()}\n"
 
 
 def verify_published_urls(release: dict, repo: str, tag: str) -> None:
@@ -574,7 +715,7 @@ def append_summary(
             f"- Source commit: `{source_commit}`\n"
             f"- Assets: `{len(release.get('assets', []))}`\n"
             f"- Prerelease: `{str(bool(release.get('prerelease'))).lower()}`\n"
-            "- Updater metadata: `false`\n"
+            f"- Updater metadata: `{str(has_updater_metadata(release)).lower()}`\n"
             f"- Stable source preserved: `{stable_tag or 'none'}`\n"
         )
 
@@ -645,20 +786,30 @@ def main() -> int:
     source_ref = release_field(args.source_ref, release, "源码引用")
     source_commit = release_field(args.source_commit, release, "源码提交")
     platforms = release_field(args.platforms, release, "计划平台")
-    assets, installers = validate_assets(release, platforms)
+    updater_available = normalize_unsigned_updater_metadata(
+        repo=repo,
+        tag=tag,
+        release=release,
+        work_dir=work_dir,
+    )
+    if updater_available:
+        release = fetch_release(repo, database_id, release_path)
+    assets, installers = validate_assets(
+        release, platforms, allow_updater=updater_available
+    )
     write_manifest(assets, manifest_path)
-    notes = generate_notes(
+    appendix = generate_finalizer_appendix(
+        release=release,
         repo=repo,
         tag=tag,
         version=version,
         source_ref=source_ref,
         source_commit=source_commit,
         platforms=platforms,
-        stable_tag=stable_before,
-        installers=installers,
         mode=args.mode,
         highlights=normalized_highlights(args.highlights_file),
     )
+    notes = append_finalizer(str(release.get("body") or ""), appendix)
 
     run(
         [
@@ -673,7 +824,7 @@ def main() -> int:
         ]
     )
     release = fetch_release(repo, database_id, release_path)
-    validate_assets(release, platforms)
+    validate_assets(release, platforms, allow_updater=updater_available)
     title = (
         f"番茄小说下载器 未签名版 {version}"
         if args.mode == "formal"
@@ -693,12 +844,29 @@ def main() -> int:
         fail("unsigned release is still a draft after publication")
     if bool(published.get("prerelease")) != expected_prerelease:
         fail("unsigned release changed prerelease state during publication")
-    validate_assets(published, platforms)
+    validate_assets(published, platforms, allow_updater=updater_available)
     verify_manifest_asset(published, manifest_path)
     verify_published_urls(published, repo, tag)
     if source_commit not in str(published.get("body") or ""):
         fail("published release notes do not contain the source commit")
     observed_latest = wait_for_latest_tag(repo, tag) if args.mode == "formal" else ""
+    if updater_available and args.mode == "formal":
+        unsigned_publisher = Path(__file__).with_name("publish-unsigned-channel.py")
+        unsigned_dir = Path(os.environ.get("RUNNER_TEMP", str(work_dir.parent))) / (
+            "unsigned-channel-check"
+        )
+        run(
+            [
+                sys.executable,
+                str(unsigned_publisher),
+                "--repo",
+                repo,
+                "--source-tag",
+                tag,
+                "--work-dir",
+                str(unsigned_dir),
+            ]
+        )
     stable_after = stable_source_tag(repo)
     if stable_after != stable_before:
         fail(

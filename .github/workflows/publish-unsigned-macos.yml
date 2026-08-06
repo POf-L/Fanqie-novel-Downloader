@@ -165,6 +165,8 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
+          # sed 正则中的行尾锚点是字面量，不需要 shell 展开。
+          # shellcheck disable=SC2016
           stable_tag="$(gh api "repos/${GH_REPO}/releases/tags/stable" --jq '.body' | sed -n 's/^- 稳定源 Release：`\([^`]*\)`.*/\1/p' | head -n 1)"
           test -n "${stable_tag}"
           echo "stable_tag=${stable_tag}" >> "${GITHUB_OUTPUT}"
@@ -488,6 +490,8 @@ jobs:
             FanqieNovelDownloader-macos-x64-unsigned.zip \
             SHA256SUMS-macos-unsigned.txt | sort)"
           diff -u <(printf '%s\n' "${expected}") <(printf '%s\n' "${assets}")
+          # sed 正则中的行尾锚点是字面量，不需要 shell 展开。
+          # shellcheck disable=SC2016
           stable_source="$(gh api "repos/${GH_REPO}/releases/tags/stable" --jq '.body' | sed -n 's/^- 稳定源 Release：`\([^`]*\)`.*/\1/p' | head -n 1)"
           test "${stable_source}" = "${STABLE_TAG}"
 

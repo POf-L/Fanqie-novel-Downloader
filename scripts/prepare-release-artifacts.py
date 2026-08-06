@@ -19,6 +19,7 @@ CONTROL_ASSETS = {
     "SHA256SUMS-android.txt",
     "SHA256SUMS-ios.txt",
     "SIGNING.txt",
+    "SHA256SUMS-unsigned.txt",
 }
 INSTALLER_SUFFIXES = (
     ".aab",
@@ -29,6 +30,12 @@ INSTALLER_SUFFIXES = (
     ".exe",
     ".ipa",
     ".msi",
+)
+UPDATER_ARCHIVE_SUFFIXES = (
+    ".app.tar.gz",
+    ".appimage.tar.gz",
+    ".msi.zip",
+    ".nsis.zip",
 )
 SHA256_RE = re.compile(r"sha256:([0-9a-f]{64})\Z")
 MANIFEST_LINE_RE = re.compile(r"([0-9a-f]{64}) [ *](.+)\Z")
@@ -218,11 +225,15 @@ def platform_status_lines(
     android_aab: list[str],
     ios_ipa: list[str],
     prerelease: bool,
+    channel: str = "signed",
+    updater_available: bool = False,
 ) -> list[str]:
     """Explain install/signing limits from the assets actually published."""
 
     mac_assets = mac_arm + mac_x64
-    mac_unsigned = any("unsigned" in name.lower() for name in mac_assets)
+    mac_unsigned = channel == "unsigned" or any(
+        "unsigned" in name.lower() for name in mac_assets
+    )
     android_assets = (
         android_arm64
         + android_v7
@@ -239,21 +250,37 @@ def platform_status_lines(
     ]
 
     if win_x64 or win_arm:
-        lines.append(
-            "- **Windows**：提供 NSIS 安装包。当前公开流水线未配置 Authenticode "
-            "证书，SmartScreen 或“无法验证发行商”提示属于预期；先核对 SHA-256，"
-            "再在文件属性中选择“解除锁定”。"
-        )
+        if channel == "unsigned":
+            update_hint = (
+                " updater 包和元数据仍由项目更新密钥校验，因此可以在应用内更新。"
+                if updater_available
+                else "当前构建没有 updater 元数据，只能手动覆盖安装。"
+            )
+            lines.append(
+                "- **Windows**：提供未含 Authenticode 的 NSIS 安装包。SmartScreen 或"
+                f"“未知发布者”或“无法验证发行商”提示属于预期；先核对 SHA-256，再在文件属性中选择“解除锁定”。{update_hint}"
+            )
+        else:
+            lines.append(
+                "- **Windows**：提供 NSIS 安装包。当前公开流水线未配置 Authenticode "
+                "证书，SmartScreen、“未知发布者”或“无法验证发行商”提示属于预期；先核对 SHA-256，"
+                "再在文件属性中选择“解除锁定”。"
+            )
     else:
         lines.append(
             "- **Windows**：本版本未提供安装包；不要把其他架构或旧版本当作替代品。"
         )
 
     if mac_unsigned:
+        update_hint = (
+            " updater 包仍使用项目更新密钥校验，可以在应用内更新。"
+            if channel == "unsigned" and updater_available
+            else "未签名包没有可用的应用内更新元数据。"
+        )
         lines.append(
-            "- **macOS**：本版本包明确标注为未签名、未公证的预发布包。按 Intel "
+            "- **macOS**：本版本包明确标注为未签名、未公证的侧载包。按 Intel "
             "或 Apple Silicon 选择架构，首次打开请在“系统设置 → 隐私与安全性”"
-            "中确认“仍要打开”；不要全局关闭 Gatekeeper，也不要依赖本包的一键更新。"
+            f"中确认“仍要打开”；不要全局关闭 Gatekeeper。{update_hint}"
         )
     elif mac_assets:
         lines.append(
@@ -281,7 +308,13 @@ def platform_status_lines(
         lines.append("- **Linux**：本版本未提供安装包。")
 
     if android_assets:
-        if "SIGNING.txt" in asset_names:
+        if channel == "unsigned":
+            lines.append(
+                "- **Android**：APK 仍必须带 Android 安装签名；本页 `SIGNING.txt` "
+                "记录实际签名模式。只有新旧版本使用同一 keystore 时才能覆盖升级，"
+                "证书不同则需要先卸载旧版。"
+            )
+        elif "SIGNING.txt" in asset_names:
             lines.append(
                 "- **Android**：APK/AAB 使用发布密钥签名并经 `apksigner` 验证；"
                 "安装 APK 仍需在系统设置中允许该来源安装应用。"
@@ -306,7 +339,18 @@ def platform_status_lines(
             "- **iOS**：本版本未提供 IPA；没有 Apple 签名和对应构建产物时不会伪装成可安装包。"
         )
 
-    if prerelease:
+    if channel == "unsigned" and updater_available:
+        lines.append(
+            "- **自动更新**：这是无厂商/系统签名的构建，但桌面 updater 使用独立的 "
+            "Minisign 密钥签名 \u0060latest.json\u0060 和更新包；客户端会从 \u0060unsigned/latest.json\u0060 "
+            "读取并验证，不能把普通 GitHub Latest 当作未校验的更新源。"
+        )
+    elif channel == "unsigned":
+        lines.append(
+            "- **自动更新**：这个历史无签名版本没有 `latest.json` / updater 签名，"
+            "因此只能手动覆盖安装；新流水线会为后续无签名版本生成并发布可验证的更新元数据。"
+        )
+    elif prerelease:
         lines.append(
             "- **自动更新**：这是 prerelease，不会成为 GitHub 稳定版 `latest`；"
             "未签名或没有 updater 签名的附件请手动下载并覆盖安装。"
@@ -329,14 +373,27 @@ def generate_notes(
     source_commit: str,
     platforms: str,
     highlights: list[str],
+    channel: str = "signed",
+    manifest_name: str = MANIFEST_NAME,
+    updater_available: bool = False,
 ) -> str:
     names = sorted(assets_by_name(release))
     installers = [
         name
         for name in names
-        if name not in CONTROL_ASSETS
+        if name not in (CONTROL_ASSETS | {manifest_name})
         and not name.lower().endswith(".sig")
-        and name.lower().endswith(INSTALLER_SUFFIXES)
+        and not name.lower().endswith(UPDATER_ARCHIVE_SUFFIXES)
+        and (
+            name.lower().endswith(INSTALLER_SUFFIXES)
+            or (
+                name.lower().endswith(".zip")
+                and (
+                    "darwin-aarch64" in name.lower()
+                    or "darwin-x64" in name.lower()
+                )
+            )
+        )
     ]
     if not installers:
         fail("release does not contain any downloadable installer assets")
@@ -351,8 +408,10 @@ def generate_notes(
                 result.append(name)
         return result
 
-    win_x64 = pick("windows-x64", suffix=".exe")
-    win_arm = pick("windows-arm64", suffix=".exe")
+    win_x64 = pick("windows-x64", "setup", suffix=".exe")
+    win_arm = pick("windows-arm64", "setup", suffix=".exe")
+    win_x64_portable = pick("windows-x64", "portable", suffix=".exe")
+    win_arm_portable = pick("windows-arm64", "portable", suffix=".exe")
     mac_arm = pick("darwin-aarch64", suffix=".dmg")
     mac_x64 = pick("darwin-x64", suffix=".dmg")
     linux_deb_x64 = pick("linux-amd64", suffix=".deb")
@@ -373,7 +432,7 @@ def generate_notes(
 
     asset_names = set(names)
     shipped = []
-    if win_x64 or win_arm:
+    if win_x64 or win_arm or win_x64_portable or win_arm_portable:
         shipped.append("Windows")
     if mac_arm or mac_x64:
         shipped.append("macOS")
@@ -392,16 +451,40 @@ def generate_notes(
     shipped_text = " / ".join(shipped) if shipped else "无"
 
     prerelease = bool(release.get("prerelease"))
-    lines = [
-        f"## {version}{'（测试预发布）' if prerelease else '（正式版）'}",
-        "",
-        "基于 **Rust + Tauri v2** 的番茄小说下载器。",
-        "",
-        "> 📱 **项目目标平台**：Windows / Linux / macOS / Android / iOS。",
-        f"> 📦 **本版本实际产出**：{shipped_text}。",
-        "> iOS 为无签名 IPA，需自行侧载，不上架 App Store。",
-    ]
-    if not prerelease:
+    if channel == "unsigned":
+        title = f"番茄小说下载器未签名版 {version}"
+        if prerelease:
+            title += "（测试预发布）"
+        lines = [
+            f"## {title}",
+            "",
+            "> **无厂商/系统签名版本**：Windows Authenticode、macOS Developer ID/公证和 "
+            "iOS Apple 签名不包含在本构建中；请先核对 SHA-256。",
+            "",
+            "基于 **Rust + Tauri v2** 的番茄小说下载器。",
+            "",
+            "> 📱 **项目目标平台**：Windows / Linux / macOS / Android / iOS。",
+            f"> 📦 **本版本实际产出**：{shipped_text}。",
+            "> iOS 为无签名 IPA，需自行侧载，不上架 App Store。",
+        ]
+        if prerelease:
+            lines.extend(
+                [
+                    "",
+                    "> 这是独立测试预发布；只有显式安装无签名通道的客户端才会检查它。",
+                ]
+            )
+    else:
+        lines = [
+            f"## {version}{'（测试预发布）' if prerelease else '（正式版）'}",
+            "",
+            "基于 **Rust + Tauri v2** 的番茄小说下载器。",
+            "",
+            "> 📱 **项目目标平台**：Windows / Linux / macOS / Android / iOS。",
+            f"> 📦 **本版本实际产出**：{shipped_text}。",
+            "> iOS 为无签名 IPA，需自行侧载，不上架 App Store。",
+        ]
+    if not prerelease and channel != "unsigned":
         lines.extend(
             [
                 ">",
@@ -415,8 +498,8 @@ def generate_notes(
         platform_status_lines(
             repo=repo,
             asset_names=asset_names,
-            win_x64=win_x64,
-            win_arm=win_arm,
+            win_x64=win_x64 + win_x64_portable,
+            win_arm=win_arm + win_arm_portable,
             mac_arm=mac_arm,
             mac_x64=mac_x64,
             linux_deb_x64=linux_deb_x64,
@@ -430,6 +513,8 @@ def generate_notes(
             android_aab=android_aab,
             ios_ipa=ios_ipa,
             prerelease=prerelease,
+            channel=channel,
+            updater_available=updater_available,
         )
     )
 
@@ -449,13 +534,33 @@ def generate_notes(
         lines.append(
             f"- {links(repo, tag, win_arm, {'arm64': 'ARM64（Surface / 骁龙本）'})}"
         )
+    if win_x64_portable or win_arm_portable:
+        lines.extend(["", "#### 便携版（无需安装）", ""])
+        if win_x64_portable:
+            lines.append(f"- {links(repo, tag, win_x64_portable, {'x64': '64位'})}")
+        if win_arm_portable:
+            lines.append(f"- {links(repo, tag, win_arm_portable, {'arm64': 'ARM64'})}")
     lines.extend(
         [
             "",
             "### 🍎 macOS",
             "",
+            "#### DMG 安装镜像（推荐）",
+            "",
             f"- {links(repo, tag, mac_arm, {'aarch64': 'Apple M 芯片（推荐）'})}",
             f"- {links(repo, tag, mac_x64, {'x64': 'Intel 芯片'})}",
+        ]
+    )
+    mac_arm_zip = pick("darwin-aarch64", suffix=".zip")
+    mac_x64_zip = pick("darwin-x64", suffix=".zip")
+    if mac_arm_zip or mac_x64_zip:
+        lines.extend(["", "#### APP 压缩包", ""])
+        if mac_arm_zip:
+            lines.append(f"- {links(repo, tag, mac_arm_zip, {'aarch64': 'Apple Silicon'})}")
+        if mac_x64_zip:
+            lines.append(f"- {links(repo, tag, mac_x64_zip, {'x64': 'Intel'})}")
+    lines.extend(
+        [
             "",
             "### 🐧 Linux",
             "",
@@ -530,7 +635,7 @@ def generate_notes(
             "- **Linux DEB 打不开**：先安装 `libwebkit2gtk-4.1`（Ubuntu/Debian）。",
             "- **Android 安装被拦截**：系统设置中允许「安装未知来源应用」。",
             "- **iOS 如何安装**：下载无签名 IPA，用 AltStore / Sideloadly / TrollStore 等工具侧载；不支持 App Store。",
-            "- **软件内更新失败**：可手动下载本页对应平台安装包覆盖安装。",
+            "- **软件内更新失败**：可手动下载本页对应平台安装包覆盖安装；无签名通道也可先检查 \u0060unsigned/latest.json\u0060 是否可访问。",
             "",
             "### 💎 支持与推广",
             "",
@@ -552,7 +657,8 @@ def generate_notes(
             "",
             f"- 版本：`{version}`",
             f"- Tag：`{tag}`",
-            f"- 类型：{'测试预发布（Pre-release）' if prerelease else '正式稳定版'}",
+             f"- 类型：{'测试预发布（Pre-release）' if prerelease else '正式稳定版'}",
+             f"- 更新通道：\u0060{'unsigned' if channel == 'unsigned' else 'stable'}\u0060",
             f"- 源码引用：`{source_ref}`",
             f"- 源码提交：`{source_commit}`",
             f"- 构建平台：{platforms}",
@@ -585,6 +691,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--highlights-file", type=Path)
     parser.add_argument("--notes", type=Path)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--channel", choices=("signed", "unsigned"), default="signed")
+    parser.add_argument("--manifest-name", default=MANIFEST_NAME)
+    parser.add_argument("--updater-available", action="store_true")
     parser.add_argument("--check", action="store_true")
     return parser.parse_args()
 
@@ -617,6 +726,9 @@ def main() -> int:
         source_commit=source_commit,
         platforms=platforms,
         highlights=normalized_highlights(args.highlights_file),
+        channel=args.channel,
+        manifest_name=args.manifest_name,
+        updater_available=args.updater_available,
     )
     atomic_write(args.notes, notes)
     print(
