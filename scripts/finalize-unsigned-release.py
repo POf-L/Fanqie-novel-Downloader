@@ -538,7 +538,9 @@ def publish_release(
             "body": notes,
             "draft": False,
             "prerelease": False,
-            "make_latest": True,
+            # GitHub's REST release API declares make_latest as a string
+            # enum ("true", "false", or "legacy"), not a JSON boolean.
+            "make_latest": "true",
         },
         ensure_ascii=False,
     )

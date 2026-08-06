@@ -261,7 +261,9 @@ def upsert_alias(
             "body": body,
             "draft": False,
             "prerelease": True,
-            "make_latest": False,
+            # GitHub's REST release API declares make_latest as a string
+            # enum ("true", "false", or "legacy"), not a JSON boolean.
+            "make_latest": "false",
         },
         ensure_ascii=False,
     )
@@ -298,7 +300,7 @@ def upsert_alias(
                     "body": body,
                     "draft": False,
                     "prerelease": True,
-                    "make_latest": False,
+                    "make_latest": "false",
                 },
                 ensure_ascii=False,
             ),

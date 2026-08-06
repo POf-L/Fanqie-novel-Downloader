@@ -101,7 +101,7 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
                 mode="formal",
             )
 
-        self.assertEqual(captured["payload"]["make_latest"], True)
+        self.assertEqual(captured["payload"]["make_latest"], "true")
         self.assertEqual(captured["payload"]["prerelease"], False)
         self.assertEqual(captured["payload"]["draft"], False)
         self.assertEqual(captured["arguments"][-2:], ["--input", "-"])

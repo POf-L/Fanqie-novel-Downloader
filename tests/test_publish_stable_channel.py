@@ -116,7 +116,7 @@ class PublishStableChannelTest(unittest.TestCase):
         self.assertEqual(alias["tag_name"], "stable")
         payload = captured[0][1]
         self.assertEqual(payload["prerelease"], True)
-        self.assertEqual(payload["make_latest"], False)
+        self.assertEqual(payload["make_latest"], "false")
         self.assertEqual(payload["draft"], False)
 
     def test_endpoint_url_uses_alias_only_for_metadata(self):

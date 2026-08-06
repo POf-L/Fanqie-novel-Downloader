@@ -234,7 +234,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn(
             "publish_unsigned_release requires publish_release=true.", self.workflow
         )
-        self.assertIn('"make_latest": True', self.unsigned_finalizer)
+        self.assertIn('"make_latest": "true"', self.unsigned_finalizer)
         self.assertIn('published.get("prerelease")', self.unsigned_finalizer)
         self.assertIn("inputs.publish_unsigned_release == true", self.workflow)
         notes = self.render_draft_notes([], unsigned_release=True)
@@ -480,7 +480,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('release.get("prerelease") is False', self.stable_publisher)
         self.assertIn('METADATA_NAME in names', self.stable_publisher)
         self.assertIn('name.lower().endswith(".sig")', self.stable_publisher)
-        self.assertIn('"make_latest": False', self.stable_publisher)
+        self.assertIn('"make_latest": "false"', self.stable_publisher)
         self.assertIn('"prerelease": True', self.stable_publisher)
         self.assertIn("Stable channel refreshed", self.stable_publisher)
 
