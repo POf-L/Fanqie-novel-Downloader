@@ -75,14 +75,15 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             highlights=[],
         )
         self.assertIn("未签名版本，不支持自动更新", notes)
-        self.assertIn("普通 GitHub Release（非 prerelease）", notes)
+        self.assertIn("GitHub Latest", notes)
+        self.assertIn("stable/latest.json", notes)
         self.assertIn("未知发布者", notes)
         self.assertIn("Gatekeeper", notes)
         self.assertIn("AltStore", notes)
         self.assertIn("`latest.json`", notes)
         self.assertIn("0123456789ab", notes)
 
-    def test_formal_publication_sets_make_latest_false(self):
+    def test_formal_publication_sets_make_latest_true(self):
         captured = {}
 
         def fake_gh_json(arguments, *, input_text=None):
@@ -100,10 +101,29 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
                 mode="formal",
             )
 
-        self.assertEqual(captured["payload"]["make_latest"], False)
+        self.assertEqual(captured["payload"]["make_latest"], True)
         self.assertEqual(captured["payload"]["prerelease"], False)
         self.assertEqual(captured["payload"]["draft"], False)
         self.assertEqual(captured["arguments"][-2:], ["--input", "-"])
+
+    def test_formal_latest_verification_allows_bounded_github_propagation(self):
+        with (
+            patch.object(
+                MODULE,
+                "latest_tag",
+                side_effect=["v2098.1.1", "unsigned-v2099.1.1-r1"],
+            ) as latest_tag,
+            patch.object(MODULE.time, "sleep") as sleep,
+        ):
+            observed = MODULE.wait_for_latest_tag(
+                "POf-L/Fanqie-novel-Downloader",
+                "unsigned-v2099.1.1-r1",
+                attempts=2,
+                delay_seconds=0.01,
+            )
+        self.assertEqual(observed, "unsigned-v2099.1.1-r1")
+        self.assertEqual(latest_tag.call_count, 2)
+        sleep.assert_called_once_with(0.01)
 
     def test_manifest_asset_digest_must_match_uploaded_content(self):
         with tempfile.TemporaryDirectory() as directory:

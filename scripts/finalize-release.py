@@ -17,6 +17,7 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parents[1]
 NORMALIZER = ROOT / "scripts" / "normalize-updater-metadata.py"
 PREPARER = ROOT / "scripts" / "prepare-release-artifacts.py"
+STABLE_PUBLISHER = ROOT / "scripts" / "publish-stable-channel.py"
 MANIFEST_NAME = "SHA256SUMS-release.txt"
 ASSET_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
@@ -173,6 +174,29 @@ def run_preparer(
         if highlights is not None:
             command.extend(["--highlights-file", str(highlights)])
     run(command)
+
+
+def refresh_stable_channel(
+    *, repo: str, source_tag: str, work_dir: Path
+) -> None:
+    """Refresh the managed updater alias after a signed release is published."""
+    if not STABLE_PUBLISHER.is_file():
+        fail(f"stable channel publisher is missing: {STABLE_PUBLISHER}")
+    stable_dir = Path(os.environ.get("RUNNER_TEMP", str(work_dir.parent))) / (
+        "stable-channel-check"
+    )
+    run(
+        [
+            sys.executable,
+            str(STABLE_PUBLISHER),
+            "--repo",
+            repo,
+            "--source-tag",
+            source_tag,
+            "--work-dir",
+            str(stable_dir),
+        ]
+    )
 
 
 def validate_release_identity(release: dict, tag: str, *, draft: bool) -> None:
@@ -375,6 +399,14 @@ def main() -> int:
         latest = gh_json(["api", f"repos/{repo}/releases/latest"])
         if not isinstance(latest, dict) or latest.get("tag_name") != tag:
             fail(f"published stable release {tag!r} is not GitHub's latest release")
+        if "latest.json" in asset_names and any(
+            name.lower().endswith(".sig") for name in asset_names
+        ):
+            refresh_stable_channel(
+                repo=repo,
+                source_tag=tag,
+                work_dir=work_dir,
+            )
 
     append_summary(
         repo=repo, tag=tag, source_commit=source_commit, release=published

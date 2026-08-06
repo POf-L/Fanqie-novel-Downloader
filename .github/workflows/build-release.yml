@@ -486,9 +486,19 @@ jobs:
 
           latest = None
           for rel in releases:
-              if rel.get("draft"):
+              tag_name = str(rel.get("tag_name") or "")
+              if (
+                  rel.get("draft")
+                  or rel.get("prerelease")
+                  or not tag_name.startswith("v")
+                  or tag_name.startswith("unsigned-")
+              ):
                   continue
               assets = [a.get("name", "") for a in (rel.get("assets") or [])]
+              if "latest.json" not in assets or not any(
+                  n.lower().endswith(".sig") for n in assets
+              ):
+                  continue
               useful = [
                   n for n in assets
                   if n and not n.endswith(".sig")
@@ -528,8 +538,8 @@ jobs:
           ]
           if unsigned:
               channel_notice = (
-                  "这是独立的普通 GitHub Release（未标记 prerelease），不会进入稳定版自动更新通道；"
-                  "不会生成或上传 `latest.json`。"
+                  "这是 GitHub Latest 中供手动下载的普通 Release，不会进入稳定版自动更新通道；"
+                  "自动更新仍通过 `stable/latest.json` 读取签名版本，不会使用本 Release；本 Release 不会生成或上传 `latest.json`。"
                   if unsigned_release
                   else
                   "这是独立的 GitHub prerelease，不会替代稳定版，也不会生成或上传 `latest.json`。"
@@ -1821,6 +1831,17 @@ jobs:
     steps:
       - name: Checkout release wrapper
         uses: actions/checkout@v4
+
+      - name: Ensure stable updater channel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python scripts/publish-stable-channel.py \
+            --repo "${GH_REPO}" \
+            --work-dir "${RUNNER_TEMP}/stable-channel-check"
 
       - name: Finalize and publish unsigned release
         shell: bash

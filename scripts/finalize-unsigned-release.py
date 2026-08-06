@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -102,6 +103,69 @@ def latest_tag(repo: str) -> str:
     except json.JSONDecodeError as error:
         fail(f"GitHub latest release API returned invalid JSON: {error}")
     return str(payload.get("tag_name") or "") if isinstance(payload, dict) else ""
+
+
+def wait_for_latest_tag(
+    repo: str,
+    expected_tag: str,
+    *,
+    attempts: int = 5,
+    delay_seconds: float = 2,
+) -> str:
+    """Allow GitHub's latest-release projection a bounded propagation window."""
+    if attempts < 1:
+        fail("GitHub Latest verification needs at least one attempt")
+    observed = ""
+    for attempt in range(1, attempts + 1):
+        observed = latest_tag(repo)
+        if observed == expected_tag:
+            return observed
+        if attempt < attempts:
+            print(
+                f"GitHub Latest is still {observed or '<none>'}; "
+                f"waiting before retry {attempt + 1}/{attempts}",
+                flush=True,
+            )
+            time.sleep(delay_seconds)
+    fail(
+        "formal unsigned release did not become GitHub Latest: "
+        f"expected {expected_tag!r}, got {observed!r}"
+    )
+
+
+def stable_source_tag(repo: str, alias_tag: str = "stable") -> str:
+    """Return the signed source named by the managed stable alias."""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/releases/tags/{alias_tag}"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if result.returncode != 0:
+        return ""
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        fail(f"GitHub stable alias API returned invalid JSON: {error}")
+    if not isinstance(payload, dict):
+        return ""
+    if payload.get("draft") is not False or payload.get("prerelease") is not True:
+        fail("stable alias must be a published prerelease")
+    assets = payload.get("assets")
+    if not isinstance(assets, list) or not any(
+        isinstance(asset, dict) and asset.get("name") == "latest.json"
+        for asset in assets
+    ):
+        fail("stable alias has no latest.json metadata asset")
+    body = str(payload.get("body") or "")
+    match = re.search(r"稳定源 Release：`([^`]+)`", body)
+    if not match:
+        fail("stable alias notes do not identify a signed source release")
+    source_tag = match.group(1).strip()
+    if not re.fullmatch(r"v[^/]+", source_tag):
+        fail(f"stable alias points to an invalid source tag: {source_tag!r}")
+    return source_tag
 
 
 def fetch_release(repo: str, database_id: int, path: Path) -> dict:
@@ -368,8 +432,8 @@ def generate_notes(
         else "> **未签名版本，仅供测试，不支持自动更新。**"
     )
     channel = (
-        "这是普通 GitHub Release（非 prerelease），但不会被标记为稳定更新来源；"
-        "不会生成、上传或修改 `latest.json`。"
+        "这是 GitHub Latest 中供手动下载的普通 Release，但不会成为自动更新来源；"
+        "自动更新仍通过 `stable` 元数据别名读取签名版本。"
         if formal
         else "这是独立的 GitHub prerelease，不会替代稳定版，也不会生成、上传或修改 `latest.json`。"
     )
@@ -419,7 +483,7 @@ def generate_notes(
         f"- 源码引用：`{source_ref}`",
         f"- 源码提交：`{source_commit}`",
         f"- 构建平台：{platforms}",
-        f"- 当前稳定更新通道保持为：`{stable_tag or '尚无稳定版'}`",
+        f"- 当前稳定更新通道：`{stable_tag or '尚无稳定版'}`（桌面 updater 使用 `stable/latest.json`）",
         f"- 可下载安装包数量：{len(installers)}",
         "",
     ]
@@ -474,7 +538,7 @@ def publish_release(
             "body": notes,
             "draft": False,
             "prerelease": False,
-            "make_latest": False,
+            "make_latest": True,
         },
         ensure_ascii=False,
     )
@@ -509,7 +573,7 @@ def append_summary(
             f"- Assets: `{len(release.get('assets', []))}`\n"
             f"- Prerelease: `{str(bool(release.get('prerelease'))).lower()}`\n"
             "- Updater metadata: `false`\n"
-            f"- Stable latest preserved: `{stable_tag or 'none'}`\n"
+            f"- Stable source preserved: `{stable_tag or 'none'}`\n"
         )
 
 
@@ -546,7 +610,6 @@ def main() -> int:
     manifest_path = work_dir / MANIFEST_NAME
 
     database_id = release_id(repo, tag)
-    stable_before = latest_tag(repo)
     release = fetch_release(repo, database_id, release_path)
     if release.get("tag_name") != tag:
         fail(f"unexpected release tag: {release.get('tag_name')!r}")
@@ -555,6 +618,26 @@ def main() -> int:
     expected_prerelease = args.mode == "prerelease"
     if bool(release.get("prerelease")) != expected_prerelease:
         fail("unsigned release prerelease state does not match finalizer mode")
+
+    stable_before = stable_source_tag(repo)
+    if not stable_before:
+        stable_publisher = Path(__file__).with_name("publish-stable-channel.py")
+        stable_dir = Path(os.environ.get("RUNNER_TEMP", str(work_dir.parent))) / (
+            "stable-channel-check"
+        )
+        run(
+            [
+                sys.executable,
+                str(stable_publisher),
+                "--repo",
+                repo,
+                "--work-dir",
+                str(stable_dir),
+            ]
+        )
+        stable_before = stable_source_tag(repo)
+        if not stable_before:
+            fail("stable updater channel could not be initialized")
 
     version = version_field(args.version, release, tag)
     source_ref = release_field(args.source_ref, release, "源码引用")
@@ -613,10 +696,11 @@ def main() -> int:
     verify_published_urls(published, repo, tag)
     if source_commit not in str(published.get("body") or ""):
         fail("published release notes do not contain the source commit")
-    stable_after = latest_tag(repo)
+    observed_latest = wait_for_latest_tag(repo, tag) if args.mode == "formal" else ""
+    stable_after = stable_source_tag(repo)
     if stable_after != stable_before:
         fail(
-            "stable latest changed while publishing unsigned release: "
+            "stable channel changed while publishing unsigned release: "
             f"{stable_before!r} -> {stable_after!r}"
         )
     append_summary(

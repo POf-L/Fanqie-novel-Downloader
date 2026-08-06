@@ -165,7 +165,8 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          stable_tag="$(gh api "repos/${GH_REPO}/releases/latest" --jq .tag_name)"
+          stable_tag="$(gh api "repos/${GH_REPO}/releases/tags/stable" --jq '.body' | sed -n 's/^- 稳定源 Release：`\([^`]*\)`.*/\1/p' | head -n 1)"
+          test -n "${stable_tag}"
           echo "stable_tag=${stable_tag}" >> "${GITHUB_OUTPUT}"
 
           # The heredoc is Markdown; Chinese typographic quotes are intentional.
@@ -487,7 +488,8 @@ jobs:
             FanqieNovelDownloader-macos-x64-unsigned.zip \
             SHA256SUMS-macos-unsigned.txt | sort)"
           diff -u <(printf '%s\n' "${expected}") <(printf '%s\n' "${assets}")
-          test "$(gh api "repos/${GH_REPO}/releases/latest" --jq .tag_name)" = "${STABLE_TAG}"
+          stable_source="$(gh api "repos/${GH_REPO}/releases/tags/stable" --jq '.body' | sed -n 's/^- 稳定源 Release：`\([^`]*\)`.*/\1/p' | head -n 1)"
+          test "${stable_source}" = "${STABLE_TAG}"
 
       - name: Write publication summary
         run: |

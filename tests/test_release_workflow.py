@@ -18,6 +18,7 @@ MAINTENANCE_WORKFLOW = (
 )
 FINALIZER = ROOT / "scripts" / "finalize-release.py"
 UNSIGNED_FINALIZER = ROOT / "scripts" / "finalize-unsigned-release.py"
+STABLE_PUBLISHER = ROOT / "scripts" / "publish-stable-channel.py"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
@@ -33,6 +34,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
         cls.finalizer = FINALIZER.read_text(encoding="utf-8")
         cls.unsigned_finalizer = UNSIGNED_FINALIZER.read_text(encoding="utf-8")
+        cls.stable_publisher = STABLE_PUBLISHER.read_text(encoding="utf-8")
         cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     def render_draft_notes(self, asset_names, *, unsigned=False, unsigned_release=False):
@@ -43,7 +45,11 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 "draft": False,
                 "tag_name": "vprevious",
                 "name": "Previous release",
-                "assets": [{"name": name} for name in asset_names],
+                "assets": [
+                    {"name": "latest.json"},
+                    {"name": "Fanqie-signed.exe.sig"},
+                    *[{"name": name} for name in asset_names],
+                ],
             }
         ]
         response = io.BytesIO(json.dumps(releases).encode("utf-8"))
@@ -212,7 +218,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
         self.assertIn('"databaseId,tagName"', unsigned)
         self.assertIn('f"repos/{repo}/releases/{database_id}"', unsigned)
-        self.assertNotIn('releases/tags/', unsigned)
+        self.assertIn('releases/tags/{alias_tag}', unsigned)
 
     def test_unsigned_draft_notes_warn_before_assets_finish(self):
         notes = self.render_draft_notes([], unsigned=True)
@@ -228,12 +234,12 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn(
             "publish_unsigned_release requires publish_release=true.", self.workflow
         )
-        self.assertIn('"make_latest": False', self.unsigned_finalizer)
+        self.assertIn('"make_latest": True', self.unsigned_finalizer)
         self.assertIn('published.get("prerelease")', self.unsigned_finalizer)
         self.assertIn("inputs.publish_unsigned_release == true", self.workflow)
         notes = self.render_draft_notes([], unsigned_release=True)
         self.assertIn("未签名版本，不支持自动更新", notes)
-        self.assertIn("普通 GitHub Release", notes)
+        self.assertIn("GitHub Latest", notes)
         self.assertIn("不会生成或上传 `latest.json`", notes)
         self.assertNotIn("不会替代稳定版", notes)
 
@@ -297,10 +303,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("\\`apksigner\\`", workflow)
         self.assertNotIn("scripts/finalize-release.py", workflow)
         self.assertNotIn("--latest", workflow)
-        self.assertIn(
-            'releases/latest" --jq .tag_name)" = "${STABLE_TAG}"',
-            workflow,
-        )
+        self.assertIn("releases/tags/stable", workflow)
 
     def test_unsigned_macos_channel_builds_and_verifies_both_architectures(self):
         workflow = self.unsigned_macos_workflow
@@ -460,15 +463,26 @@ class ReleaseWorkflowTest(unittest.TestCase):
         for operation in (
             "finalize-signed-draft",
             "finalize-unsigned-draft",
+            "refresh-stable-channel",
             "repair-updater-metadata",
         ):
             self.assertIn(operation, workflow)
         self.assertIn("scripts/finalize-release.py", workflow)
         self.assertIn("scripts/finalize-unsigned-release.py", workflow)
+        self.assertIn("scripts/publish-stable-channel.py", workflow)
         self.assertIn("scripts/normalize-updater-metadata.py", workflow)
         self.assertIn("--check", workflow)
         self.assertIn("SHA256SUMS-release.txt", workflow)
         self.assertIn('gh release upload "${tag}"', workflow)
+
+    def test_stable_publisher_filters_unsigned_and_alias_releases(self):
+        self.assertIn("SIGNED_TAG_RE", self.stable_publisher)
+        self.assertIn('release.get("prerelease") is False', self.stable_publisher)
+        self.assertIn('METADATA_NAME in names', self.stable_publisher)
+        self.assertIn('name.lower().endswith(".sig")', self.stable_publisher)
+        self.assertIn('"make_latest": False', self.stable_publisher)
+        self.assertIn('"prerelease": True', self.stable_publisher)
+        self.assertIn("Stable channel refreshed", self.stable_publisher)
 
     def test_actions_are_grouped_into_expected_active_workflows(self):
         workflow_names = {
