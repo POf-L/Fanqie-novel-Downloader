@@ -25,7 +25,7 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             "FanqieNovelDownloader-tauri-linux-amd64.deb",
             "FanqieNovelDownloader-tauri-linux-amd64.AppImage",
             "FanqieNovelDownloader-tauri-linux-arm64.deb",
-            "FanqieNovelDownloader-tauri-linux-arm64.AppImage",
+            "FanqieNovelDownloader-tauri-linux-aarch64.AppImage",
             "FanqieNovelDownloader-tauri-darwin-x64.dmg",
             "FanqieNovelDownloader-tauri-darwin-x64.zip",
             "FanqieNovelDownloader-tauri-darwin-aarch64.dmg",
@@ -136,6 +136,9 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
         self.assertIn("## 下载地址", notes)
         self.assertIn("未知发布者", notes)
         self.assertIn("Gatekeeper", notes)
+        self.assertIn("### ❓ 常见问题", notes)
+        self.assertIn("### 💎 支持与推广", notes)
+        self.assertIn("<summary>📦 构建信息</summary>", notes)
         for label in (
             "Windows",
             "macOS",
@@ -206,21 +209,157 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             mode="formal",
         )
 
-    def test_append_preserves_original_draft_body_byte_for_byte(self):
-        original = "## 原 Draft 正文\n\n保留尾随空格。  \n"
+    def test_append_removes_managed_draft_and_preserves_text_outside_markers(self):
+        preface = "## 人工发布说明\n\n保留尾随空格。  \n\n"
+        suffix = "\n\n人工补充。\n"
+        original = (
+            preface
+            + MODULE.DRAFT_START
+            + "\n> ⏳ **本版本正在构建中**。\n"
+            + MODULE.DRAFT_END
+            + suffix
+        )
         appendix = (
             MODULE.FINALIZER_START
             + "\n设备指引\n"
             + MODULE.FINALIZER_END
         )
         notes = MODULE.append_finalizer(original, appendix)
-        self.assertTrue(notes.startswith(original))
+        self.assertTrue(notes.startswith(preface + suffix))
+        self.assertNotIn(MODULE.DRAFT_START, notes)
+        self.assertNotIn(MODULE.LEGACY_DRAFT_STATUS, notes)
         refreshed = MODULE.append_finalizer(
             notes, appendix.replace("设备指引", "刷新后的设备指引")
         )
-        self.assertTrue(refreshed.startswith(original))
+        self.assertTrue(refreshed.startswith(preface + suffix))
         self.assertEqual(refreshed.count(MODULE.FINALIZER_START), 1)
         self.assertIn("刷新后的设备指引", refreshed)
+
+    def test_legacy_r643_draft_cleanup_is_explicit_and_strict(self):
+        original = "\n".join(
+            [
+                "## 2026.8.7-445（未签名版）",
+                "",
+                "人工保留前言。",
+                "",
+                MODULE.LEGACY_DRAFT_STATUS,
+                "> 下方下载链接**暂时指向最新已发布版本**。",
+                "",
+                "## 下载地址（默认：最新已发布版本）",
+                "",
+                "旧链接",
+                "",
+                "### 💎 支持与推广",
+                "",
+                "旧推广",
+                "",
+                "<details>",
+                "- 正在构建版本：`2026.8.7-445`",
+                "- 计划平台：windows-x64, linux-arm64",
+                "</details>",
+                "",
+                MODULE.FINALIZER_START,
+                "旧 finalizer",
+                MODULE.FINALIZER_END,
+            ]
+        )
+        appendix = (
+            MODULE.FINALIZER_START
+            + "\n新设备指引\n"
+            + MODULE.FINALIZER_END
+        )
+        with self.assertRaisesRegex(SystemExit, "explicit maintenance"):
+            MODULE.append_finalizer(original, appendix)
+        cleaned = MODULE.append_finalizer(
+            original, appendix, allow_legacy_draft=True
+        )
+        self.assertIn("人工保留前言", cleaned)
+        self.assertIn("新设备指引", cleaned)
+        self.assertNotIn("旧链接", cleaned)
+        self.assertNotIn(MODULE.LEGACY_DRAFT_STATUS, cleaned)
+        self.assertEqual(cleaned.count(MODULE.FINALIZER_START), 1)
+
+    def test_arm64_appimage_aliases_render_one_signed_canonical_link(self):
+        release = self.fixture()
+        release["prerelease"] = False
+        release["assets"].extend(
+            [
+                {
+                    "name": "FanqieNovelDownloader-tauri-linux-arm64.AppImage",
+                    "digest": "sha256:" + "0" * 64,
+                },
+                {"name": "latest.json", "digest": "sha256:" + "1" * 64},
+                {
+                    "name": "FanqieNovelDownloader-tauri-linux-aarch64.AppImage.sig",
+                    "digest": "sha256:" + "2" * 64,
+                },
+            ]
+        )
+        notes = MODULE.generate_finalizer_appendix(
+            release=release,
+            repo="POf-L/Fanqie-novel-Downloader",
+            tag="unsigned-v2099.1.4-r4",
+            version="2099.1.4",
+            source_ref="main",
+            source_commit="0123456789ab",
+            platforms=(
+                "windows-x64, windows-arm64, linux-x64, linux-arm64, "
+                "macos-x64, macos-arm64, android, ios"
+            ),
+            mode="formal",
+            highlights=["- 修复登录窗口"],
+        )
+        self.assertEqual(notes.count("linux-aarch64.AppImage)"), 1)
+        self.assertNotIn("linux-arm64.AppImage)", notes)
+        self.assertIn("## 本次修复", notes)
+        self.assertIn("修复登录窗口", notes)
+
+    def test_draft_merge_refreshes_only_the_managed_block(self):
+        existing = (
+            "人工前言\n\n"
+            + MODULE.DRAFT_START
+            + "\n旧状态\n"
+            + MODULE.DRAFT_END
+            + "\n\n人工结尾\n"
+        )
+        generated = (
+            "机器前言不应覆盖\n\n"
+            + MODULE.DRAFT_START
+            + "\n新状态\n"
+            + MODULE.DRAFT_END
+            + "\n"
+        )
+        merged = MODULE.merge_unsigned_draft(existing, generated)
+        self.assertTrue(merged.startswith("人工前言"))
+        self.assertIn("人工结尾", merged)
+        self.assertIn("新状态", merged)
+        self.assertNotIn("旧状态", merged)
+        self.assertNotIn("机器前言不应覆盖", merged)
+        self.assertEqual(merged.count(MODULE.DRAFT_START), 1)
+
+    def test_draft_merge_rejects_unmarked_legacy_body(self):
+        existing = "\n".join(
+            [
+                "人工前言",
+                "",
+                MODULE.LEGACY_DRAFT_STATUS,
+                "> 下方下载链接**暂时指向最新已发布版本**。",
+                "## 下载地址（默认：最新已发布版本）",
+                "### 💎 支持与推广",
+                "<details>",
+                "- 正在构建版本：`old`",
+                "- 计划平台：windows-x64",
+                "</details>",
+            ]
+        )
+        generated = (
+            MODULE.DRAFT_START
+            + "\n新状态\n"
+            + MODULE.DRAFT_END
+            + "\n"
+        )
+        with self.assertRaisesRegex(SystemExit, "explicit maintenance"):
+            MODULE.merge_unsigned_draft(existing, generated)
 
     def test_unsigned_prerelease_guide_does_not_claim_fixed_alias_ownership(self):
         release = self.fixture()

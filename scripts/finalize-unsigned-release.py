@@ -17,8 +17,11 @@ from urllib.parse import quote
 
 
 MANIFEST_NAME = "SHA256SUMS-unsigned.txt"
+DRAFT_START = "<!-- fanqie:unsigned-draft:start -->"
+DRAFT_END = "<!-- fanqie:unsigned-draft:end -->"
 FINALIZER_START = "<!-- fanqie:unsigned-finalizer:start -->"
 FINALIZER_END = "<!-- fanqie:unsigned-finalizer:end -->"
+LEGACY_DRAFT_STATUS = "> ⏳ **本版本正在构建中**。"
 DIGEST_RE = re.compile(r"sha256:([0-9a-f]{64})\Z")
 FORBIDDEN_EXACT = {"latest.json", "sha256sums-release.txt"}
 FORBIDDEN_SUFFIXES = (
@@ -320,6 +323,25 @@ def require_asset(
         fail(f"unsigned release is missing the {label} asset")
 
 
+def require_asset_alias(
+    names: list[str],
+    label: str,
+    *,
+    common: tuple[str, ...],
+    aliases: tuple[str, ...],
+    suffix: str,
+) -> None:
+    matches = [
+        name
+        for name in names
+        if all(needle.lower() in name.lower() for needle in common)
+        and any(alias.lower() in name.lower() for alias in aliases)
+        and name.lower().endswith(suffix.lower())
+    ]
+    if not matches:
+        fail(f"unsigned release is missing the {label} asset")
+
+
 def selected_platforms(value: str) -> set[str]:
     selected = {item.strip().lower() for item in value.split(",") if item.strip()}
     if not selected:
@@ -376,7 +398,16 @@ def validate_assets(
     for platform, requirements in desktop.items():
         if platform in selected:
             for label, needles, suffix in requirements:
-                require_asset(names, label, *needles, suffix=suffix)
+                if label == "Linux ARM64 AppImage":
+                    require_asset_alias(
+                        names,
+                        label,
+                        common=("linux",),
+                        aliases=("arm64", "aarch64"),
+                        suffix=suffix,
+                    )
+                else:
+                    require_asset(names, label, *needles, suffix=suffix)
     if "android" in selected:
         require_asset(names, "Android arm64-v8a", "arm64-v8a", suffix=".apk")
         require_asset(names, "Android armeabi-v7a", "armeabi-v7a", suffix=".apk")
@@ -524,6 +555,10 @@ def verify_device_guide(
         "### 🤖 Android",
         "### 📱 iOS",
         "SHA-256 完整清单",
+        "### ❓ 常见问题",
+        "### 💎 支持与推广",
+        "### 🔗 相关链接",
+        "<summary>📦 构建信息</summary>",
     ]
     selected = selected_platforms(platforms)
     platform_requirements = {
@@ -547,7 +582,6 @@ def verify_device_guide(
             "DEB 包（推荐，体积小，Debian / Ubuntu 等）",
             "AppImage（免安装）",
             "linux-arm64.deb",
-            "linux-arm64.AppImage",
         ),
         "macos-x64": (
             "Intel 芯片",
@@ -576,6 +610,11 @@ def verify_device_guide(
             fail(f"unsupported platform in unsigned device guide: {platform}")
         required.extend(requirements)
     missing = [value for value in required if value not in notes]
+    if "linux-arm64" in selected and not any(
+        value in notes
+        for value in ("linux-arm64.AppImage", "linux-aarch64.AppImage")
+    ):
+        missing.append("Linux ARM64 AppImage")
     if updater_available:
         required_channel_values = ("Minisign",)
         if mode != "prerelease":
@@ -679,10 +718,18 @@ def generate_finalizer_appendix(
         highlights=highlights,
     )
     guide_start = rendered.find("## 平台状态与安装限制")
-    guide_end = rendered.find("\n---\n\n### ❓ 常见问题", guide_start)
+    details_separator = "\n---\n\n### ❓ 常见问题"
+    guide_end = rendered.find(details_separator, guide_start)
     if guide_start < 0 or guide_end < 0:
         fail("shared release renderer did not produce the device guide")
     device_guide = rendered[guide_start:guide_end].rstrip()
+    details = rendered[guide_end + len("\n---\n\n") :].rstrip()
+    highlights_start = rendered.find("## 本次修复")
+    highlights_section = (
+        rendered[highlights_start:guide_start].rstrip()
+        if 0 <= highlights_start < guide_start
+        else ""
+    )
     updater_available = has_updater_metadata(release)
     update_line = (
         (
@@ -697,19 +744,21 @@ def generate_finalizer_appendix(
             else "- 这个历史版本没有 updater 元数据，只能手动覆盖安装。"
         )
     )
-    installer_count = len(
-        validate_assets(release, platforms, allow_updater=updater_available)[1]
-    )
-    appendix = "\n".join(
+    validate_assets(release, platforms, allow_updater=updater_available)
+    parts = [
+        FINALIZER_START,
+        "---",
+        "",
+        "## 无签名 Release Finalizer",
+        "",
+        "> 构建与附件校验已经完成。以下设备/架构链接由无签名专用 finalizer "
+        "根据本 Release 的实际 Assets 追加生成；下载时以本区块为准。",
+        "",
+    ]
+    if highlights_section:
+        parts.extend([highlights_section, ""])
+    parts.extend(
         [
-            FINALIZER_START,
-            "---",
-            "",
-            "## 无签名 Release Finalizer",
-            "",
-            "> 构建与附件校验已经完成。以下设备/架构链接由无签名专用 finalizer "
-            "根据本 Release 的实际 Assets 追加生成；下载时以本区块为准。",
-            "",
             device_guide,
             "",
             "## 校验与更新通道",
@@ -719,18 +768,14 @@ def generate_finalizer_appendix(
             "- 无签名指 Windows Authenticode、macOS Developer ID/公证和 iOS Apple 签名；"
             "若提供 updater 元数据，更新包本身仍必须通过独立的 Minisign 签名校验。",
             "",
-            "## Finalizer 构建信息",
+            "---",
             "",
-            f"- 版本：`{version}`",
-            f"- Tag：`{tag}`",
-            f"- 源码引用：`{source_ref}`",
-            f"- 源码提交：`{source_commit}`",
-            f"- 构建平台：{platforms}",
-            f"- 可下载安装包数量：{installer_count}",
+            details,
             "",
             FINALIZER_END,
         ]
     )
+    appendix = "\n".join(parts)
     verify_device_guide(
         appendix,
         platforms=platforms,
@@ -740,8 +785,94 @@ def generate_finalizer_appendix(
     return appendix
 
 
-def append_finalizer(body: str, appendix: str) -> str:
-    """Append the unsigned managed block without replacing the Draft body."""
+def managed_block_bounds(
+    body: str, start_marker: str, end_marker: str, label: str
+) -> tuple[int, int] | None:
+    starts = body.count(start_marker)
+    ends = body.count(end_marker)
+    if starts != ends or starts > 1:
+        fail(f"release body contains invalid {label} markers")
+    if starts == 0:
+        return None
+    start = body.find(start_marker)
+    end = body.find(end_marker, start + len(start_marker))
+    if end < start:
+        fail(f"release body contains an incomplete {label} block")
+    return start, end + len(end_marker)
+
+
+def strip_legacy_draft(body: str) -> str:
+    """Remove only the fully recognized pre-marker unsigned Draft template."""
+
+    occurrences = body.count(LEGACY_DRAFT_STATUS)
+    if occurrences == 0:
+        return body
+    if occurrences != 1:
+        fail("legacy unsigned Draft status is ambiguous")
+    start = body.find(LEGACY_DRAFT_STATUS)
+    build_anchor = body.find("- 正在构建版本：", start)
+    close = body.find("</details>", build_anchor)
+    finalizer = body.find(FINALIZER_START, start)
+    if build_anchor < 0 or close < 0 or (finalizer >= 0 and close > finalizer):
+        fail("legacy unsigned Draft boundary is incomplete")
+    legacy = body[start : close + len("</details>")]
+    sentinels = (
+        "下方下载链接**暂时指向最新已发布版本**",
+        "## 下载地址（默认：最新已发布版本）",
+        "### 💎 支持与推广",
+        "- 计划平台：",
+    )
+    missing = [sentinel for sentinel in sentinels if sentinel not in legacy]
+    if missing:
+        fail("legacy unsigned Draft template is not recognized: " + ", ".join(missing))
+    return body[:start] + body[close + len("</details>") :]
+
+
+def clean_draft_body(body: str, *, allow_legacy: bool = False) -> str:
+    bounds = managed_block_bounds(body, DRAFT_START, DRAFT_END, "unsigned Draft")
+    if bounds is not None:
+        body = body[: bounds[0]] + body[bounds[1] :]
+    if LEGACY_DRAFT_STATUS in body:
+        if not allow_legacy:
+            fail("legacy unsigned Draft cleanup requires an explicit maintenance operation")
+        body = strip_legacy_draft(body)
+    return body
+
+
+def merge_unsigned_draft(existing: str, generated: str) -> str:
+    """Refresh only the managed Draft block while preserving user-authored text."""
+
+    if FINALIZER_START in existing or FINALIZER_END in existing:
+        fail("cannot merge Draft notes into an already finalized Release")
+    generated_bounds = managed_block_bounds(
+        generated, DRAFT_START, DRAFT_END, "generated unsigned Draft"
+    )
+    if generated_bounds is None:
+        fail("generated unsigned Draft has no managed block")
+    generated_block = generated[generated_bounds[0] : generated_bounds[1]]
+    existing_bounds = managed_block_bounds(
+        existing, DRAFT_START, DRAFT_END, "unsigned Draft"
+    )
+    if existing_bounds is not None:
+        return (
+            existing[: existing_bounds[0]]
+            + generated_block
+            + existing[existing_bounds[1] :]
+        )
+    if LEGACY_DRAFT_STATUS in existing:
+        fail("legacy unsigned Draft cleanup requires an explicit maintenance operation")
+    if not existing.strip():
+        return generated
+    separator = "" if existing.endswith("\n\n") else ("\n" if existing.endswith("\n") else "\n\n")
+    return f"{existing}{separator}{generated_block}\n"
+
+
+def append_finalizer(
+    body: str, appendix: str, *, allow_legacy_draft: bool = False
+) -> str:
+    """Remove managed Draft state and append or refresh the finalizer block."""
+
+    body = clean_draft_body(body, allow_legacy=allow_legacy_draft)
     starts = body.count(FINALIZER_START)
     ends = body.count(FINALIZER_END)
     if starts != ends or starts > 1:
@@ -860,6 +991,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-commit", default="")
     parser.add_argument("--platforms", default="")
     parser.add_argument("--highlights-file", type=Path)
+    parser.add_argument("--allow-legacy-draft", action="store_true")
     parser.add_argument(
         "--work-dir", type=Path, default=Path("unsigned-release-check")
     )
@@ -1011,7 +1143,11 @@ def main() -> int:
         mode=args.mode,
         highlights=normalized_highlights(args.highlights_file),
     )
-    notes = append_finalizer(str(release.get("body") or ""), appendix)
+    notes = append_finalizer(
+        str(release.get("body") or ""),
+        appendix,
+        allow_legacy_draft=args.allow_legacy_draft,
+    )
     verify_device_guide(
         notes,
         platforms=platforms,

@@ -78,6 +78,21 @@ def assets_by_name(release: dict) -> dict[str, dict]:
     return result
 
 
+def canonical_asset_alias(
+    release: dict, candidates: list[str], *, label: str
+) -> list[str]:
+    if len(candidates) <= 1:
+        return candidates
+    assets = assets_by_name(release)
+    digests = {str(assets[name].get("digest") or "") for name in candidates}
+    if len(digests) != 1 or not next(iter(digests)).startswith("sha256:"):
+        fail(f"{label} aliases do not contain identical payloads: {', '.join(candidates)}")
+    signed = [name for name in candidates if f"{name}.sig" in assets]
+    preferred = signed or candidates
+    preferred.sort(key=lambda name: ("aarch64" not in name.lower(), name.lower()))
+    return [preferred[0]]
+
+
 def asset_digests(release: dict) -> dict[str, str]:
     digests: dict[str, str] = {}
     for name, asset in assets_by_name(release).items():
@@ -423,12 +438,16 @@ def generate_notes(
     linux_deb_x64 = pick("linux-amd64", suffix=".deb")
     linux_deb_arm = pick("linux-arm64", suffix=".deb")
     linux_app_x64 = pick("linux-amd64", suffix=".appimage")
-    linux_app_arm = [
-        name
-        for name in installers
-        if ("linux-arm64" in name.lower() or "linux-aarch64" in name.lower())
-        and name.lower().endswith(".appimage")
-    ]
+    linux_app_arm = canonical_asset_alias(
+        release,
+        [
+            name
+            for name in installers
+            if ("linux-arm64" in name.lower() or "linux-aarch64" in name.lower())
+            and name.lower().endswith(".appimage")
+        ],
+        label="Linux ARM64 AppImage",
+    )
     android_arm64 = pick("arm64-v8a", suffix=".apk")
     android_v7 = pick("armeabi-v7a", suffix=".apk")
     android_x86 = pick("x86_64", suffix=".apk")
@@ -508,6 +527,15 @@ def generate_notes(
     if highlights:
         lines.extend(["", "## 本次修复", "", *highlights])
 
+    release_type = (
+        "无签名测试预发布（Pre-release）"
+        if channel == "unsigned" and prerelease
+        else "无签名正式版"
+        if channel == "unsigned"
+        else "测试预发布（Pre-release）"
+        if prerelease
+        else "正式稳定版"
+    )
     lines.extend(
         platform_status_lines(
             repo=repo,
@@ -671,7 +699,7 @@ def generate_notes(
             "",
             f"- 版本：`{version}`",
             f"- Tag：`{tag}`",
-             f"- 类型：{'测试预发布（Pre-release）' if prerelease else '正式稳定版'}",
+            f"- 类型：{release_type}",
              f"- 更新通道：\u0060{'unsigned' if channel == 'unsigned' else 'stable'}\u0060",
             f"- 源码引用：`{source_ref}`",
             f"- 源码提交：`{source_commit}`",

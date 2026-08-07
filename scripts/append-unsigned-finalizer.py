@@ -91,7 +91,11 @@ def main() -> int:
         mode="prerelease" if release.get("prerelease") else "formal",
         highlights=finalizer.normalized_highlights(args.highlights_file),
     )
-    notes = finalizer.append_finalizer(str(release.get("body") or ""), appendix)
+    notes = finalizer.append_finalizer(
+        str(release.get("body") or ""),
+        appendix,
+        allow_legacy_draft=True,
+    )
     finalizer.verify_device_guide(
         notes,
         platforms=platforms,

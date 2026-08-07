@@ -452,9 +452,9 @@ jobs:
           PUBLISH_UNSIGNED_RELEASE: ${{ inputs.publish_unsigned_release }}
         run: |
           set -euo pipefail
-          # Draft notes use Chinese + real hyperlinks.
-          # Until this build finishes uploading assets, links default to the latest
-          # already-published release; finalize will rewrite them to this tag.
+          # Unsigned Drafts expose only a managed build-status block; their real
+          # device links are appended after asset validation. Signed Drafts keep
+          # the existing published-release fallback for compatibility.
           python - <<'PY'
           import json
           import os
@@ -565,6 +565,29 @@ jobs:
                   "> iOS IPA 未经过 Apple 签名，只能使用 AltStore、Sideloadly 或 TrollStore 侧载。",
                   "",
               ]
+              lines += [
+                  "<!-- fanqie:unsigned-draft:start -->",
+                  "> ⏳ **本版本正在构建中**。",
+                  ">",
+                  f"> 📱 **计划平台**：{platforms}。",
+                  "> 构建和附件校验完成后，无签名专用 finalizer 会根据本版本真实 Assets 追加设备下载指引。",
+                  "",
+                  "<details>",
+                  "<summary>📦 Draft 构建信息</summary>",
+                  "",
+                  f"- 正在构建版本：`{version}`",
+                  f"- Tag：`{tag}`",
+                  f"- 源码引用：`{source_ref}`",
+                  f"- 源码提交：`{source_commit}`",
+                  f"- 计划平台：{platforms}",
+                  "",
+                  "</details>",
+                  "<!-- fanqie:unsigned-draft:end -->",
+                  "",
+              ]
+              Path("release-notes.md").write_text("\n".join(lines), encoding="utf-8")
+              print("Unsigned Draft notes ready; no historical download links were inserted.")
+              raise SystemExit(0)
           lines += [
               "> ⏳ **本版本正在构建中**。",
               ">",
@@ -723,9 +746,14 @@ jobs:
                 echo "Refusing to reuse a non-prerelease tag: ${TAG_NAME}"
                 exit 1
               fi
+              gh release view "${TAG_NAME}" --json body --jq .body > existing-release-notes.md
+              python scripts/merge-unsigned-draft-notes.py \
+                --existing existing-release-notes.md \
+                --generated release-notes.md \
+                --output merged-release-notes.md
               gh release edit "${TAG_NAME}" \
                 --title "番茄小说下载器 未签名测试版 ${VERSION}" \
-                --notes-file release-notes.md \
+                --notes-file merged-release-notes.md \
                 --prerelease
             else
               gh release create "${TAG_NAME}" \
@@ -742,9 +770,14 @@ jobs:
                 echo "Refusing to reuse a prerelease tag for an unsigned formal release: ${TAG_NAME}"
                 exit 1
               fi
+              gh release view "${TAG_NAME}" --json body --jq .body > existing-release-notes.md
+              python scripts/merge-unsigned-draft-notes.py \
+                --existing existing-release-notes.md \
+                --generated release-notes.md \
+                --output merged-release-notes.md
               gh release edit "${TAG_NAME}" \
                 --title "番茄小说下载器 未签名版 ${VERSION}" \
-                --notes-file release-notes.md \
+                --notes-file merged-release-notes.md \
                 --draft
             else
               gh release create "${TAG_NAME}" \
@@ -1023,6 +1056,7 @@ jobs:
           elif target.endswith("-unknown-linux-gnu"):
               arch = "arm64" if target.startswith("aarch64-") else "amd64"
               stem = f"FanqieNovelDownloader-tauri-linux-{arch}"
+              appimage_arch = "aarch64" if target.startswith("aarch64-") else "amd64"
               deb = single(source / "deb", ".deb")
               shutil.copy2(deb, output / f"{stem}.deb")
               appimages = sorted(
@@ -1036,7 +1070,7 @@ jobs:
                       )
                   shutil.copy2(
                       appimages[0],
-                      output / f"{stem}.AppImage",
+                      output / f"FanqieNovelDownloader-tauri-linux-{appimage_arch}.AppImage",
                   )
           elif target.endswith("-apple-darwin"):
               arch = "aarch64" if target.startswith("aarch64-") else "x64"
@@ -1429,6 +1463,7 @@ jobs:
           elif target.endswith("-unknown-linux-gnu"):
               arch = "arm64" if target.startswith("aarch64-") else "amd64"
               stem = f"FanqieNovelDownloader-tauri-linux-{arch}"
+              appimage_arch = "aarch64" if target.startswith("aarch64-") else "amd64"
               deb = single(source / "deb", ".deb")
               shutil.copy2(deb, output / f"{stem}.deb")
               appimages = sorted(
@@ -1442,7 +1477,7 @@ jobs:
                       )
                   shutil.copy2(
                       appimages[0],
-                      output / f"{stem}.AppImage",
+                      output / f"FanqieNovelDownloader-tauri-linux-{appimage_arch}.AppImage",
                   )
           elif target.endswith("-apple-darwin"):
               arch = "aarch64" if target.startswith("aarch64-") else "x64"
@@ -1943,9 +1978,22 @@ jobs:
               "### 🪟 Windows", "### 🍎 macOS", "### 🐧 Linux",
               "### 🤖 Android", "### 📱 iOS",
               "SHA-256 完整清单",
+              "### ❓ 常见问题", "### 💎 支持与推广",
+              "### 🔗 相关链接", "<summary>📦 构建信息</summary>",
           ]
           if body.count(required[0]) != 1 or body.count(required[1]) != 1:
               raise SystemExit("已发布无签名 finalizer 托管区块数量不正确")
+          if body.count("## 下载地址") != 1:
+              raise SystemExit("已发布无签名 Release 下载区数量不正确")
+          forbidden = (
+              "<!-- fanqie:unsigned-draft:start -->",
+              "<!-- fanqie:unsigned-draft:end -->",
+              "> ⏳ **本版本正在构建中**。",
+              "## 下载地址（默认：最新已发布版本）",
+          )
+          present = [value for value in forbidden if value in body]
+          if present:
+              raise SystemExit("已发布正文仍含 Draft 内容：" + ", ".join(present))
           selected = {
               value.strip().lower()
               for value in os.environ.get("PLATFORMS", "").split(",")
@@ -1955,7 +2003,7 @@ jobs:
               "windows-x64": ("64位（常用）", "windows-x64-portable.exe"),
               "windows-arm64": ("ARM64（Surface / 骁龙本）", "windows-arm64-portable.exe"),
               "linux-x64": ("linux-amd64.deb", "linux-amd64.AppImage"),
-              "linux-arm64": ("linux-arm64.deb", "linux-arm64.AppImage"),
+              "linux-arm64": ("linux-arm64.deb",),
               "macos-x64": ("Intel 芯片", "darwin-x64.dmg", "darwin-x64.zip"),
               "macos-arm64": ("Apple M 芯片", "darwin-aarch64.dmg", "darwin-aarch64.zip"),
               "android": (
@@ -1969,6 +2017,11 @@ jobs:
                   raise SystemExit("发布后检查遇到未知平台：" + platform)
               required.extend(platform_requirements[platform])
           missing = [value for value in required if value not in body]
+          if "linux-arm64" in selected and not any(
+              value in body
+              for value in ("linux-arm64.AppImage", "linux-aarch64.AppImage")
+          ):
+              missing.append("Linux ARM64 AppImage")
           if missing:
               raise SystemExit("已发布设备指引缺项：" + ", ".join(missing))
           if os.environ.get("UNSIGNED_PRERELEASE", "false") != "true" and "unsigned/latest.json" not in body:
@@ -1996,38 +2049,3 @@ jobs:
               raise SystemExit("unsigned/latest.json 未完整指向本次无签名 Release")
           PY
           fi
-
-  # 发布构建失败时自动清理尚未发布的 draft release（连同其 tag），
-  # 避免失败构建在仓库里留下孤儿 draft / 孤儿 tag、占用版本号。
-  # 仅在流水线确实失败时执行；若 release 已被 finalize 发布为正式版
-  # （非 draft），则原样保留，绝不误删。
-  cleanup-failed-draft:
-    needs: [prepare, verify, release-bootstrap, desktop, desktop-fallback, android, ios]
-    if: >-
-      always() &&
-      failure() &&
-      needs.prepare.result == 'success' &&
-      (inputs.publish_release == true ||
-       inputs.publish_unsigned_prerelease == true ||
-       inputs.publish_unsigned_release == true)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete draft release and tag on failed build
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
-        run: |
-          set -euo pipefail
-          if ! gh release view "${TAG_NAME}" --repo "${GH_REPO}" >/dev/null 2>&1; then
-            echo "No release found for ${TAG_NAME}; nothing to clean."
-            exit 0
-          fi
-          is_draft="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json isDraft --jq .isDraft)"
-          if [[ "${is_draft}" != "true" ]]; then
-            echo "Release ${TAG_NAME} is no longer a draft; leaving it untouched."
-            exit 0
-          fi
-          gh release delete "${TAG_NAME}" --repo "${GH_REPO}" --yes --cleanup-tag
-          echo "Deleted failed draft release and tag: ${TAG_NAME}"

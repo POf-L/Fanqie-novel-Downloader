@@ -146,6 +146,7 @@ jobs:
             --repo "${GH_REPO}"
             --tag "${TAG_NAME}"
             --mode "${MODE}"
+            --allow-legacy-draft
           )
           if [[ -n "${HIGHLIGHTS//[[:space:]]/}" ]]; then
             printf '%s\n' "${HIGHLIGHTS}" > release-highlights.md

@@ -114,7 +114,11 @@ def main() -> int:
             mode="prerelease" if release.get("prerelease") else "formal",
             highlights=highlights,
         )
-        notes = finalizer.append_finalizer(str(release.get("body") or ""), appendix)
+        notes = finalizer.append_finalizer(
+            str(release.get("body") or ""),
+            appendix,
+            allow_legacy_draft=True,
+        )
     else:
         notes = preparer.generate_notes(
             release,

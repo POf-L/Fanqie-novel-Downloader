@@ -81,7 +81,10 @@ class ReleaseWorkflowTest(unittest.TestCase):
             patch.object(Path, "write_text", new=capture_write_text),
             patch("builtins.print"),
         ):
-            exec(compile(script, str(WORKFLOW), "exec"), {})
+            try:
+                exec(compile(script, str(WORKFLOW), "exec"), {})
+            except SystemExit as error:
+                self.assertEqual(error.code, 0)
 
         self.assertEqual(set(written), {"release-notes.md"})
         return written["release-notes.md"]
@@ -177,6 +180,12 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(self.workflow.count('single_directory(source / "macos", ".app")'), 2)
         self.assertGreaterEqual(self.workflow.count('stem = f"FanqieNovelDownloader-tauri-linux-{arch}"'), 2)
+        self.assertEqual(
+            self.workflow.count(
+                'appimage_arch = "aarch64" if target.startswith("aarch64-") else "amd64"'
+            ),
+            2,
+        )
         self.assertIn(
             '".sig", ".nsis.zip", ".msi.zip", ".app.tar.gz", ".appimage.tar.gz"',
             self.workflow,
@@ -215,6 +224,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("--draft=false", unsigned)
         self.assertIn("--prerelease", unsigned)
         self.assertIn("FINALIZER_START", unsigned)
+        self.assertIn("DRAFT_START", unsigned)
+        self.assertIn("def clean_draft_body", unsigned)
+        self.assertIn("allow_legacy_draft", unsigned)
         self.assertIn("def append_finalizer", unsigned)
         self.assertIn("## 无签名 Release Finalizer", unsigned)
         self.assertIn("publish-unsigned-channel.py", unsigned)
@@ -239,6 +251,10 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("`unsigned/latest.json`", notes)
         self.assertIn("未知发布者", notes)
         self.assertIn("Gatekeeper", notes)
+        self.assertEqual(notes.count("<!-- fanqie:unsigned-draft:start -->"), 1)
+        self.assertEqual(notes.count("<!-- fanqie:unsigned-draft:end -->"), 1)
+        self.assertNotIn("releases/download/vprevious/", notes)
+        self.assertNotIn("## 下载地址", notes)
 
     def test_unsigned_formal_release_is_latest_and_uses_isolated_updater_channel(self):
         input_block = self.workflow.split("permissions:", 1)[0]
@@ -254,6 +270,13 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("GitHub Latest", notes)
         self.assertIn("`unsigned/latest.json`", notes)
         self.assertNotIn("不会替代稳定版", notes)
+        self.assertEqual(notes.count("<!-- fanqie:unsigned-draft:start -->"), 1)
+        self.assertNotIn("releases/download/vprevious/", notes)
+        self.assertNotIn("## 下载地址", notes)
+
+    def test_failed_release_keeps_the_draft_for_maintenance(self):
+        self.assertNotIn("cleanup-failed-draft:", self.workflow)
+        self.assertNotIn('gh release delete "${TAG_NAME}"', self.workflow)
 
     def test_unsigned_draft_recovery_reuses_the_unsigned_finalizer(self):
         workflow = self.maintenance_workflow
@@ -271,6 +294,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("scripts/append-unsigned-finalizer.py", workflow)
         self.assertIn("append-unsigned-finalizer only handles a published Release", self.unsigned_append_finalizer)
         self.assertIn("finalizer.append_finalizer", self.unsigned_append_finalizer)
+        self.assertIn("--allow-legacy-draft", workflow)
+        self.assertIn("scripts/merge-unsigned-draft-notes.py", self.workflow)
 
     def test_release_jobs_use_the_pinned_rust_toolchain(self):
         self.assertNotIn("dtolnay/rust-toolchain@stable", self.workflow)
