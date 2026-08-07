@@ -1996,3 +1996,38 @@ jobs:
               raise SystemExit("unsigned/latest.json 未完整指向本次无签名 Release")
           PY
           fi
+
+  # 发布构建失败时自动清理尚未发布的 draft release（连同其 tag），
+  # 避免失败构建在仓库里留下孤儿 draft / 孤儿 tag、占用版本号。
+  # 仅在流水线确实失败时执行；若 release 已被 finalize 发布为正式版
+  # （非 draft），则原样保留，绝不误删。
+  cleanup-failed-draft:
+    needs: [prepare, verify, release-bootstrap, desktop, desktop-fallback, android, ios]
+    if: >-
+      always() &&
+      failure() &&
+      needs.prepare.result == 'success' &&
+      (inputs.publish_release == true ||
+       inputs.publish_unsigned_prerelease == true ||
+       inputs.publish_unsigned_release == true)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete draft release and tag on failed build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "${TAG_NAME}" --repo "${GH_REPO}" >/dev/null 2>&1; then
+            echo "No release found for ${TAG_NAME}; nothing to clean."
+            exit 0
+          fi
+          is_draft="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json isDraft --jq .isDraft)"
+          if [[ "${is_draft}" != "true" ]]; then
+            echo "Release ${TAG_NAME} is no longer a draft; leaving it untouched."
+            exit 0
+          fi
+          gh release delete "${TAG_NAME}" --repo "${GH_REPO}" --yes --cleanup-tag
+          echo "Deleted failed draft release and tag: ${TAG_NAME}"
