@@ -269,6 +269,11 @@ jobs:
             --repo "${GH_REPO}" \
             --pattern latest.json \
             --dir repair-check
+          mkdir -p repair-check/signatures
+          gh release download "${tag}" \
+            --repo "${GH_REPO}" \
+            --pattern '*.sig' \
+            --dir repair-check/signatures
           asset_names="$(gh release view "${tag}" --repo "${GH_REPO}" --json assets --jq '.assets[].name')"
           if printf '%s\n' "${asset_names}" | grep -Fx 'SHA256SUMS-release.txt' >/dev/null; then
             gh release download "${tag}" \
@@ -281,11 +286,13 @@ jobs:
           python scripts/normalize-updater-metadata.py \
             --metadata repair-check/latest.json \
             --assets repair-check/release.json \
+            --signatures-dir repair-check/signatures \
             --repo "${GH_REPO}" \
             --tag "${tag}"
           python scripts/normalize-updater-metadata.py \
             --metadata repair-check/latest.json \
             --assets repair-check/release.json \
+            --signatures-dir repair-check/signatures \
             --repo "${GH_REPO}" \
             --tag "${tag}" \
             --check

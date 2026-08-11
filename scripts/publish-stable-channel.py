@@ -17,6 +17,18 @@ from urllib.parse import quote, unquote, urlsplit
 METADATA_NAME = "latest.json"
 DEFAULT_ALIAS_TAG = "stable"
 SIGNED_TAG_RE = re.compile(r"^v[^/]+$")
+STRICT_PACKAGE_KEYS = {
+    "windows-x86_64-nsis",
+    "windows-x86_64-portable",
+    "windows-aarch64-nsis",
+    "windows-aarch64-portable",
+    "linux-x86_64-deb",
+    "linux-x86_64-appimage",
+    "linux-aarch64-deb",
+    "linux-aarch64-appimage",
+    "darwin-x86_64-app",
+    "darwin-aarch64-app",
+}
 
 
 def fail(message: str) -> None:
@@ -171,6 +183,12 @@ def validate_metadata(
     platforms = metadata.get("platforms")
     if not isinstance(platforms, dict) or not platforms:
         fail("stable metadata does not contain updater platforms")
+    unsupported = sorted(set(platforms) - STRICT_PACKAGE_KEYS)
+    if unsupported:
+        fail(
+            "stable metadata contains generic or unsupported package keys: "
+            + ", ".join(unsupported)
+        )
     source_assets = asset_records(source_release)
     expected_prefix = (
         f"https://github.com/{repo}/releases/download/"
@@ -191,6 +209,31 @@ def validate_metadata(
         browser_download_url = str(source_asset.get("browser_download_url") or "").strip()
         if not browser_download_url:
             fail(f"source release asset has no download URL: {platform}")
+        expected_shape = {
+            "-nsis": ("windows-", "setup.exe"),
+            "-portable": ("windows-", "portable.exe"),
+            "-deb": ("linux-", ".deb"),
+            "-appimage": ("linux-", ".appimage"),
+            "-app": ("darwin-", ".app.tar.gz"),
+        }
+        suffix, (platform_marker, asset_suffix) = next(
+            (suffix, shape)
+            for suffix, shape in expected_shape.items()
+            if platform.endswith(suffix)
+        )
+        lowered_name = name.lower()
+        if platform_marker not in lowered_name or not lowered_name.endswith(asset_suffix):
+            fail(
+                f"stable metadata package key does not match its asset: {platform} -> {name}"
+            )
+        if "aarch64" in platform:
+            architecture_matches = "arm64" in lowered_name or "aarch64" in lowered_name
+        else:
+            architecture_matches = any(
+                marker in lowered_name for marker in ("x64", "amd64")
+            )
+        if not architecture_matches:
+            fail(f"stable metadata architecture does not match its asset: {platform}")
         metadata_url = urlsplit(url)
         source_url = urlsplit(browser_download_url)
         if (

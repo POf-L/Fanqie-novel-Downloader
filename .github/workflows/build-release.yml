@@ -943,21 +943,23 @@ jobs:
             --target ${{ matrix.target }}
             --bundles ${{ matrix.bundles }}
             --config src-tauri/tauri.release.conf.json
-          uploadWorkflowArtifacts: true
+          # The wrapper's finalizer owns the release asset allowlist and audit;
+          # do not mirror the private checkout into opaque tauri-action artifacts.
+          uploadWorkflowArtifacts: false
           uploadUpdaterJson: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
           uploadUpdaterSignatures: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
           workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-[bundle]
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
           # User installers may have no OS/vendor signature, but updater assets
           # are still signed by the dedicated Tauri key and uploaded to the draft.
-          tagName: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || '' }}
+          tagName: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || '' }}
           releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
           releaseBody: Rust + Tauri v2 全平台正式构建。
           releaseDraft: true
           prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}
 
-      - name: Upload signed Windows portable executable
-        if: runner.os == 'Windows' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
+      - name: Stage, sign and upload Windows portable executable
+        if: runner.os == 'Windows' && (inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -965,13 +967,32 @@ jobs:
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
           SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
           TARGET: ${{ matrix.target }}
+          CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $arch = if ($env:TARGET.StartsWith('aarch64-')) { 'arm64' } else { 'x64' }
           $binary = Join-Path $env:SOURCE_PATH ("src-tauri/target/{0}/release/fanqie-desktop.exe" -f $env:TARGET)
           if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "缺少便捷版可执行文件: $binary" }
-          $portable = Join-Path $env:RUNNER_TEMP ("FanqieNovelDownloader-tauri-windows-{0}-portable.exe" -f $arch)
+          $output = Join-Path $env:RUNNER_TEMP ("windows-portable-{0}" -f $arch)
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $portable = Join-Path $output ("FanqieNovelDownloader-tauri-windows-{0}-portable.exe" -f $arch)
           Copy-Item -LiteralPath $binary -Destination $portable -Force
-          gh release upload $env:TAG_NAME $portable --repo $env:GH_REPO --clobber
+          $uploads = @($portable)
+          if ($env:CREATE_UPDATER_ARTIFACTS -eq 'true') {
+            if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY) -or [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+              throw '缺少便携版 updater 签名密钥'
+            }
+            cargo install tauri-cli --version $env:TAURI_CLI_VERSION --locked
+            cargo tauri signer sign $portable
+            $signature = "$portable.sig"
+            if (-not (Test-Path -LiteralPath $signature -PathType Leaf) -or (Get-Item -LiteralPath $signature).Length -le 0) {
+              throw "便携版签名生成失败: $signature"
+            }
+            $uploads += $signature
+          }
+          gh release upload $env:TAG_NAME @uploads --repo $env:GH_REPO --clobber
 
       - name: Verify unsigned macOS bundle before upload
         if: runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
@@ -1046,13 +1067,6 @@ jobs:
               source_file = single(source / "nsis", "-setup.exe")
               destination = output / f"FanqieNovelDownloader-tauri-windows-{arch}-setup.exe"
               shutil.copy2(source_file, destination)
-              portable = source.parent / "fanqie-desktop.exe"
-              if not portable.is_file():
-                  raise SystemExit(f"missing portable desktop binary: {portable}")
-              shutil.copy2(
-                  portable,
-                  output / f"FanqieNovelDownloader-tauri-windows-{arch}-portable.exe",
-              )
           elif target.endswith("-unknown-linux-gnu"):
               arch = "arm64" if target.startswith("aarch64-") else "amd64"
               stem = f"FanqieNovelDownloader-tauri-linux-{arch}"
@@ -1156,6 +1170,7 @@ jobs:
           RELEASE_ENABLED: ${{ inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release }}
           PUBLISH_UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
           PUBLISH_UNSIGNED_RELEASE: ${{ inputs.publish_unsigned_release }}
+          CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
@@ -1170,12 +1185,24 @@ jobs:
             exit 0
           fi
           assets="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json assets -q '.assets[].name' || true)"
-          if [[ "${PUBLISH_UNSIGNED_PRERELEASE}" == "true" ||
+          if [[ "${TARGET}" == *-pc-windows-msvc ]]; then
+            arch="$([[ "${TARGET}" == aarch64-* ]] && echo arm64 || echo x64)"
+            setup="FanqieNovelDownloader-tauri-windows-${arch}-setup.exe"
+            portable="FanqieNovelDownloader-tauri-windows-${arch}-portable.exe"
+            expected_assets=("${setup}" "${portable}")
+            if [[ "${CREATE_UPDATER_ARTIFACTS}" == "true" ]]; then
+              expected_assets+=("${setup}.sig" "${portable}.sig")
+            fi
+            found=true
+            for expected in "${expected_assets[@]}"; do
+              if ! printf '%s\n' "${assets}" | grep -Fx "${expected}" >/dev/null 2>&1; then
+                found=false
+                break
+              fi
+            done
+          elif [[ "${PUBLISH_UNSIGNED_PRERELEASE}" == "true" ||
                 "${PUBLISH_UNSIGNED_RELEASE}" == "true" ]]; then
             case "${TARGET}" in
-              *-pc-windows-msvc)
-                expected="FanqieNovelDownloader-tauri-windows-$([[ "${TARGET}" == aarch64-* ]] && echo arm64 || echo x64)-setup.exe"
-                ;;
               *-unknown-linux-gnu)
                 expected_arch="$([[ "${TARGET}" == aarch64-* ]] && echo arm64 || echo amd64)"
                 expected="FanqieNovelDownloader-tauri-linux-${expected_arch}.deb"
@@ -1350,21 +1377,23 @@ jobs:
             --target ${{ matrix.target }}
             --bundles ${{ matrix.bundles }}
             --config src-tauri/tauri.release.conf.json
-          uploadWorkflowArtifacts: true
+          # The wrapper's finalizer owns the release asset allowlist and audit;
+          # do not mirror the private checkout into opaque tauri-action artifacts.
+          uploadWorkflowArtifacts: false
           uploadUpdaterJson: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
           uploadUpdaterSignatures: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
           workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-fallback-[bundle]
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
           # User installers may have no OS/vendor signature, but updater assets
           # are still signed by the dedicated Tauri key and uploaded to the draft.
-          tagName: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || '' }}
+          tagName: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || '' }}
           releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
           releaseBody: Rust + Tauri v2 全平台正式构建（含稀缺 runner 交叉回退）。
           releaseDraft: true
           prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}
 
-      - name: Upload signed Windows portable executable
-        if: steps.need.outputs.run == 'true' && runner.os == 'Windows' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
+      - name: Stage, sign and upload Windows portable executable
+        if: steps.need.outputs.run == 'true' && runner.os == 'Windows' && (inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1372,13 +1401,32 @@ jobs:
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
           SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
           TARGET: ${{ matrix.target }}
+          CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $arch = if ($env:TARGET.StartsWith('aarch64-')) { 'arm64' } else { 'x64' }
           $binary = Join-Path $env:SOURCE_PATH ("src-tauri/target/{0}/release/fanqie-desktop.exe" -f $env:TARGET)
           if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "缺少便捷版可执行文件: $binary" }
-          $portable = Join-Path $env:RUNNER_TEMP ("FanqieNovelDownloader-tauri-windows-{0}-portable.exe" -f $arch)
+          $output = Join-Path $env:RUNNER_TEMP ("windows-portable-{0}" -f $arch)
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $portable = Join-Path $output ("FanqieNovelDownloader-tauri-windows-{0}-portable.exe" -f $arch)
           Copy-Item -LiteralPath $binary -Destination $portable -Force
-          gh release upload $env:TAG_NAME $portable --repo $env:GH_REPO --clobber
+          $uploads = @($portable)
+          if ($env:CREATE_UPDATER_ARTIFACTS -eq 'true') {
+            if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY) -or [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+              throw '缺少便携版 updater 签名密钥'
+            }
+            cargo install tauri-cli --version $env:TAURI_CLI_VERSION --locked
+            cargo tauri signer sign $portable
+            $signature = "$portable.sig"
+            if (-not (Test-Path -LiteralPath $signature -PathType Leaf) -or (Get-Item -LiteralPath $signature).Length -le 0) {
+              throw "便携版签名生成失败: $signature"
+            }
+            $uploads += $signature
+          }
+          gh release upload $env:TAG_NAME @uploads --repo $env:GH_REPO --clobber
 
       - name: Verify unsigned macOS bundle before upload
         if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
@@ -1453,13 +1501,6 @@ jobs:
               source_file = single(source / "nsis", "-setup.exe")
               destination = output / f"FanqieNovelDownloader-tauri-windows-{arch}-setup.exe"
               shutil.copy2(source_file, destination)
-              portable = source.parent / "fanqie-desktop.exe"
-              if not portable.is_file():
-                  raise SystemExit(f"missing portable desktop binary: {portable}")
-              shutil.copy2(
-                  portable,
-                  output / f"FanqieNovelDownloader-tauri-windows-{arch}-portable.exe",
-              )
           elif target.endswith("-unknown-linux-gnu"):
               arch = "arm64" if target.startswith("aarch64-") else "amd64"
               stem = f"FanqieNovelDownloader-tauri-linux-{arch}"

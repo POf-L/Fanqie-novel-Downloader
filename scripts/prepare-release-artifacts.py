@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import tempfile
@@ -39,10 +40,26 @@ UPDATER_ARCHIVE_SUFFIXES = (
 )
 SHA256_RE = re.compile(r"sha256:([0-9a-f]{64})\Z")
 MANIFEST_LINE_RE = re.compile(r"([0-9a-f]{64}) [ *](.+)\Z")
+_ASSET_AUDITOR = None
 
 
 def fail(message: str) -> None:
     raise SystemExit(message)
+
+
+def validate_release_asset_name(name: str) -> None:
+    global _ASSET_AUDITOR
+    if _ASSET_AUDITOR is not None:
+        _ASSET_AUDITOR.validate_asset_name(name)
+        return
+    auditor_path = Path(__file__).with_name("audit-release-assets.py")
+    spec = importlib.util.spec_from_file_location("fanqie_release_asset_auditor", auditor_path)
+    if spec is None or spec.loader is None:
+        fail(f"cannot load release asset auditor: {auditor_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _ASSET_AUDITOR = module
+    module.validate_asset_name(name)
 
 
 def read_release(path: Path, tag: str) -> dict:
@@ -72,6 +89,7 @@ def assets_by_name(release: dict) -> dict[str, dict]:
             fail("release contains an asset without a name")
         if "\n" in name or "\r" in name:
             fail(f"release asset has an unsafe name: {name!r}")
+        validate_release_asset_name(name)
         if name in result:
             fail(f"release contains duplicate asset name: {name}")
         result[name] = asset
@@ -256,6 +274,8 @@ def platform_status_lines(
         + android_universal
         + android_aab
     )
+    windows_assets = win_x64 + win_arm
+    windows_portable = any("portable" in name.lower() for name in windows_assets)
     lines = [
         "",
         "## 平台状态与安装限制",
@@ -267,19 +287,31 @@ def platform_status_lines(
     if win_x64 or win_arm:
         if channel == "unsigned":
             update_hint = (
-                " updater 包和元数据仍由项目更新密钥校验，因此可以在应用内更新。"
+                " 安装版与便携版使用独立的精确元数据条目；便携版在原路径覆盖并重启，"
+                "不会创建安装目录、快捷方式或卸载项。updater 包仍由项目 Minisign 密钥校验。"
                 if updater_available
                 else "当前构建没有 updater 元数据，只能手动覆盖安装。"
             )
             lines.append(
-                "- **Windows**：提供未含 Authenticode 的 NSIS 安装包。SmartScreen 或"
-                f"“未知发布者”或“无法验证发行商”提示属于预期；先核对 SHA-256，再在文件属性中选择“解除锁定”。{update_hint}"
+                "- **Windows**：提供 NSIS 安装版和免安装便携版。当前附件未含 Authenticode，"
+                f"SmartScreen、“未知发布者”或“无法验证发行商”提示属于预期；先核对 SHA-256。{update_hint}"
             )
         else:
+            update_hint = (
+                "安装版与便携版只接收同架构、同发行形态的自动更新。"
+                if updater_available
+                else "本 Release 没有 updater 元数据，只提供手动下载。"
+            )
             lines.append(
-                "- **Windows**：提供 NSIS 安装包。当前公开流水线未配置 Authenticode "
+                "- **Windows**：提供 NSIS 安装版和免安装便携版。当前公开流水线未配置 Authenticode "
                 "证书，SmartScreen、“未知发布者”或“无法验证发行商”提示属于预期；先核对 SHA-256，"
-                "再在文件属性中选择“解除锁定”。"
+                f"再在文件属性中选择“解除锁定”。{update_hint}"
+            )
+        if windows_portable and updater_available:
+            lines.append(
+                "  旧便携客户端无法安全识别发行形态，需要手动下载本版本 portable.exe 覆盖一次；"
+                "迁移后才会使用便携版原位更新。Minisign updater 签名与 Windows Authenticode "
+                "发行商签名不是同一种机制。"
             )
     else:
         lines.append(
@@ -317,7 +349,8 @@ def platform_status_lines(
     ):
         lines.append(
             "- **Linux**：DEB 和 AppImage 不提供项目级发行商签名；请按发行版和 "
-            "CPU 架构选择，AppImage 需要执行权限，并先核对 SHA-256。"
+            "CPU 架构选择，AppImage 需要执行权限，并先核对 SHA-256。自动更新只选择"
+            "同架构、同包类型的 `-deb` 或 `-appimage` 条目，不会跨类型回退。"
         )
     else:
         lines.append("- **Linux**：本版本未提供安装包。")
@@ -364,7 +397,7 @@ def platform_status_lines(
             lines.append(
                 "- **自动更新**：这是无厂商/系统签名的构建，但桌面 updater 使用独立的 "
                 "Minisign 密钥签名 `latest.json` 和更新包；客户端会从 `unsigned/latest.json` "
-                "读取并验证，不能把普通 GitHub Latest 当作未校验的更新源。"
+                "读取并验证。元数据只包含精确包类型键，未知形态只能手动下载。"
             )
     elif channel == "unsigned":
         lines.append(
@@ -526,6 +559,16 @@ def generate_notes(
         )
     if highlights:
         lines.extend(["", "## 本次修复", "", *highlights])
+    if win_x64_portable or win_arm_portable:
+        lines.extend(
+            [
+                "",
+                "> [!IMPORTANT]",
+                "> **旧便携版需要手动迁移一次**：关闭旧程序，下载同架构的 "
+                "`windows-*-portable.exe` 覆盖原文件。修复版之后会在原路径自动更新，"
+                "不会变成安装版，也不会创建快捷方式或卸载项。",
+            ]
+        )
 
     release_type = (
         "无签名测试预发布（Pre-release）"
@@ -566,6 +609,11 @@ def generate_notes(
             "## 下载地址",
             "",
             "### 🪟 Windows",
+            "",
+            "| 发行形态 | 选择的附件 | 更新行为 |",
+            "| --- | --- | --- |",
+            "| 安装版 | `windows-*-setup.exe` | 运行 NSIS 安装器，保留安装目录和卸载信息 |",
+            "| 便携版 | `windows-*-portable.exe` | 原位覆盖当前 exe 并重启，不创建安装项 |",
             "",
             "#### 安装包（推荐）",
             "",
@@ -674,6 +722,13 @@ def generate_notes(
             "### ❓ 常见问题",
             "",
             "- **Windows 提示无法验证发行商**：安装包右键 → 属性 → 勾选「解除锁定」后再运行。",
+            "- **旧便携版如何升级**：旧版先手动下载同架构 portable.exe 覆盖一次；"
+            "不要运行 setup.exe。修复版之后会保持原路径和便携形态自动更新。",
+            "- **Minisign 和“已验证的发布者”是一回事吗**：不是。Minisign 用于客户端"
+            "验证 updater 包，Windows 的发行商显示由 Authenticode 决定。",
+            "- **“清除临时缓存”和“删除离线正文”有什么区别**：临时缓存最多保留约 10 分钟，"
+            "重启也会自动清除；删除离线正文会释放离线书库空间，但保留书架、阅读进度、"
+            "阅读时长和已导出的 TXT/EPUB。详情页和书架卡片都可使用“清理本书”。",
             "- **Linux DEB 打不开**：先安装 `libwebkit2gtk-4.1`（Ubuntu/Debian）。",
             "- **Android 安装被拦截**：系统设置中允许「安装未知来源应用」。",
             "- **iOS 如何安装**：下载无签名 IPA，用 AltStore / Sideloadly / TrollStore 等工具侧载；不支持 App Store。",

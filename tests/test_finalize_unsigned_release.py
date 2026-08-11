@@ -44,6 +44,47 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             ]
         }
 
+    def add_updater_assets(self, release):
+        release["assets"].extend(
+            [
+                {
+                    "name": "FanqieNovelDownloader-tauri-darwin-x64.app.tar.gz",
+                    "digest": "sha256:" + "3" * 64,
+                },
+                {
+                    "name": "FanqieNovelDownloader-tauri-darwin-aarch64.app.tar.gz",
+                    "digest": "sha256:" + "4" * 64,
+                },
+            ]
+        )
+        payloads = [
+            str(asset["name"])
+            for asset in release["assets"]
+            if (
+                (
+                    "windows-" in str(asset["name"]).lower()
+                    and str(asset["name"]).lower().endswith(".exe")
+                )
+                or (
+                    "linux-" in str(asset["name"]).lower()
+                    and str(asset["name"]).lower().endswith((".deb", ".appimage"))
+                    and "linux-arm64.appimage" not in str(asset["name"]).lower()
+                )
+                or str(asset["name"]).lower().endswith(".app.tar.gz")
+            )
+        ]
+        release["assets"].extend(
+            {
+                "name": f"{name}.sig",
+                "digest": "sha256:" + f"{index % 10}" * 64,
+            }
+            for index, name in enumerate(payloads, start=5)
+        )
+        release["assets"].append(
+            {"name": "latest.json", "digest": "sha256:" + "1" * 64}
+        )
+        return release
+
     def test_full_platform_asset_set_passes_without_updater_files(self):
         platforms = (
             "windows-x64, windows-arm64, linux-x64, linux-arm64, "
@@ -81,17 +122,8 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
         )
         self.assertIn("历史版本没有 updater 元数据", historical_notes)
 
-        updatable = self.fixture()
+        updatable = self.add_updater_assets(self.fixture())
         updatable["prerelease"] = False
-        updatable["assets"].extend(
-            [
-                {"name": "latest.json", "digest": "sha256:" + "1" * 64},
-                {
-                    "name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe.sig",
-                    "digest": "sha256:" + "2" * 64,
-                },
-            ]
-        )
         updatable_notes = MODULE.generate_finalizer_appendix(
             release=updatable,
             repo="POf-L/Fanqie-novel-Downloader",
@@ -282,19 +314,13 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
     def test_arm64_appimage_aliases_render_one_signed_canonical_link(self):
         release = self.fixture()
         release["prerelease"] = False
-        release["assets"].extend(
-            [
-                {
-                    "name": "FanqieNovelDownloader-tauri-linux-arm64.AppImage",
-                    "digest": "sha256:" + "0" * 64,
-                },
-                {"name": "latest.json", "digest": "sha256:" + "1" * 64},
-                {
-                    "name": "FanqieNovelDownloader-tauri-linux-aarch64.AppImage.sig",
-                    "digest": "sha256:" + "2" * 64,
-                },
-            ]
+        release["assets"].append(
+            {
+                "name": "FanqieNovelDownloader-tauri-linux-arm64.AppImage",
+                "digest": "sha256:" + "0" * 64,
+            }
         )
+        self.add_updater_assets(release)
         notes = MODULE.generate_finalizer_appendix(
             release=release,
             repo="POf-L/Fanqie-novel-Downloader",
@@ -362,17 +388,8 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             MODULE.merge_unsigned_draft(existing, generated)
 
     def test_unsigned_prerelease_guide_does_not_claim_fixed_alias_ownership(self):
-        release = self.fixture()
+        release = self.add_updater_assets(self.fixture())
         release["prerelease"] = True
-        release["assets"].extend(
-            [
-                {"name": "latest.json", "digest": "sha256:" + "1" * 64},
-                {
-                    "name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe.sig",
-                    "digest": "sha256:" + "2" * 64,
-                },
-            ]
-        )
         notes = MODULE.generate_finalizer_appendix(
             release=release,
             repo="POf-L/Fanqie-novel-Downloader",

@@ -20,6 +20,7 @@ FINALIZER = ROOT / "scripts" / "finalize-release.py"
 UNSIGNED_FINALIZER = ROOT / "scripts" / "finalize-unsigned-release.py"
 UNSIGNED_APPEND_FINALIZER = ROOT / "scripts" / "append-unsigned-finalizer.py"
 STABLE_PUBLISHER = ROOT / "scripts" / "publish-stable-channel.py"
+ASSET_AUDITOR = ROOT / "scripts" / "audit-release-assets.py"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
@@ -39,6 +40,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             encoding="utf-8"
         )
         cls.stable_publisher = STABLE_PUBLISHER.read_text(encoding="utf-8")
+        cls.asset_auditor = ASSET_AUDITOR.read_text(encoding="utf-8")
         cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     def render_draft_notes(self, asset_names, *, unsigned=False, unsigned_release=False):
@@ -121,7 +123,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 "CREATE_UPDATER_ARTIFACTS: "
                 "${{ needs.prepare.outputs.create_updater_artifacts }}"
             ),
-            2,
+            5,
         )
         self.assertEqual(
             self.workflow.count(
@@ -137,8 +139,24 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
         self.assertGreaterEqual(
             self.workflow.count("TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"),
+            4,
+        )
+        self.assertEqual(
+            self.workflow.count("Stage, sign and upload Windows portable executable"),
             2,
         )
+        self.assertEqual(
+            self.workflow.count(
+                "cargo install tauri-cli --version $env:TAURI_CLI_VERSION --locked"
+            ),
+            2,
+        )
+        self.assertEqual(
+            self.workflow.count("cargo tauri signer sign $portable"),
+            2,
+        )
+        self.assertEqual(self.workflow.count('$signature = "$portable.sig"'), 2)
+        self.assertIn("TAURI_CLI_VERSION: \"2.11.4\"", self.workflow)
         self.assertIn("ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}", self.workflow)
         self.assertIn(
             "inputs.publish_unsigned_prerelease == true || "
@@ -164,9 +182,11 @@ class ReleaseWorkflowTest(unittest.TestCase):
             "inputs.publish_unsigned_release == true"
         )
         self.assertGreaterEqual(self.workflow.count(release_enabled), 2)
+        self.assertEqual(self.workflow.count("uploadWorkflowArtifacts: false"), 2)
+        self.assertNotIn("uploadWorkflowArtifacts: true", self.workflow)
         self.assertEqual(
             self.workflow.count(
-                "(inputs.publish_release || inputs.publish_unsigned_prerelease) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || ''"
+                "(inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || ''"
             ),
             2,
         )
@@ -422,6 +442,15 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("releases/tags/${TAG_NAME}", self.workflow)
         self.assertIn("release_highlights:", self.workflow)
         self.assertIn("--highlights-file release-highlights.md", self.workflow)
+        self.assertIn("--signatures-dir", self.finalizer)
+        self.assertIn("--signatures-dir", self.unsigned_finalizer)
+        self.assertIn("--signatures-dir repair-check/signatures", self.maintenance_workflow)
+        self.assertIn("audit-release-assets.py", self.finalizer)
+        self.assertIn("audit-release-assets.py", self.unsigned_finalizer)
+        self.assertIn("private-src", self.asset_auditor)
+        self.assertIn('".map",', self.asset_auditor)
+        self.assertIn('".pdb",', self.asset_auditor)
+        self.assertIn('".rs",', self.asset_auditor)
 
     def test_draft_bootstrap_links_every_mobile_artifact(self):
         for architecture in ("arm64-v8a", "armeabi-v7a", "x86_64", "universal"):

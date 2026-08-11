@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NORMALIZER = ROOT / "scripts" / "normalize-updater-metadata.py"
 PREPARER = ROOT / "scripts" / "prepare-release-artifacts.py"
 STABLE_PUBLISHER = ROOT / "scripts" / "publish-stable-channel.py"
+AUDITOR = ROOT / "scripts" / "audit-release-assets.py"
 MANIFEST_NAME = "SHA256SUMS-release.txt"
 ASSET_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
@@ -114,7 +116,37 @@ def fetch_release(repo: str, database_id: int, path: Path) -> dict:
     return release
 
 
-def run_normalizer(metadata: Path, release: Path, repo: str, tag: str) -> None:
+def download_updater_signatures(repo: str, tag: str, directory: Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    for child in directory.iterdir():
+        if child.is_file() or child.is_symlink():
+            child.unlink()
+        elif child.is_dir():
+            shutil.rmtree(child)
+    run(
+        [
+            "gh",
+            "release",
+            "download",
+            tag,
+            "--repo",
+            repo,
+            "--pattern",
+            "*.sig",
+            "--dir",
+            str(directory),
+            "--clobber",
+        ]
+    )
+
+
+def run_normalizer(
+    metadata: Path,
+    release: Path,
+    signatures: Path,
+    repo: str,
+    tag: str,
+) -> None:
     base = [
         sys.executable,
         str(NORMALIZER),
@@ -122,6 +154,8 @@ def run_normalizer(metadata: Path, release: Path, repo: str, tag: str) -> None:
         str(metadata),
         "--assets",
         str(release),
+        "--signatures-dir",
+        str(signatures),
         "--repo",
         repo,
         "--tag",
@@ -143,6 +177,7 @@ def run_preparer(
     source_commit: str = "",
     platforms: str = "",
     highlights: Path | None = None,
+    updater_available: bool = False,
     check: bool = False,
 ) -> None:
     command = [
@@ -173,6 +208,8 @@ def run_preparer(
                 command.extend([flag, value.strip()])
         if highlights is not None:
             command.extend(["--highlights-file", str(highlights)])
+        if updater_available:
+            command.append("--updater-available")
     run(command)
 
 
@@ -195,6 +232,36 @@ def refresh_stable_channel(
             source_tag,
             "--work-dir",
             str(stable_dir),
+        ]
+    )
+
+
+def audit_release_assets(*, repo: str, tag: str, release: Path, work_dir: Path) -> None:
+    audit_dir = work_dir / "asset-audit"
+    if audit_dir.exists():
+        shutil.rmtree(audit_dir)
+    audit_dir.mkdir(parents=True)
+    run(
+        [
+            "gh",
+            "release",
+            "download",
+            tag,
+            "--repo",
+            repo,
+            "--dir",
+            str(audit_dir),
+            "--clobber",
+        ]
+    )
+    run(
+        [
+            sys.executable,
+            str(AUDITOR),
+            "--release-json",
+            str(release),
+            "--root",
+            str(audit_dir),
         ]
     )
 
@@ -271,6 +338,7 @@ def main() -> int:
     work_dir.mkdir(parents=True, exist_ok=True)
     release_path = work_dir / "release.json"
     metadata_path = work_dir / "latest.json"
+    signatures_path = work_dir / "updater-signatures"
     manifest_path = work_dir / MANIFEST_NAME
     notes_path = work_dir / "release-notes.md"
 
@@ -304,7 +372,8 @@ def main() -> int:
                 "--clobber",
             ]
         )
-        run_normalizer(metadata_path, release_path, repo, tag)
+        download_updater_signatures(repo, tag, signatures_path)
+        run_normalizer(metadata_path, release_path, signatures_path, repo, tag)
         run(
             [
                 "gh",
@@ -330,6 +399,7 @@ def main() -> int:
         source_commit=args.source_commit,
         platforms=args.platforms,
         highlights=args.highlights_file,
+        updater_available="latest.json" in asset_names,
     )
     run(
         [
@@ -346,6 +416,7 @@ def main() -> int:
 
     release = fetch_release(repo, database_id, release_path)
     validate_release_identity(release, tag, draft=True)
+    audit_release_assets(repo=repo, tag=tag, release=release_path, work_dir=work_dir)
     run_preparer(
         release=release_path,
         repo=repo,
@@ -354,7 +425,7 @@ def main() -> int:
         check=True,
     )
     if "latest.json" in asset_names:
-        run_normalizer(metadata_path, release_path, repo, tag)
+        run_normalizer(metadata_path, release_path, signatures_path, repo, tag)
 
     publish = [
         "gh",
@@ -386,7 +457,7 @@ def main() -> int:
         check=True,
     )
     if "latest.json" in asset_names:
-        run_normalizer(metadata_path, release_path, repo, tag)
+        run_normalizer(metadata_path, release_path, signatures_path, repo, tag)
 
     source_commit = args.source_commit.strip()
     if not source_commit:

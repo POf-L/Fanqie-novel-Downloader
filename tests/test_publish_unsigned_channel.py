@@ -24,10 +24,10 @@ class PublishUnsignedChannelTest(unittest.TestCase):
             "published_at": published,
             "assets": [
                 {"name": "latest.json"},
-                {"name": "app.exe.sig"},
+                {"name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe.sig"},
                 {
-                    "name": "app.exe",
-                    "browser_download_url": f"https://github.com/o/r/releases/download/{tag}/app.exe",
+                    "name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe",
+                    "browser_download_url": f"https://github.com/o/r/releases/download/{tag}/FanqieNovelDownloader-tauri-windows-x64-setup.exe",
                 },
             ],
         }
@@ -67,15 +67,15 @@ class PublishUnsignedChannelTest(unittest.TestCase):
         metadata = {
             "version": "2099.1.1",
             "platforms": {
-                "windows-x86_64": {
+                "windows-x86_64-nsis": {
                     "signature": "signed",
-                    "url": f"https://github.com/o/r/releases/download/{tag}/app.exe",
+                    "url": f"https://github.com/o/r/releases/download/{tag}/FanqieNovelDownloader-tauri-windows-x64-setup.exe",
                 }
             },
         }
         MODULE.validate_metadata("o/r", source, metadata)
-        metadata["platforms"]["windows-x86_64"]["url"] = (
-            "https://github.com/o/r/releases/download/unsigned/app.exe"
+        metadata["platforms"]["windows-x86_64-nsis"]["url"] = (
+            "https://github.com/o/r/releases/download/unsigned/FanqieNovelDownloader-tauri-windows-x64-setup.exe"
         )
         with self.assertRaisesRegex(SystemExit, "does not point"):
             MODULE.validate_metadata("o/r", source, metadata)

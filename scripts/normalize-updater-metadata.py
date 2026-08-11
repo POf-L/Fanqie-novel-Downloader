@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rewrite Tauri updater URLs to public GitHub release download URLs."""
+"""Build strict, package-specific Tauri updater metadata for a GitHub Release."""
 
 from __future__ import annotations
 
@@ -9,12 +9,87 @@ import json
 import os
 import re
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote
 
 
-API_ASSET_RE = re.compile(r"/releases/assets/(\d+)(?:/|$)")
 SIGNATURE_FILE_RE = re.compile(r"(?:^|[\t ])file:([^\r\n]+)", re.MULTILINE)
+CLI_ASSET_RE = re.compile(r"(?:^|[-_.])cli(?:[-_.]|$)", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class PackageSpec:
+    platform: str
+    asset_name: str
+    package_kind: str
+    architecture: str
+
+
+PACKAGE_SPECS = (
+    PackageSpec(
+        "windows-x86_64-nsis",
+        "FanqieNovelDownloader-tauri-windows-x64-setup.exe",
+        "nsis",
+        "x86_64",
+    ),
+    PackageSpec(
+        "windows-x86_64-portable",
+        "FanqieNovelDownloader-tauri-windows-x64-portable.exe",
+        "portable",
+        "x86_64",
+    ),
+    PackageSpec(
+        "windows-aarch64-nsis",
+        "FanqieNovelDownloader-tauri-windows-arm64-setup.exe",
+        "nsis",
+        "aarch64",
+    ),
+    PackageSpec(
+        "windows-aarch64-portable",
+        "FanqieNovelDownloader-tauri-windows-arm64-portable.exe",
+        "portable",
+        "aarch64",
+    ),
+    PackageSpec(
+        "linux-x86_64-deb",
+        "FanqieNovelDownloader-tauri-linux-amd64.deb",
+        "deb",
+        "x86_64",
+    ),
+    PackageSpec(
+        "linux-x86_64-appimage",
+        "FanqieNovelDownloader-tauri-linux-amd64.AppImage",
+        "appimage",
+        "x86_64",
+    ),
+    PackageSpec(
+        "linux-aarch64-deb",
+        "FanqieNovelDownloader-tauri-linux-arm64.deb",
+        "deb",
+        "aarch64",
+    ),
+    PackageSpec(
+        "linux-aarch64-appimage",
+        "FanqieNovelDownloader-tauri-linux-aarch64.AppImage",
+        "appimage",
+        "aarch64",
+    ),
+    PackageSpec(
+        "darwin-x86_64-app",
+        "FanqieNovelDownloader-tauri-darwin-x64.app.tar.gz",
+        "app",
+        "x86_64",
+    ),
+    PackageSpec(
+        "darwin-aarch64-app",
+        "FanqieNovelDownloader-tauri-darwin-aarch64.app.tar.gz",
+        "app",
+        "aarch64",
+    ),
+)
+SPECS_BY_ASSET = {spec.asset_name: spec for spec in PACKAGE_SPECS}
+PLATFORM_KEYS = {spec.platform for spec in PACKAGE_SPECS}
 
 
 def release_version_for_tag(tag: str) -> str:
@@ -32,29 +107,24 @@ def read_json(path: Path) -> object:
         raise SystemExit(f"cannot read JSON {path}: {error}") from error
 
 
-def release_assets(payload: object) -> tuple[dict[str, dict], dict[str, dict]]:
-    if isinstance(payload, dict):
-        assets = payload.get("assets")
-    else:
-        assets = payload
+def release_assets(payload: object) -> dict[str, dict]:
+    assets = payload.get("assets") if isinstance(payload, dict) else payload
     if not isinstance(assets, list):
         raise SystemExit("release asset JSON must contain an assets array")
 
-    by_id: dict[str, dict] = {}
     by_name: dict[str, dict] = {}
     for asset in assets:
         if not isinstance(asset, dict):
-            continue
+            raise SystemExit("release asset JSON contains a malformed asset")
         name = str(asset.get("name") or "").strip()
         if not name:
-            continue
+            raise SystemExit("release asset JSON contains an unnamed asset")
+        if name in by_name:
+            raise SystemExit(f"release contains duplicate asset name: {name}")
         by_name[name] = asset
-        asset_id = asset.get("id")
-        if asset_id is not None:
-            by_id[str(asset_id)] = asset
     if not by_name:
         raise SystemExit("release asset JSON does not contain any named assets")
-    return by_id, by_name
+    return by_name
 
 
 def expected_download_prefix(repo: str, tag: str) -> str:
@@ -67,129 +137,174 @@ def expected_download_prefix(repo: str, tag: str) -> str:
     return f"https://github.com/{repo}/releases/download/{quote(tag, safe='')}/"
 
 
-def public_asset_url(asset: dict, prefix: str) -> str:
-    name = str(asset.get("name") or "").strip()
-    if not name:
-        raise SystemExit("release asset has no name")
-    if name == "latest.json" or name.endswith(".sig"):
-        raise SystemExit(f"updater entry points to a metadata/signature asset: {name}")
-
-    # Draft release assets use an ephemeral ``untagged-*`` download path.  The
-    # authenticated release payload is authoritative for the asset name, but
-    # its browser URL is not stable until the draft is published.
-    return prefix + quote(name, safe="")
-
-
-def updater_signature_filename(entry: dict) -> str:
-    """Return Tauri's original payload filename embedded in the signature.
-
-    tauri-action uploads an updater asset and then the custom unsigned upload
-    replaces the same installer name. GitHub gives that replacement a new asset
-    ID, so latest.json can legitimately contain the deleted draft asset ID. The
-    Minisign trusted comment retains the exact signed filename and is therefore
-    the authoritative fallback for mapping the entry to the replacement asset.
-    """
-
-    encoded = str(entry.get("signature") or "").strip()
-    if not encoded:
-        return ""
+def decoded_signature_filename(signature: str, signature_name: str) -> str:
     try:
-        decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
-    except (ValueError, UnicodeDecodeError):
-        return ""
+        decoded = base64.b64decode(signature, validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as error:
+        raise SystemExit(f"invalid updater signature encoding: {signature_name}") from error
     match = SIGNATURE_FILE_RE.search(decoded)
-    return match.group(1).strip() if match else ""
+    if match is None or not match.group(1).strip():
+        raise SystemExit(f"updater signature has no signed filename: {signature_name}")
+    return Path(match.group(1).strip()).name
 
 
-def asset_for_signature_filename(
-    entry: dict, by_name: dict[str, dict]
-) -> dict | None:
-    signed_name = updater_signature_filename(entry)
-    if not signed_name:
-        return None
-    exact = by_name.get(signed_name)
-    if exact is not None:
-        return exact
+def architecture_markers(architecture: str) -> tuple[str, ...]:
+    if architecture == "aarch64":
+        return ("arm64", "aarch64")
+    return ("x64", "x86_64", "amd64")
 
+
+def validate_signed_filename(spec: PackageSpec, signed_name: str) -> None:
     lowered = signed_name.lower()
-    suffix = Path(signed_name).suffix.lower()
-    candidates = [
-        asset
-        for name, asset in by_name.items()
-        if name.lower().endswith(suffix)
-        and name.lower() != "latest.json"
-        and not name.lower().endswith(".sig")
-    ]
-    if "setup.exe" in lowered:
-        architecture = "arm64" if "arm64" in lowered else "x64"
-        candidates = [
-            asset
-            for asset in candidates
-            if "windows" in str(asset.get("name") or "").lower()
-            and architecture in str(asset.get("name") or "").lower()
-            and "setup" in str(asset.get("name") or "").lower()
-        ]
-    elif lowered.endswith(".deb"):
-        architecture = "arm64" if "arm64" in lowered or "aarch64" in lowered else "amd64"
-        candidates = [
-            asset
-            for asset in candidates
-            if "linux" in str(asset.get("name") or "").lower()
-            and architecture in str(asset.get("name") or "").lower()
-        ]
-    elif lowered.endswith(".appimage"):
-        architecture_markers = ("arm64", "aarch64") if "aarch64" in lowered else ("amd64", "x64")
-        candidates = [
-            asset
-            for asset in candidates
-            if "linux" in str(asset.get("name") or "").lower()
-            and any(
-                marker in str(asset.get("name") or "").lower()
-                for marker in architecture_markers
+    if spec.package_kind == "portable":
+        if signed_name != spec.asset_name:
+            raise SystemExit(
+                "portable updater signature was not generated for the final asset name: "
+                f"expected {spec.asset_name!r}, got {signed_name!r}"
             )
-        ]
-    else:
-        return None
+        return
 
-    return candidates[0] if len(candidates) == 1 else None
-
-
-def asset_for_entry(
-    entry: dict, by_id: dict[str, dict], by_name: dict[str, dict]
-) -> dict:
-    raw_url = str(entry.get("url") or "").strip()
-    match = API_ASSET_RE.search(urlparse(raw_url).path)
-    if match:
-        asset = by_id.get(match.group(1))
-        if asset is not None:
-            return asset
-        replacement = asset_for_signature_filename(entry, by_name)
-        if replacement is not None:
-            return replacement
+    expected_suffix = {
+        "nsis": "setup.exe",
+        "deb": ".deb",
+        "appimage": ".appimage",
+        "app": ".app.tar.gz",
+    }[spec.package_kind]
+    if not lowered.endswith(expected_suffix):
         raise SystemExit(
-            "updater URL references a replaced release asset and its signed "
-            f"filename cannot be mapped: id {match.group(1)}"
+            f"signature payload type does not match {spec.platform}: {signed_name!r}"
+        )
+    # Tauri's macOS updater archive uses the same internal filename for both
+    # architectures. The release asset name and unique signature still bind the
+    # entry to one architecture; Windows/Linux signatures also carry an arch marker.
+    if spec.package_kind != "app" and not any(
+        marker in lowered for marker in architecture_markers(spec.architecture)
+    ):
+        raise SystemExit(
+            f"signature architecture does not match {spec.platform}: {signed_name!r}"
         )
 
-    # Tauri versions that already emit browser URLs can be normalized again.
-    path_name = unquote(urlparse(raw_url).path.rstrip("/").rsplit("/", 1)[-1])
-    if path_name in by_name:
-        return by_name[path_name]
 
-    declared_name = str(entry.get("name") or "").strip()
-    if declared_name in by_name:
-        return by_name[declared_name]
+def canonical_signature_file(item: Path) -> str:
+    """Return the outer-base64 form consumed by Tauri updater metadata.
 
-    raise SystemExit(
-        "cannot map updater entry to a release asset; "
-        f"URL={raw_url!r}, name={declared_name!r}"
-    )
+    `tauri signer sign` currently writes a one-line base64 encoding of the
+    Minisign text. Keeping that value unchanged is important because it is
+    also the value stored in `latest.json`. Some release tooling, however,
+    provides the decoded four-line Minisign text instead. Accept that form
+    too, and encode the original bytes once so both inputs produce the same
+    metadata representation. Whitespace around or between base64 lines is
+    harmless and is canonicalized.
+    """
+    try:
+        raw = item.read_bytes()
+    except OSError as error:
+        raise SystemExit(f"cannot read updater signature {item}: {error}") from error
+    if not raw.strip():
+        raise SystemExit(f"updater signature is empty: {item.name}")
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise SystemExit(f"updater signature is not UTF-8 text: {item.name}") from error
+
+    stripped = text.strip()
+    if stripped.startswith("untrusted comment:"):
+        return base64.b64encode(raw).decode("ascii")
+
+    compact = re.sub(r"\s+", "", stripped)
+    try:
+        decoded = base64.b64decode(compact, validate=True)
+        decoded.decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as error:
+        raise SystemExit(f"invalid updater signature encoding: {item.name}") from error
+    return compact
+
+
+def read_signatures(path: Path) -> dict[str, str]:
+    if not path.is_dir():
+        raise SystemExit(f"signature directory does not exist: {path}")
+    signatures: dict[str, str] = {}
+    for item in sorted(path.iterdir()):
+        if not item.is_file():
+            raise SystemExit(f"signature directory contains a non-file entry: {item.name}")
+        if not item.name.lower().endswith(".sig"):
+            raise SystemExit(f"signature directory contains an unexpected file: {item.name}")
+        signatures[item.name] = canonical_signature_file(item)
+    return signatures
+
+
+def validate_windows_pairs(by_name: dict[str, dict]) -> None:
+    for architecture in ("x64", "arm64"):
+        required = {
+            f"FanqieNovelDownloader-tauri-windows-{architecture}-setup.exe",
+            f"FanqieNovelDownloader-tauri-windows-{architecture}-setup.exe.sig",
+            f"FanqieNovelDownloader-tauri-windows-{architecture}-portable.exe",
+            f"FanqieNovelDownloader-tauri-windows-{architecture}-portable.exe.sig",
+        }
+        present = required & by_name.keys()
+        if present and present != required:
+            missing = sorted(required - present)
+            raise SystemExit(
+                f"Windows {architecture} release shape is incomplete; missing: {missing}"
+            )
+
+
+def build_platforms(
+    by_name: dict[str, dict], signatures: dict[str, str], prefix: str
+) -> dict[str, dict[str, str]]:
+    validate_windows_pairs(by_name)
+    expected: dict[str, dict[str, str]] = {}
+    used_signatures: dict[str, str] = {}
+
+    for spec in PACKAGE_SPECS:
+        signature_name = f"{spec.asset_name}.sig"
+        has_payload = spec.asset_name in by_name
+        has_signature_asset = signature_name in by_name
+        if has_payload != has_signature_asset:
+            missing = signature_name if has_payload else spec.asset_name
+            raise SystemExit(
+                f"updater payload/signature pair is incomplete for {spec.platform}: {missing}"
+            )
+        if not has_payload:
+            continue
+        signature = signatures.get(signature_name)
+        if signature is None:
+            raise SystemExit(f"downloaded signature file is missing: {signature_name}")
+        signed_name = decoded_signature_filename(signature, signature_name)
+        validate_signed_filename(spec, signed_name)
+        duplicate = used_signatures.get(signature)
+        if duplicate is not None:
+            raise SystemExit(
+                f"the same updater signature is reused by {duplicate} and {spec.platform}"
+            )
+        used_signatures[signature] = spec.platform
+        expected[spec.platform] = {
+            "signature": signature,
+            "url": prefix + quote(spec.asset_name, safe=""),
+        }
+
+    known_signature_names = {f"{spec.asset_name}.sig" for spec in PACKAGE_SPECS}
+    for name in by_name:
+        if not name.lower().endswith(".sig") or name in known_signature_names:
+            continue
+        if not CLI_ASSET_RE.search(name):
+            raise SystemExit(f"release contains an unsupported updater signature asset: {name}")
+    extra_downloads = sorted(set(signatures) - set(by_name))
+    if extra_downloads:
+        raise SystemExit(
+            "signature directory contains files not present in the Release: "
+            + ", ".join(extra_downloads)
+        )
+    if not expected:
+        raise SystemExit("release does not contain any supported updater package pairs")
+    return expected
 
 
 def normalize(
     metadata: dict,
-    by_id: dict[str, dict],
     by_name: dict[str, dict],
+    signatures: dict[str, str],
     prefix: str,
     release_version: str,
     *,
@@ -202,28 +317,30 @@ def normalize(
             f"expected {release_version!r}, got {actual_version!r}"
         )
 
-    platforms = metadata.get("platforms")
-    if not isinstance(platforms, dict) or not platforms:
+    current = metadata.get("platforms")
+    if not isinstance(current, dict) or not current:
         raise SystemExit("latest.json does not contain updater platforms")
-
-    changed = False
-    for platform, entry in platforms.items():
-        if not isinstance(entry, dict):
-            raise SystemExit(f"invalid updater entry: {platform}")
-        if not str(entry.get("signature") or "").strip():
-            raise SystemExit(f"updater entry has no signature: {platform}")
-        asset = asset_for_entry(entry, by_id, by_name)
-        expected = public_asset_url(asset, prefix)
-        current = str(entry.get("url") or "").strip()
-        if check:
-            if current != expected:
-                raise SystemExit(
-                    f"updater URL is not normalized for {platform}: {current!r}"
-                )
-        elif current != expected:
-            entry["url"] = expected
-            changed = True
-    return changed
+    expected = build_platforms(by_name, signatures, prefix)
+    if check:
+        if current != expected:
+            generic = sorted(key for key in current if key not in PLATFORM_KEYS)
+            missing = sorted(expected.keys() - current.keys())
+            unexpected = sorted(current.keys() - expected.keys())
+            mismatched = sorted(
+                key
+                for key in expected.keys() & current.keys()
+                if current[key] != expected[key]
+            )
+            raise SystemExit(
+                "latest.json package entries are not strict and normalized; "
+                f"generic_or_unknown={generic}, missing={missing}, "
+                f"unexpected={unexpected}, mismatched={mismatched}"
+            )
+        return False
+    if current == expected:
+        return False
+    metadata["platforms"] = expected
+    return True
 
 
 def write_json(path: Path, payload: dict) -> None:
@@ -248,12 +365,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--assets", type=Path, required=True)
+    parser.add_argument("--signatures-dir", type=Path, required=True)
     parser.add_argument("--repo", required=True, help="OWNER/REPOSITORY")
     parser.add_argument("--tag", required=True)
     parser.add_argument(
         "--check",
         action="store_true",
-        help="fail unless every updater URL already uses the public release URL",
+        help="fail unless metadata contains only exact package-specific entries",
     )
     return parser.parse_args()
 
@@ -264,12 +382,13 @@ def main() -> int:
     if not isinstance(metadata, dict):
         raise SystemExit("latest.json must contain a JSON object")
     assets_payload = read_json(args.assets)
-    by_id, by_name = release_assets(assets_payload)
+    by_name = release_assets(assets_payload)
+    signatures = read_signatures(args.signatures_dir)
     prefix = expected_download_prefix(args.repo, args.tag)
     changed = normalize(
         metadata,
-        by_id,
         by_name,
+        signatures,
         prefix,
         release_version_for_tag(args.tag),
         check=args.check,
@@ -277,8 +396,8 @@ def main() -> int:
     if not args.check and changed:
         write_json(args.metadata, metadata)
     print(
-        f"Updater metadata {'already normalized' if args.check else 'normalized'}: "
-        f"{len(metadata['platforms'])} platform entries"
+        f"Updater metadata {'verified' if args.check else 'normalized'}: "
+        f"{len(metadata['platforms'])} package-specific entries"
     )
     return 0
 

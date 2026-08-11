@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -43,10 +44,26 @@ INSTALLER_SUFFIXES = (
     ".rpm",
 )
 CLI_ASSET_RE = re.compile(r"(?:^|[-_. ])cli(?:[-_. ]|$)", re.IGNORECASE)
+_ASSET_AUDITOR = None
 
 
 def fail(message: str) -> None:
     raise SystemExit(message)
+
+
+def validate_release_asset_name(name: str) -> None:
+    global _ASSET_AUDITOR
+    if _ASSET_AUDITOR is None:
+        auditor_path = Path(__file__).with_name("audit-release-assets.py")
+        spec = importlib.util.spec_from_file_location(
+            "fanqie_unsigned_release_asset_auditor", auditor_path
+        )
+        if spec is None or spec.loader is None:
+            fail(f"cannot load release asset auditor: {auditor_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _ASSET_AUDITOR = module
+    _ASSET_AUDITOR.validate_asset_name(name)
 
 
 def run(
@@ -264,6 +281,8 @@ def payload_assets(release: dict) -> list[dict]:
         fail("unsigned release has no valid assets")
     if len(names) != len(set(names)):
         fail("unsigned release contains duplicate asset names")
+    for name in names:
+        validate_release_asset_name(name)
     return payload
 
 
@@ -296,6 +315,30 @@ def validate_updater_metadata(release: dict) -> None:
     for signature in signatures:
         if signature[:-4] not in names:
             fail(f"updater signature has no matching payload asset: {signature}")
+    updater_payloads = [
+        name
+        for name in names
+        if (
+            ("windows-" in name.lower() and name.lower().endswith(".exe"))
+            or (
+                "linux-" in name.lower()
+                and name.lower().endswith((".deb", ".appimage"))
+            )
+            or name.lower().endswith(".app.tar.gz")
+        )
+        and not (
+            "linux-arm64.appimage" in name.lower()
+            and any("linux-aarch64.appimage" in candidate.lower() for candidate in names)
+        )
+    ]
+    missing_signatures = sorted(
+        name for name in updater_payloads if f"{name}.sig" not in names
+    )
+    if missing_signatures:
+        fail(
+            "updater payloads are missing matching signatures: "
+            + ", ".join(missing_signatures)
+        )
 
     metadata_asset = next(
         (
@@ -490,6 +533,10 @@ def normalize_unsigned_updater_metadata(
     if not has_updater_metadata(release):
         return False
     metadata_path = work_dir / "latest.json"
+    signatures_dir = work_dir / "updater-signatures"
+    if signatures_dir.exists():
+        shutil.rmtree(signatures_dir)
+    signatures_dir.mkdir(parents=True)
     run(
         [
             "gh",
@@ -505,21 +552,38 @@ def normalize_unsigned_updater_metadata(
             "--clobber",
         ]
     )
-    normalizer = Path(__file__).with_name("normalize-updater-metadata.py")
     run(
         [
-            sys.executable,
-            str(normalizer),
-            "--metadata",
-            str(metadata_path),
-            "--assets",
-            str(work_dir / "release.json"),
+            "gh",
+            "release",
+            "download",
+            tag,
             "--repo",
             repo,
-            "--tag",
-            tag,
+            "--pattern",
+            "*.sig",
+            "--dir",
+            str(signatures_dir),
+            "--clobber",
         ]
     )
+    normalizer = Path(__file__).with_name("normalize-updater-metadata.py")
+    normalizer_command = [
+        sys.executable,
+        str(normalizer),
+        "--metadata",
+        str(metadata_path),
+        "--assets",
+        str(work_dir / "release.json"),
+        "--signatures-dir",
+        str(signatures_dir),
+        "--repo",
+        repo,
+        "--tag",
+        tag,
+    ]
+    run(normalizer_command)
+    run([*normalizer_command, "--check"])
     run(
         [
             "gh",
@@ -533,6 +597,37 @@ def normalize_unsigned_updater_metadata(
         ]
     )
     return True
+
+
+def audit_release_assets(*, repo: str, tag: str, release: Path, work_dir: Path) -> None:
+    audit_dir = work_dir / "asset-audit"
+    if audit_dir.exists():
+        shutil.rmtree(audit_dir)
+    audit_dir.mkdir(parents=True)
+    run(
+        [
+            "gh",
+            "release",
+            "download",
+            tag,
+            "--repo",
+            repo,
+            "--dir",
+            str(audit_dir),
+            "--clobber",
+        ]
+    )
+    auditor = Path(__file__).with_name("audit-release-assets.py")
+    run(
+        [
+            sys.executable,
+            str(auditor),
+            "--release-json",
+            str(release),
+            "--root",
+            str(audit_dir),
+        ]
+    )
 
 
 def verify_device_guide(
@@ -1083,6 +1178,7 @@ def main() -> int:
     assets, installers = validate_assets(
         release, platforms, allow_updater=updater_available
     )
+    audit_release_assets(repo=repo, tag=tag, release=release_path, work_dir=work_dir)
     if already_finalized:
         if not existing_manifest_is_current(release, assets):
             fail("published unsigned manifest no longer matches release assets")

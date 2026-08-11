@@ -28,12 +28,12 @@ class PublishStableChannelTest(unittest.TestCase):
             "assets": [
                 {"name": "latest.json", "browser_download_url": source + "latest.json"},
                 {
-                    "name": "FanqieNovelDownloader-windows.exe.sig",
-                    "browser_download_url": source + "FanqieNovelDownloader-windows.exe.sig",
+                    "name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe.sig",
+                    "browser_download_url": source + "FanqieNovelDownloader-tauri-windows-x64-setup.exe.sig",
                 },
                 {
-                    "name": "FanqieNovelDownloader-windows.exe",
-                    "browser_download_url": source + "FanqieNovelDownloader-windows.exe",
+                    "name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe",
+                    "browser_download_url": source + "FanqieNovelDownloader-tauri-windows-x64-setup.exe",
                 },
             ],
         }
@@ -43,9 +43,9 @@ class PublishStableChannelTest(unittest.TestCase):
         return {
             "version": tag.removeprefix("v"),
             "platforms": {
-                "windows-x86_64": {
+                "windows-x86_64-nsis": {
                     "signature": "signed-entry",
-                    "url": source + "FanqieNovelDownloader-windows.exe",
+                    "url": source + "FanqieNovelDownloader-tauri-windows-x64-setup.exe",
                 }
             },
         }
@@ -86,8 +86,8 @@ class PublishStableChannelTest(unittest.TestCase):
             source_tag="v2099.1.1",
             source_release=release,
         )
-        metadata["platforms"]["windows-x86_64"]["url"] = metadata["platforms"][
-            "windows-x86_64"
+        metadata["platforms"]["windows-x86_64-nsis"]["url"] = metadata["platforms"][
+            "windows-x86_64-nsis"
         ]["url"].replace("/v2099.1.1/", "/stable/")
         with self.assertRaisesRegex(SystemExit, "does not point"):
             MODULE.validate_metadata(
@@ -135,14 +135,14 @@ class PublishStableChannelTest(unittest.TestCase):
     def test_metadata_validation_decodes_asset_names(self):
         release = self.signed_release()
         release["assets"][2] = {
-            "name": "Fanqie Novel Downloader.exe",
+            "name": "FanqieNovelDownloader-tauri-windows-x64-setup.exe",
             "browser_download_url": (
                 "https://github.com/POf-L/Fanqie-novel-Downloader/releases/download/"
-                "v2099.1.1/Fanqie%20Novel%20Downloader.exe"
+                "v2099.1.1/FanqieNovelDownloader-tauri-windows-x64-setup.exe"
             ),
         }
         metadata = self.metadata()
-        metadata["platforms"]["windows-x86_64"]["url"] = release["assets"][2][
+        metadata["platforms"]["windows-x86_64-nsis"]["url"] = release["assets"][2][
             "browser_download_url"
         ]
         MODULE.validate_metadata(
@@ -151,6 +151,32 @@ class PublishStableChannelTest(unittest.TestCase):
             source_tag="v2099.1.1",
             source_release=release,
         )
+
+    def test_metadata_validation_rejects_generic_and_cross_shape_entries(self):
+        release = self.signed_release()
+        metadata = self.metadata()
+        metadata["platforms"]["windows-x86_64"] = metadata["platforms"].pop(
+            "windows-x86_64-nsis"
+        )
+        with self.assertRaisesRegex(SystemExit, "generic or unsupported"):
+            MODULE.validate_metadata(
+                metadata,
+                repo="POf-L/Fanqie-novel-Downloader",
+                source_tag="v2099.1.1",
+                source_release=release,
+            )
+
+        metadata = self.metadata()
+        metadata["platforms"]["windows-x86_64-portable"] = metadata[
+            "platforms"
+        ].pop("windows-x86_64-nsis")
+        with self.assertRaisesRegex(SystemExit, "does not match its asset"):
+            MODULE.validate_metadata(
+                metadata,
+                repo="POf-L/Fanqie-novel-Downloader",
+                source_tag="v2099.1.1",
+                source_release=release,
+            )
 
     def test_refresh_removes_non_metadata_alias_assets(self):
         alias = {
