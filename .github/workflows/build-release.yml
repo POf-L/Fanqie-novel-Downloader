@@ -1706,14 +1706,6 @@ jobs:
           } > dist/android/SIGNING.txt
           sha256sum dist/android/* > dist/android/SHA256SUMS-android.txt
 
-      - name: Upload Android workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: FanqieNovelDownloader-tauri-android-all-abis
-          path: ${{ env.PRIVATE_SOURCE_PATH }}/dist/android/*
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Upload Android release assets
         if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
@@ -1845,14 +1837,6 @@ jobs:
           done < <(find src-tauri/gen/apple -type f -name '*.ipa' | sort)
           test -n "$(find dist/ios -type f -name '*.ipa' -print -quit)"
           shasum -a 256 dist/ios/*.ipa > dist/ios/SHA256SUMS-ios.txt
-
-      - name: Upload iOS workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: FanqieNovelDownloader-tauri-ios-arm64
-          path: ${{ env.PRIVATE_SOURCE_PATH }}/dist/ios/*
-          if-no-files-found: error
-          retention-days: 7
 
       - name: Upload iOS release assets
         if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
