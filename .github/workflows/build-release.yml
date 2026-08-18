@@ -1980,6 +1980,7 @@ jobs:
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
           PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
           UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
+          CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
         run: |
           set -euo pipefail
           release_json="${RUNNER_TEMP}/published-unsigned-release.json"
@@ -2052,7 +2053,7 @@ jobs:
           if os.environ.get("UNSIGNED_PRERELEASE", "false") != "true" and "unsigned/latest.json" not in body:
               raise SystemExit("正式无签名 Release 缺少 unsigned/latest.json 通道说明")
           PY
-          if [[ "${UNSIGNED_PRERELEASE}" != "true" ]]; then
+          if [[ "${UNSIGNED_PRERELEASE}" != "true" && "${CREATE_UPDATER_ARTIFACTS}" == "true" ]]; then
             curl --fail --location --silent --show-error \
               --output "${RUNNER_TEMP}/unsigned-latest.json" \
               "https://github.com/${GH_REPO}/releases/download/unsigned/latest.json"
