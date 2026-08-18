@@ -123,7 +123,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 "CREATE_UPDATER_ARTIFACTS: "
                 "${{ needs.prepare.outputs.create_updater_artifacts }}"
             ),
-            5,
+            6,
         )
         self.assertEqual(
             self.workflow.count(
