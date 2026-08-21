@@ -99,6 +99,25 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
+      - name: Clean up stale draft releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          drafts=$(gh release list --repo "${GH_REPO}" --limit 200 --json tagName,isDraft \
+            --jq '.[] | select(.draft) | .tagName')
+          if [[ -z "$(printf '%s' "${drafts}" | tr -d '[:space:]')" ]]; then
+            echo "没有需要清理的 draft release"
+            exit 0
+          fi
+          while IFS= read -r tag; do
+            [[ -z "${tag}" ]] && continue
+            echo "清理残留 draft release: ${tag}"
+            gh release delete "${tag}" --repo "${GH_REPO}" --yes --cleanup-tag || true
+          done <<< "${drafts}"
+          echo "draft release 清理完成"
+
       - name: Select build platforms
         id: platforms
         shell: python
