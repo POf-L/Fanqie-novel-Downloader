@@ -490,8 +490,8 @@ jobs:
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         run: |
           cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-          cargo test --manifest-path src-tauri/Cargo.toml
-          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path src-tauri/Cargo.toml --all-features
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
           node --test tests/*.js
           node --check web/static/app.js
           git diff --check
