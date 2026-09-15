@@ -1675,6 +1675,10 @@ jobs:
           java-version: "17"
 
       - uses: android-actions/setup-android@v3
+        with:
+          # The legacy "tools" package in the action's defaults is no longer
+          # available. SDK platforms, build tools and NDK are installed below.
+          packages: platform-tools
 
       - uses: dtolnay/rust-toolchain@1.97.0
         with:

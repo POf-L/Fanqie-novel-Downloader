@@ -334,6 +334,22 @@ class ReleaseWorkflowTest(unittest.TestCase):
             5,
         )
 
+    def test_android_setup_does_not_request_the_retired_tools_package(self):
+        android_job = self.workflow.split("\n  android:\n", 1)[1].split(
+            "\n  ios:\n", 1
+        )[0]
+        setup = android_job.split("- uses: android-actions/setup-android@v3\n", 1)[1]
+        setup = setup.split("\n      - ", 1)[0]
+        self.assertIn("        with:\n", setup)
+        packages = re.findall(r"^          packages: (.+)$", setup, re.MULTILINE)
+        self.assertEqual(packages, ["platform-tools"])
+        for package in (
+            '"platforms;android-${ANDROID_API_LEVEL}"',
+            '"build-tools;${ANDROID_BUILD_TOOLS}"',
+            '"ndk;${ANDROID_NDK_VERSION}"',
+        ):
+            self.assertIn(package, android_job)
+
     def test_published_macos_bundles_require_developer_id_and_gatekeeper_checks(self):
         self.assertIn("MACOS_ENABLED: ${{ contains(steps.platforms.outputs.selected_platforms, 'macos-') }}", self.workflow)
         for secret in (
