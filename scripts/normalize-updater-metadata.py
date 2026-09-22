@@ -145,7 +145,11 @@ def decoded_signature_filename(signature: str, signature_name: str) -> str:
     match = SIGNATURE_FILE_RE.search(decoded)
     if match is None or not match.group(1).strip():
         raise SystemExit(f"updater signature has no signed filename: {signature_name}")
-    return Path(match.group(1).strip()).name
+    # 新版 tauri signer 的 trusted comment 是 TAB 分隔三段：
+    # timestamp:<ts>\tfile:<name>\tversion:<ver>。文件名本身可含空格，
+    # 只能按 TAB 切（空格是文件名的一部分）。
+    filename = match.group(1).split('\t')[0].strip()
+    return Path(filename).name
 
 
 def architecture_markers(architecture: str) -> tuple[str, ...]:
