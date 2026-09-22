@@ -599,24 +599,60 @@ def normalize_unsigned_updater_metadata(
     return True
 
 
+def release_asset_sizes(release: Path) -> dict[str, int]:
+    try:
+        payload = json.loads(release.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"cannot read release JSON {release}: {error}") from error
+    assets = payload.get("assets") if isinstance(payload, dict) else None
+    if not isinstance(assets, list):
+        raise SystemExit("release JSON does not contain an assets array")
+    sizes: dict[str, int] = {}
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name") or "").strip()
+        size = asset.get("size")
+        if name and isinstance(size, int) and size >= 0:
+            sizes[name] = size
+    return sizes
+
+
 def audit_release_assets(*, repo: str, tag: str, release: Path, work_dir: Path) -> None:
     audit_dir = work_dir / "asset-audit"
-    if audit_dir.exists():
-        shutil.rmtree(audit_dir)
-    audit_dir.mkdir(parents=True)
-    run(
-        [
-            "gh",
-            "release",
-            "download",
-            tag,
-            "--repo",
-            repo,
-            "--dir",
-            str(audit_dir),
-            "--clobber",
-        ]
-    )
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    # 增量续传：本地已存在且 size 与线上一致的直接跳过，只补缺失/损坏的。
+    # 全量 1GB+，重跑不再从头下载，避免前台超时。
+    expected = release_asset_sizes(release)
+    if not expected:
+        raise SystemExit("release JSON contains no sized assets")
+    missing = [
+        name
+        for name, size in expected.items()
+        if not audit_dir.joinpath(name).is_file()
+        or audit_dir.joinpath(name).stat().st_size != size
+    ]
+    # 顺手清掉线上已不存在的孤儿文件，避免审计名单比对失败。
+    for leftover in audit_dir.iterdir():
+        if leftover.is_file() and leftover.name not in expected:
+            leftover.unlink()
+    for name in missing:
+        run(
+            [
+                "gh",
+                "release",
+                "download",
+                tag,
+                "--repo",
+                repo,
+                "--pattern",
+                name,
+                "--dir",
+                str(audit_dir),
+                "--clobber",
+            ]
+        )
+    print(f"asset audit cache: {len(expected) - len(missing)}/{len(expected)} reused", flush=True)
     auditor = Path(__file__).with_name("audit-release-assets.py")
     run(
         [
