@@ -2,6 +2,10 @@
 release-assets/
 private-src/
 release-check/
+# Unsigned build output (~180MB of APK/AAB/IPA/desktop bundles). The CI
+# verification job writes here; without this line a `git add -A` would stage
+# every installer and signature file.
+unsigned-release-check/
 repair-check/
 release-notes*.md
 
