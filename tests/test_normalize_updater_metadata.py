@@ -93,7 +93,7 @@ class NormalizeUpdaterMetadataTest(unittest.TestCase):
     def test_rebuilds_only_exact_package_specific_entries(self):
         setup, portable, assets, signatures = self.windows_x64_release()
         deb = "FanqieNovelDownloader-tauri-linux-amd64.deb"
-        appimage = "FanqieNovelDownloader-tauri-linux-amd64.AppImage"
+        appimage = "FanqieNovelDownloader-tauri-amd64.AppImage"
         app = "FanqieNovelDownloader-tauri-darwin-aarch64.app.tar.gz"
         for index, (name, signed_name) in enumerate(
             (

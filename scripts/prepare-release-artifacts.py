@@ -470,13 +470,14 @@ def generate_notes(
     mac_x64 = pick("darwin-x64", suffix=".dmg")
     linux_deb_x64 = pick("linux-amd64", suffix=".deb")
     linux_deb_arm = pick("linux-arm64", suffix=".deb")
-    linux_app_x64 = pick("linux-amd64", suffix=".appimage")
+    # AppImage 资产名不含 "linux-" 前缀，只能按架构标记 + 扩展名匹配。
+    linux_app_x64 = pick("amd64", suffix=".appimage")
     linux_app_arm = canonical_asset_alias(
         release,
         [
             name
             for name in installers
-            if ("linux-arm64" in name.lower() or "linux-aarch64" in name.lower())
+            if ("arm64" in name.lower() or "aarch64" in name.lower())
             and name.lower().endswith(".appimage")
         ],
         label="Linux ARM64 AppImage",

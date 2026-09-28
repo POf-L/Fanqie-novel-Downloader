@@ -23,9 +23,9 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             "FanqieNovelDownloader-tauri-windows-arm64-setup.exe",
             "FanqieNovelDownloader-tauri-windows-arm64-portable.exe",
             "FanqieNovelDownloader-tauri-linux-amd64.deb",
-            "FanqieNovelDownloader-tauri-linux-amd64.AppImage",
+            "FanqieNovelDownloader-tauri-amd64.AppImage",
             "FanqieNovelDownloader-tauri-linux-arm64.deb",
-            "FanqieNovelDownloader-tauri-linux-aarch64.AppImage",
+            "FanqieNovelDownloader-tauri-aarch64.AppImage",
             "FanqieNovelDownloader-tauri-darwin-x64.dmg",
             "FanqieNovelDownloader-tauri-darwin-x64.zip",
             "FanqieNovelDownloader-tauri-darwin-aarch64.dmg",
@@ -66,9 +66,14 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
                     and str(asset["name"]).lower().endswith(".exe")
                 )
                 or (
-                    "linux-" in str(asset["name"]).lower()
-                    and str(asset["name"]).lower().endswith((".deb", ".appimage"))
-                    and "linux-arm64.appimage" not in str(asset["name"]).lower()
+                    (
+                        str(asset["name"]).lower().endswith(".appimage")
+                        or (
+                            "linux-" in str(asset["name"]).lower()
+                            and str(asset["name"]).lower().endswith(".deb")
+                        )
+                    )
+                    and "arm64.appimage" not in str(asset["name"]).lower()
                 )
                 or str(asset["name"]).lower().endswith(".app.tar.gz")
             )
@@ -101,6 +106,19 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(SystemExit, "contains updater assets"):
             MODULE.validate_assets(release, "windows-x64")
+
+    def test_legacy_appimage_names_are_rejected(self):
+        # 旧名 AppImage 说明重命名后 tauri-action 的残留资产没被清掉，
+        # 应用目录（AppImageHub）也会因为名字里带 Linux 判为不合规。
+        release = self.fixture()
+        release["assets"].append(
+            {
+                "name": "FanqieNovelDownloader-tauri-linux-amd64.AppImage",
+                "digest": "sha256:" + "0" * 64,
+            }
+        )
+        with self.assertRaisesRegex(SystemExit, "named with 'linux'"):
+            MODULE.validate_assets(release, "windows-x64, linux-x64")
 
     def test_unsigned_finalizer_reports_real_updater_availability(self):
         platforms = (
@@ -316,7 +334,7 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
         release["prerelease"] = False
         release["assets"].append(
             {
-                "name": "FanqieNovelDownloader-tauri-linux-arm64.AppImage",
+                "name": "FanqieNovelDownloader-tauri-arm64.AppImage",
                 "digest": "sha256:" + "0" * 64,
             }
         )
@@ -335,8 +353,8 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             mode="formal",
             highlights=["- 修复登录窗口"],
         )
-        self.assertEqual(notes.count("linux-aarch64.AppImage)"), 1)
-        self.assertNotIn("linux-arm64.AppImage)", notes)
+        self.assertEqual(notes.count("aarch64.AppImage)"), 1)
+        self.assertNotIn("arm64.AppImage)", notes)
         self.assertIn("## 本次修复", notes)
         self.assertIn("修复登录窗口", notes)
 

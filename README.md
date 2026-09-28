@@ -88,7 +88,7 @@
 桌面壳依赖 **WebKitGTK 4.1**。AppImage 首次运行前需要授予执行权限：
 
 ```bash
-chmod +x FanqieNovelDownloader-tauri-linux-*.AppImage
+chmod +x FanqieNovelDownloader-tauri-*.AppImage
 ```
 
 具体是否同时提供 DEB 与 AppImage，以对应 Release 的实际附件为准。应用内更新只会选择与

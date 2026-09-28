@@ -105,10 +105,10 @@ function Build-Notes {
   if ($debX64.Count -eq 0) { $debX64 = Pick-Assets $assets @('amd64', '.deb') }
   $debArm = Pick-Assets $assets @('linux-arm64', '.deb')
   if ($debArm.Count -eq 0) { $debArm = Pick-Assets $assets @('aarch64', '.deb') }
-  $appX64 = Pick-Assets $assets @('linux-amd64', '.appimage')
+  $appX64 = Pick-Assets $assets @('amd64', '.appimage')
   if ($appX64.Count -eq 0) { $appX64 = Pick-Assets $assets @('x86_64', '.appimage') }
-  $appArm = Pick-Assets $assets @('linux-arm64', '.appimage')
-  if ($appArm.Count -eq 0) { $appArm = Pick-Assets $assets @('aarch64', '.appimage') }
+  $appArm = Pick-Assets $assets @('aarch64', '.appimage')
+  if ($appArm.Count -eq 0) { $appArm = Pick-Assets $assets @('arm64', '.appimage') }
   $apkArm64 = @(Pick-Assets $assets @('arm64-v8a') | Where-Object { $_ -like '*.apk' })
   $apkV7 = @(Pick-Assets $assets @('armeabi-v7a') | Where-Object { $_ -like '*.apk' })
   $apkX86 = @(Pick-Assets $assets @('x86_64') | Where-Object { $_ -like '*.apk' })

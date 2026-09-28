@@ -321,14 +321,15 @@ def validate_updater_metadata(release: dict) -> None:
         if (
             ("windows-" in name.lower() and name.lower().endswith(".exe"))
             or (
-                "linux-" in name.lower()
-                and name.lower().endswith((".deb", ".appimage"))
+                # .AppImage 资产名不带 "linux-" 前缀，扩展名本身已唯一标识它。
+                name.lower().endswith(".appimage")
+                or ("linux-" in name.lower() and name.lower().endswith(".deb"))
             )
             or name.lower().endswith(".app.tar.gz")
         )
         and not (
-            "linux-arm64.appimage" in name.lower()
-            and any("linux-aarch64.appimage" in candidate.lower() for candidate in names)
+            "arm64.appimage" in name.lower()
+            and any("aarch64.appimage" in candidate.lower() for candidate in names)
         )
     ]
     missing_signatures = sorted(
@@ -402,6 +403,18 @@ def validate_assets(
     )
     if forbidden:
         fail("unsigned release contains updater assets: " + ", ".join(forbidden))
+    # AppImage 名字里带 "linux" 会被应用目录（AppImageHub）判定为不合规，
+    # 同时说明旧名资产没被清理干净。
+    legacy_appimage = sorted(
+        name
+        for name in names
+        if name.lower().endswith(".appimage") and "linux" in name.lower()
+    )
+    if legacy_appimage:
+        fail(
+            "unsigned release contains AppImage assets named with 'linux': "
+            + ", ".join(legacy_appimage)
+        )
     if allow_updater:
         validate_updater_metadata(release)
     internal_cli = sorted(name for name in names if CLI_ASSET_RE.search(name))
@@ -423,11 +436,11 @@ def validate_assets(
         ),
         "linux-x64": (
             ("Linux x64 DEB", ("linux-amd64",), ".deb"),
-            ("Linux x64 AppImage", ("linux-amd64",), ".appimage"),
+            ("Linux x64 AppImage", ("amd64",), ".appimage"),
         ),
         "linux-arm64": (
             ("Linux ARM64 DEB", ("linux-arm64",), ".deb"),
-            ("Linux ARM64 AppImage", ("linux-arm64",), ".appimage"),
+            ("Linux ARM64 AppImage", ("arm64",), ".appimage"),
         ),
         "macos-x64": (
             ("macOS Intel DMG", ("darwin-x64",), ".dmg"),
@@ -445,7 +458,8 @@ def validate_assets(
                     require_asset_alias(
                         names,
                         label,
-                        common=("linux",),
+                        # AppImage 资产名不带 "linux-" 前缀，只能按架构标记匹配。
+                        common=(),
                         aliases=("arm64", "aarch64"),
                         suffix=suffix,
                     )
@@ -707,7 +721,7 @@ def verify_device_guide(
             "DEB 包（推荐，体积小，Debian / Ubuntu 等）",
             "AppImage（免安装）",
             "linux-amd64.deb",
-            "linux-amd64.AppImage",
+            "amd64.AppImage",
         ),
         "linux-arm64": (
             "DEB 包（推荐，体积小，Debian / Ubuntu 等）",
@@ -743,7 +757,7 @@ def verify_device_guide(
     missing = [value for value in required if value not in notes]
     if "linux-arm64" in selected and not any(
         value in notes
-        for value in ("linux-arm64.AppImage", "linux-aarch64.AppImage")
+        for value in ("arm64.AppImage", "aarch64.AppImage")
     ):
         missing.append("Linux ARM64 AppImage")
     if updater_available:

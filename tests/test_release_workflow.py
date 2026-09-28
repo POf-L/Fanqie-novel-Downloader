@@ -117,7 +117,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 "CREATE_UPDATER_ARTIFACTS: "
                 "${{ needs.prepare.outputs.create_updater_artifacts }}"
             ),
-            6,
+            8,
         )
         self.assertEqual(
             self.workflow.count(
@@ -217,9 +217,23 @@ class ReleaseWorkflowTest(unittest.TestCase):
             2,
         )
         self.assertIn(
-            '".sig", ".nsis.zip", ".msi.zip", ".app.tar.gz", ".appimage.tar.gz"',
+            '".nsis.zip", ".msi.zip", ".app.tar.gz", ".appimage.tar.gz"',
             self.workflow,
         )
+        # AppImage 改名后重新签名，并清掉 tauri-action 上传的旧名资产。
+        self.assertEqual(
+            self.workflow.count(
+                'appimage = output / f"FanqieNovelDownloader-tauri-{appimage_arch}.AppImage"'
+            ),
+            2,
+        )
+        self.assertEqual(
+            self.workflow.count(
+                'subprocess.run(["tauri", "signer", "sign", str(appimage)], check=True)'
+            ),
+            2,
+        )
+        self.assertEqual(self.workflow.count('"delete-asset"'), 2)
         self.assertIn('r"unsigned-v[^/]+-r[1-9][0-9]*"', self.unsigned_finalizer)
         self.assertIn('expected="FanqieNovelDownloader-tauri-linux-${expected_arch}.deb"', self.workflow)
         self.assertIn(

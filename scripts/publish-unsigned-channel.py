@@ -157,7 +157,7 @@ def validate_metadata(repo: str, source: dict, metadata: dict) -> None:
             "-nsis": ("windows-", "setup.exe"),
             "-portable": ("windows-", "portable.exe"),
             "-deb": ("linux-", ".deb"),
-            "-appimage": ("linux-", ".appimage"),
+            "-appimage": ("tauri-", ".appimage"),
             "-app": ("darwin-", ".app.tar.gz"),
         }
         _, (platform_marker, asset_suffix) = next(

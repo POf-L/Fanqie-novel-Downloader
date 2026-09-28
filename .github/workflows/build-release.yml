@@ -684,10 +684,10 @@ jobs:
               mac_x64 = [n for n in pick(assets, "darwin-x64") if n.endswith(".dmg")]
               deb_x64 = pick(assets, "linux-amd64", ".deb")
               deb_arm = pick(assets, "linux-arm64", ".deb")
-              app_x64 = pick(assets, "linux-amd64", ".appimage") or pick(assets, "linux-amd64", ".AppImage")
+              app_x64 = pick(assets, "amd64", ".appimage") or pick(assets, "amd64", ".AppImage")
               # case-insensitive already via lower in pick for needles; AppImage may be mixed case
-              app_x64 = [n for n in assets if "linux-amd64" in n.lower() and n.lower().endswith(".appimage")]
-              app_arm = [n for n in assets if ("linux-arm64" in n.lower() or "linux-aarch64" in n.lower()) and n.lower().endswith(".appimage")]
+              app_x64 = [n for n in assets if "amd64" in n.lower() and n.lower().endswith(".appimage")]
+              app_arm = [n for n in assets if ("aarch64" in n.lower() or "arm64" in n.lower()) and n.lower().endswith(".appimage")]
               apk_arm64 = [n for n in assets if "arm64-v8a" in n.lower() and n.lower().endswith(".apk")]
               apk_v7 = [n for n in assets if "armeabi-v7a" in n.lower() and n.lower().endswith(".apk")]
               apk_x86 = [n for n in assets if "x86_64" in n.lower() and n.lower().endswith(".apk")]
@@ -1091,6 +1091,9 @@ jobs:
           SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
           TARGET: ${{ matrix.target }}
           PLATFORM: ${{ matrix.platform }}
+          CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           import os
           import shutil
@@ -1136,6 +1139,8 @@ jobs:
 
           target = os.environ["TARGET"]
           platform = os.environ["PLATFORM"]
+          appimage = None
+          appimage_arch = ""
           if target.endswith("-pc-windows-msvc"):
               arch = "arm64" if target.startswith("aarch64-") else "x64"
               source_file = single(source / "nsis", "-setup.exe")
@@ -1156,10 +1161,10 @@ jobs:
                       raise SystemExit(
                           f"expected at most one AppImage, found {len(appimages)}"
                       )
-                  shutil.copy2(
-                      appimages[0],
-                      output / f"FanqieNovelDownloader-tauri-linux-{appimage_arch}.AppImage",
-                  )
+                  # AppImage 名称不带 "linux"：AppImage 本身就只在 Linux 上跑，
+                  # 应用目录（AppImageHub）也要求名字里不要出现 Linux。
+                  appimage = output / f"FanqieNovelDownloader-tauri-{appimage_arch}.AppImage"
+                  shutil.copy2(appimages[0], appimage)
           elif target.endswith("-apple-darwin"):
               arch = "aarch64" if target.startswith("aarch64-") else "x64"
               stem = f"FanqieNovelDownloader-tauri-darwin-{arch}"
@@ -1181,14 +1186,39 @@ jobs:
           else:
               raise SystemExit(f"unsupported unsigned target: {target}")
 
+          # 改名后必须重新签名：updater 校验要求 <资产名>.sig 成对存在，而
+          # tauri-action 只会为它自己那套旧名产物生成签名。
+          if appimage is not None and os.environ.get("CREATE_UPDATER_ARTIFACTS") == "true":
+              if not os.environ.get("TAURI_SIGNING_PRIVATE_KEY") or not os.environ.get(
+                  "TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+              ):
+                  raise SystemExit("缺少 AppImage updater 签名密钥")
+              if shutil.which("tauri") is None:
+                  subprocess.run(
+                      [
+                          "npm",
+                          "install",
+                          "--global",
+                          f"@tauri-apps/cli@{os.environ['TAURI_CLI_VERSION']}",
+                      ],
+                      check=True,
+                  )
+              subprocess.run(["tauri", "signer", "sign", str(appimage)], check=True)
+              if not Path(f"{appimage}.sig").is_file():
+                  raise SystemExit(f"AppImage 签名生成失败: {appimage}.sig")
+
           assets = sorted(output.iterdir())
           if not assets or any(not asset.is_file() for asset in assets):
               raise SystemExit("unsigned desktop asset directory is invalid")
-          forbidden = (
-              ".sig", ".nsis.zip", ".msi.zip", ".app.tar.gz", ".appimage.tar.gz"
-          )
+          forbidden = (".nsis.zip", ".msi.zip", ".app.tar.gz", ".appimage.tar.gz")
           if any(asset.name.lower().endswith(forbidden) for asset in assets):
               raise SystemExit("refusing to upload updater artifacts")
+          expected_signature = f"{appimage.name}.sig" if appimage is not None else ""
+          if any(
+              asset.name.lower().endswith(".sig") and asset.name != expected_signature
+              for asset in assets
+          ):
+              raise SystemExit("unsigned desktop asset directory has unexpected signatures")
           subprocess.run(
               [
                   "gh",
@@ -1203,6 +1233,28 @@ jobs:
               check=True,
               env=os.environ.copy(),
           )
+          if appimage is not None:
+              # tauri-action 先以旧名上传了同一份 AppImage 及其签名；删掉旧名，
+              # 否则 Release 会同时挂两个 AppImage，且残留签名会被
+              # normalize-updater-metadata.py 判为未知签名资产。
+              stale = f"FanqieNovelDownloader-tauri-linux-{appimage_arch}.AppImage"
+              for name in (stale, f"{stale}.sig"):
+                  subprocess.run(
+                      [
+                          "gh",
+                          "release",
+                          "delete-asset",
+                          os.environ["TAG_NAME"],
+                          name,
+                          "--repo",
+                          os.environ["GH_REPO"],
+                          "--yes",
+                      ],
+                      check=False,
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                      env=os.environ.copy(),
+                  )
 
       - name: Verify macOS signing and notarization
         if: runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
@@ -1531,6 +1583,9 @@ jobs:
           SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
           TARGET: ${{ matrix.target }}
           PLATFORM: ${{ matrix.platform }}
+          CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           import os
           import shutil
@@ -1576,6 +1631,8 @@ jobs:
 
           target = os.environ["TARGET"]
           platform = os.environ["PLATFORM"]
+          appimage = None
+          appimage_arch = ""
           if target.endswith("-pc-windows-msvc"):
               arch = "arm64" if target.startswith("aarch64-") else "x64"
               source_file = single(source / "nsis", "-setup.exe")
@@ -1596,10 +1653,10 @@ jobs:
                       raise SystemExit(
                           f"expected at most one AppImage, found {len(appimages)}"
                       )
-                  shutil.copy2(
-                      appimages[0],
-                      output / f"FanqieNovelDownloader-tauri-linux-{appimage_arch}.AppImage",
-                  )
+                  # AppImage 名称不带 "linux"：AppImage 本身就只在 Linux 上跑，
+                  # 应用目录（AppImageHub）也要求名字里不要出现 Linux。
+                  appimage = output / f"FanqieNovelDownloader-tauri-{appimage_arch}.AppImage"
+                  shutil.copy2(appimages[0], appimage)
           elif target.endswith("-apple-darwin"):
               arch = "aarch64" if target.startswith("aarch64-") else "x64"
               stem = f"FanqieNovelDownloader-tauri-darwin-{arch}"
@@ -1621,14 +1678,39 @@ jobs:
           else:
               raise SystemExit(f"unsupported unsigned target: {target}")
 
+          # 改名后必须重新签名：updater 校验要求 <资产名>.sig 成对存在，而
+          # tauri-action 只会为它自己那套旧名产物生成签名。
+          if appimage is not None and os.environ.get("CREATE_UPDATER_ARTIFACTS") == "true":
+              if not os.environ.get("TAURI_SIGNING_PRIVATE_KEY") or not os.environ.get(
+                  "TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+              ):
+                  raise SystemExit("缺少 AppImage updater 签名密钥")
+              if shutil.which("tauri") is None:
+                  subprocess.run(
+                      [
+                          "npm",
+                          "install",
+                          "--global",
+                          f"@tauri-apps/cli@{os.environ['TAURI_CLI_VERSION']}",
+                      ],
+                      check=True,
+                  )
+              subprocess.run(["tauri", "signer", "sign", str(appimage)], check=True)
+              if not Path(f"{appimage}.sig").is_file():
+                  raise SystemExit(f"AppImage 签名生成失败: {appimage}.sig")
+
           assets = sorted(output.iterdir())
           if not assets or any(not asset.is_file() for asset in assets):
               raise SystemExit("unsigned desktop asset directory is invalid")
-          forbidden = (
-              ".sig", ".nsis.zip", ".msi.zip", ".app.tar.gz", ".appimage.tar.gz"
-          )
+          forbidden = (".nsis.zip", ".msi.zip", ".app.tar.gz", ".appimage.tar.gz")
           if any(asset.name.lower().endswith(forbidden) for asset in assets):
               raise SystemExit("refusing to upload updater artifacts")
+          expected_signature = f"{appimage.name}.sig" if appimage is not None else ""
+          if any(
+              asset.name.lower().endswith(".sig") and asset.name != expected_signature
+              for asset in assets
+          ):
+              raise SystemExit("unsigned desktop asset directory has unexpected signatures")
           subprocess.run(
               [
                   "gh",
@@ -1643,6 +1725,28 @@ jobs:
               check=True,
               env=os.environ.copy(),
           )
+          if appimage is not None:
+              # tauri-action 先以旧名上传了同一份 AppImage 及其签名；删掉旧名，
+              # 否则 Release 会同时挂两个 AppImage，且残留签名会被
+              # normalize-updater-metadata.py 判为未知签名资产。
+              stale = f"FanqieNovelDownloader-tauri-linux-{appimage_arch}.AppImage"
+              for name in (stale, f"{stale}.sig"):
+                  subprocess.run(
+                      [
+                          "gh",
+                          "release",
+                          "delete-asset",
+                          os.environ["TAG_NAME"],
+                          name,
+                          "--repo",
+                          os.environ["GH_REPO"],
+                          "--yes",
+                      ],
+                      check=False,
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                      env=os.environ.copy(),
+                  )
 
       - name: Verify macOS signing and notarization
         if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
@@ -2112,7 +2216,7 @@ jobs:
           platform_requirements = {
               "windows-x64": ("64位（常用）", "windows-x64-portable.exe"),
               "windows-arm64": ("ARM64（Surface / 骁龙本）", "windows-arm64-portable.exe"),
-              "linux-x64": ("linux-amd64.deb", "linux-amd64.AppImage"),
+              "linux-x64": ("linux-amd64.deb", "amd64.AppImage"),
               "linux-arm64": ("linux-arm64.deb",),
               "macos-x64": ("Intel 芯片", "darwin-x64.dmg", "darwin-x64.zip"),
               "macos-arm64": ("Apple M 芯片", "darwin-aarch64.dmg", "darwin-aarch64.zip"),
@@ -2129,7 +2233,7 @@ jobs:
           missing = [value for value in required if value not in body]
           if "linux-arm64" in selected and not any(
               value in body
-              for value in ("linux-arm64.AppImage", "linux-aarch64.AppImage")
+              for value in ("arm64.AppImage", "aarch64.AppImage")
           ):
               missing.append("Linux ARM64 AppImage")
           if missing:

@@ -59,7 +59,7 @@ PACKAGE_SPECS = (
     ),
     PackageSpec(
         "linux-x86_64-appimage",
-        "FanqieNovelDownloader-tauri-linux-amd64.AppImage",
+        "FanqieNovelDownloader-tauri-amd64.AppImage",
         "appimage",
         "x86_64",
     ),
@@ -71,7 +71,7 @@ PACKAGE_SPECS = (
     ),
     PackageSpec(
         "linux-aarch64-appimage",
-        "FanqieNovelDownloader-tauri-linux-aarch64.AppImage",
+        "FanqieNovelDownloader-tauri-aarch64.AppImage",
         "appimage",
         "aarch64",
     ),

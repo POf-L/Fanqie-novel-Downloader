@@ -213,7 +213,7 @@ def validate_metadata(
             "-nsis": ("windows-", "setup.exe"),
             "-portable": ("windows-", "portable.exe"),
             "-deb": ("linux-", ".deb"),
-            "-appimage": ("linux-", ".appimage"),
+            "-appimage": ("tauri-", ".appimage"),
             "-app": ("darwin-", ".app.tar.gz"),
         }
         suffix, (platform_marker, asset_suffix) = next(
