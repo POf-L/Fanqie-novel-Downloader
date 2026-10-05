@@ -83,6 +83,59 @@ def run(
     return result.stdout.strip() if result.stdout is not None else ""
 
 
+# GitHub 的 release asset 下载接口偶尔会对单个资产回 5xx（#727 的正式版发布就是
+# 在下 iOS ipa 时被 500 打断的）。这是外部抖动而非产物问题，重试即可自愈，
+# 所以这里只对「看起来是暂时性故障」的失败退避重试，认证/权限类错误照常立刻失败。
+TRANSIENT_STATUS_RE = re.compile(r"\b(429|5\d\d)\b")
+# GitHub 的二级限流/abuse 保护会回 403 而不是 429，只能靠文案识别；
+# 权限不足的 403 文案是 Resource not accessible，不含下面这些词，仍会立刻失败。
+TRANSIENT_MESSAGE_RE = re.compile(
+    r"(rate limit|secondary rate|abuse detection|try again later|temporarily unavailable)",
+    re.IGNORECASE,
+)
+
+
+def _looks_transient(output: str) -> bool:
+    text = output or ""
+    return (
+        TRANSIENT_STATUS_RE.search(text) is not None
+        or TRANSIENT_MESSAGE_RE.search(text) is not None
+    )
+
+
+def run_with_retry(
+    command: list[str],
+    *,
+    attempts: int = 4,
+    base_delay_seconds: float = 4,
+    capture: bool = False,
+    input_text: str | None = None,
+) -> str:
+    """Run a command, retrying transient GitHub/network failures with backoff."""
+    if attempts < 1:
+        raise SystemExit("retry attempts must be at least 1")
+    last_output = ""
+    for attempt in range(1, attempts + 1):
+        try:
+            return run(command, capture=capture, input_text=input_text)
+        except subprocess.CalledProcessError as error:
+            # 合并 stdout/stderr：gh 把 HTTP 500 的说明打在 stderr 上。
+            stdout = error.stdout if isinstance(error.stdout, str) else ""
+            stderr = error.stderr if isinstance(error.stderr, str) else ""
+            last_output = f"{stdout}\n{stderr}".strip()
+            if attempt >= attempts or not _looks_transient(last_output):
+                raise
+            delay = base_delay_seconds * (2 ** (attempt - 1))
+            print(
+                f"transient failure while fetching a release asset "
+                f"(attempt {attempt}/{attempts}); retrying in {delay}s: "
+                f"{last_output.splitlines()[-1] if last_output else 'unknown error'}",
+                flush=True,
+            )
+            time.sleep(delay)
+    raise SystemExit(f"unreachable retry state: {last_output}")
+
+
 def gh_json(arguments: list[str], *, input_text: str | None = None) -> object:
     output = run(["gh", *arguments], capture=True, input_text=input_text)
     try:
@@ -651,7 +704,8 @@ def audit_release_assets(*, repo: str, tag: str, release: Path, work_dir: Path) 
         if leftover.is_file() and leftover.name not in expected:
             leftover.unlink()
     for name in missing:
-        run(
+        # Issue #727: 这个接口会对单个资产偶发回 500，重试即可，不必让整条发布失败。
+        run_with_retry(
             [
                 "gh",
                 "release",
