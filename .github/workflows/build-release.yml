@@ -921,7 +921,15 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            xdg-utils
+            xdg-utils \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good
+          # Issue #392: tauri.conf.json sets bundle.linux.appimage
+          # .bundleMediaFramework, so linuxdeploy copies the GStreamer plugins
+          # from this build machine into the AppImage (the WebKit process fails
+          # to initialise on Debian 13 without them). The two plugin packages
+          # above provide the core elements (appsink/appsrc/autoaudiosink) that
+          # the bundler script expects in /usr/lib/<arch>-linux-gnu/gstreamer-1.0.
 
       - name: Create release build config
         shell: python
