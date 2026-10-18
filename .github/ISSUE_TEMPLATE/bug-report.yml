@@ -29,7 +29,7 @@ body:
     attributes:
       label: 应用版本
       description: 请填写“关于”页面或 Release 中显示的完整版本号。
-      placeholder: 例如 v2026.7.26-709
+      placeholder: 例如 2026.10.17-428
     validations:
       required: true
   - type: dropdown

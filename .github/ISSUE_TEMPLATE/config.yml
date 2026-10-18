@@ -6,6 +6,6 @@ contact_links:
   - name: 下载与安装说明
     url: https://github.com/POf-L/Fanqie-novel-Downloader#下载使用
     about: 创建 Issue 前，先确认安装方式、平台架构和当前最新版本。
-  - name: 正式版下载
+  - name: 最新版本下载
     url: https://github.com/POf-L/Fanqie-novel-Downloader/releases
-    about: 从 Releases 下载最新稳定版本，并在反馈时填写完整版本号。
+    about: 从 Releases 下载最新版本，并在反馈时填写完整版本号（例如 2026.10.17-428）。
