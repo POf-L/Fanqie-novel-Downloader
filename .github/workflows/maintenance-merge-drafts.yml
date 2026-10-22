@@ -81,17 +81,33 @@ jobs:
               return json.loads(gh(*args))
 
 
-          releases = gh_json("api", "--paginate", "--slurp",
-                             f"repos/{repo}/releases?per_page=100")
-          drafts = []
-          for page in releases:
-              for item in page:
-                  if item.get("tag_name") == tag and item.get("draft") is True:
-                      drafts.append(item)
+          def release_assets(release_id):
+              assets = []
+              page = 1
+              while True:
+                  chunk = gh_json("api",
+                                  f"repos/{repo}/releases/{release_id}/assets?per_page=100&page={page}")
+                  if not chunk:
+                      return assets
+                  assets.extend(chunk)
+                  if len(chunk) < 100:
+                      return assets
+                  page += 1
+
+
+          # `gh release list` keeps the response small; the full /releases dump is
+          # too large to fetch reliably from CI runners.
+          listing = gh_json("release", "list", "--repo", repo, "--limit", "100",
+                            "--json", "tagName,isDraft,databaseId")
+          drafts = [
+              {"id": item["databaseId"], "assets": release_assets(item["databaseId"])}
+              for item in listing
+              if item.get("tagName") == tag and item.get("isDraft") is True
+          ]
           if not drafts:
               raise SystemExit(f"no draft release found for {tag}")
 
-          drafts.sort(key=lambda item: len(item.get("assets", [])), reverse=True)
+          drafts.sort(key=lambda item: len(item["assets"]), reverse=True)
           target = drafts[0]
           print(f"target draft id={target['id']} assets={len(target['assets'])}")
           for extra in drafts[1:]:
