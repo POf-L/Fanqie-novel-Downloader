@@ -36,6 +36,10 @@ on:
         description: Only merge the drafts, skip publishing
         required: true
         default: "false"
+      mode:
+        description: merge (consolidate drafts + publish) or channel (refresh the unsigned updater alias only)
+        required: true
+        default: merge
 
 permissions:
   contents: write
@@ -53,11 +57,13 @@ jobs:
       PLATFORMS: ${{ inputs.platforms }}
       RELEASE_HIGHLIGHTS: ${{ inputs.highlights }}
       DRY_RUN: ${{ inputs.dry_run }}
+      WORK_MODE: ${{ inputs.mode }}
     steps:
       - name: Checkout release wrapper
         uses: actions/checkout@v4
 
       - name: Consolidate split drafts
+        if: inputs.mode == 'merge'
         shell: bash
         run: |
           set -euo pipefail
@@ -159,7 +165,7 @@ jobs:
           PY
 
       - name: Ensure stable updater channel (best effort)
-        if: inputs.dry_run != 'true'
+        if: inputs.mode == 'merge' && inputs.dry_run != 'true'
         continue-on-error: true
         shell: bash
         run: |
@@ -170,7 +176,7 @@ jobs:
             || echo "stable updater channel refresh skipped; continuing with the unsigned release"
 
       - name: Finalize and publish unsigned release
-        if: inputs.dry_run != 'true'
+        if: inputs.mode == 'merge' && inputs.dry_run != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -188,6 +194,15 @@ jobs:
             arguments+=(--highlights-file release-highlights.md)
           fi
           python scripts/finalize-unsigned-release.py "${arguments[@]}"
+
+      - name: Refresh unsigned updater alias
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/publish-unsigned-channel.py \
+            --repo "${GH_REPO}" \
+            --source-tag "${TAG_NAME}" \
+            --work-dir "${RUNNER_TEMP}/unsigned-channel-check"
 
       - name: Report published release
         if: inputs.dry_run != 'true'
