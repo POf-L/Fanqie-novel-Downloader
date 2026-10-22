@@ -95,14 +95,22 @@ jobs:
                   page += 1
 
 
-          # `gh release list` keeps the response small; the full /releases dump is
-          # too large to fetch reliably from CI runners.
-          listing = gh_json("release", "list", "--repo", repo, "--limit", "100",
-                            "--json", "tagName,isDraft,databaseId")
+          # The full /releases dump is too large to fetch reliably from CI runners,
+          # so page through small windows and stop as soon as the drafts appear.
+          matches = []
+          for page in range(1, 6):
+              chunk = gh_json("api", f"repos/{repo}/releases?per_page=30&page={page}")
+              if not chunk:
+                  break
+              matches.extend(
+                  item for item in chunk
+                  if item.get("tag_name") == tag and item.get("draft") is True
+              )
+              if matches:
+                  break
           drafts = [
-              {"id": item["databaseId"], "assets": release_assets(item["databaseId"])}
-              for item in listing
-              if item.get("tagName") == tag and item.get("isDraft") is True
+              {"id": item["id"], "assets": release_assets(item["id"])}
+              for item in matches
           ]
           if not drafts:
               raise SystemExit(f"no draft release found for {tag}")
