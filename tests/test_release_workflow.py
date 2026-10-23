@@ -631,6 +631,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 "build-release.yml",
                 "ci.yml",
                 "issue-star-gate.yml",
+                "maintenance-merge-drafts.yml",
                 "release-maintenance.yml",
             },
         )
