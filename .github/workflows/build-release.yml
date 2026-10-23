@@ -906,9 +906,15 @@ jobs:
     if: needs.prepare.outputs.desktop_count != '0'
     strategy:
       fail-fast: false
-      # Signed releases merge latest.json; serial execution also prevents
-      # release-asset races in the unsigned prerelease path.
-      max-parallel: 1
+      # 桌面各平台并行构建。并行上传是安全的：
+      # - 所有附件都按 release-bootstrap 预建 Draft 的 ID 上传（338933b），
+      #   不会再按 tag 查找、另建第二个同 tag 草稿；
+      # - 各平台附件名互不相同（含 platform/arch），不会互相覆盖；
+      # - 唯一共享的是 tauri-action 读改写的 latest.json：并发时可能丢掉别的
+      #   平台条目或撞 404/422，tauri-action 会整体重试（retryAttempts），
+      #   而 finalize / finalize-unsigned-release 里的
+      #   normalize-updater-metadata.py 会按 Release 实际附件和 .sig 重建
+      #   全部 platforms，所以最终发布的 latest.json 与串行时一致。
       matrix: ${{ fromJSON(needs.prepare.outputs.desktop_matrix) }}
     runs-on: ${{ matrix.os }}
     # Scarce ARM/Intel runners may fail; continue so desktop-fallback can cross-build.
@@ -1078,6 +1084,9 @@ jobs:
           uploadWorkflowArtifacts: false
           uploadUpdaterJson: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
           uploadUpdaterSignatures: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
+          # 并行构建时多个 job 会同时读改写 latest.json，失败时多重试几次
+          # （每次随机等 1–10 秒后整体重读重写）。
+          retryAttempts: 5
           workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-[bundle]
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
           # User installers may have no OS/vendor signature, but updater assets
@@ -1350,7 +1359,8 @@ jobs:
       needs.desktop.result != 'cancelled'
     strategy:
       fail-fast: false
-      max-parallel: 1
+      # 与 desktop 相同：按 Draft ID 上传、附件名按平台区分，latest.json 由
+      # finalize 统一重建，可以并行。
       matrix: ${{ fromJSON(needs.prepare.outputs.desktop_fallback_matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -1605,6 +1615,7 @@ jobs:
           uploadWorkflowArtifacts: false
           uploadUpdaterJson: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
           uploadUpdaterSignatures: ${{ needs.prepare.outputs.create_updater_artifacts == 'true' }}
+          retryAttempts: 5
           workflowArtifactNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch]-fallback-[bundle]
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
           # User installers may have no OS/vendor signature, but updater assets

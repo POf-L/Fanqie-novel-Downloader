@@ -506,6 +506,22 @@ class ReleaseWorkflowTest(unittest.TestCase):
         for block in private + upload_wrappers:
             self.assertIn("persist-credentials: false", block)
 
+    def test_desktop_builds_run_in_parallel_with_latest_json_retries(self):
+        # 桌面构建按 Draft ID 上传、附件名按平台区分，latest.json 由 finalize
+        # 按实际附件重建，所以不再需要 max-parallel: 1 串行。
+        self.assertNotIn("max-parallel", self.workflow)
+        desktop = self.workflow.split("\n  desktop:\n", 1)[1].split(
+            "\n  android:\n", 1
+        )[0]
+        self.assertEqual(desktop.count("uses: tauri-apps/tauri-action@v1"), 2)
+        self.assertEqual(desktop.count("retryAttempts: 5"), 2)
+        self.assertIn(
+            "metadata[\"platforms\"] = expected",
+            (ROOT / "scripts" / "normalize-updater-metadata.py").read_text(
+                encoding="utf-8"
+            ),
+        )
+
     def test_private_source_builds_do_not_use_public_actions_cache(self):
         self.assertNotIn("Swatinem/rust-cache", self.workflow)
         self.assertNotIn("actions/cache", self.workflow)
