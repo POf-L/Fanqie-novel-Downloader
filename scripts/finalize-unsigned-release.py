@@ -958,10 +958,10 @@ def generate_finalizer_appendix(
         FINALIZER_START,
         "---",
         "",
-        "## 无签名 Release Finalizer",
+        "## 下载与安装",
         "",
-        "> 构建与附件校验已经完成。以下设备/架构链接由无签名专用 finalizer "
-        "根据本 Release 的实际 Assets 追加生成；下载时以本区块为准。",
+        "> 下面的链接按本版本实际上传的文件生成，按自己的设备选择即可；"
+        "不确定选哪个时看 [README 的下载说明](https://github.com/POf-L/Fanqie-novel-Downloader#-下载安装)。",
         "",
     ]
     if highlights_section:

@@ -520,7 +520,7 @@ def generate_notes(
             "> **无厂商/系统签名版本**：Windows Authenticode、macOS Developer ID/公证和 "
             "iOS Apple 签名不包含在本构建中；请先核对 SHA-256。",
             "",
-            "基于 **Rust + Tauri v2** 的番茄小说下载器。",
+            "番茄小说下载器：小说、漫画、短剧的下载与阅读工具。",
             "",
             "> 📱 **项目目标平台**：Windows / Linux / macOS / Android / iOS。",
             f"> 📦 **本版本实际产出**：{shipped_text}。",
@@ -545,7 +545,7 @@ def generate_notes(
         lines = [
             f"## {version}{'（测试预发布）' if prerelease else '（正式版）'}",
             "",
-            "基于 **Rust + Tauri v2** 的番茄小说下载器。",
+            "番茄小说下载器：小说、漫画、短剧的下载与阅读工具。",
             "",
             "> 📱 **项目目标平台**：Windows / Linux / macOS / Android / iOS。",
             f"> 📦 **本版本实际产出**：{shipped_text}。",

@@ -214,7 +214,7 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
         )[0]
         self.assertIn("darwin-aarch64.zip", macos_guide)
         self.assertIn("darwin-x64.zip", macos_guide)
-        rerun = MODULE.append_finalizer(notes, appendix.replace("下载时以本区块为准", "重跑已刷新"))
+        rerun = MODULE.append_finalizer(notes, appendix.replace("按自己的设备选择即可", "重跑已刷新"))
         self.assertEqual(rerun.count(MODULE.FINALIZER_START), 1)
         self.assertIn("重跑已刷新", rerun)
         MODULE.verify_device_guide(

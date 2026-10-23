@@ -29,7 +29,7 @@ body:
     attributes:
       label: 应用版本
       description: 请填写“关于”页面或 Release 中显示的完整版本号。
-      placeholder: 例如 2026.10.17-428
+      placeholder: 例如 2026.10.23-557
     validations:
       required: true
   - type: dropdown
@@ -84,7 +84,7 @@ body:
     id: logs
     attributes:
       label: 脱敏日志
-      description: 保留错误文本、状态码和必要的 endpoint 路径；删除 query、token、签名、Cookie 和设备 ID。没有日志可留空。
+      description: 粘贴完整的报错文字，或在“设置 → 系统”导出的诊断日志；请先删掉账号、Cookie、token 等个人信息。没有可留空。
       render: shell
   - type: textarea
     id: additional

@@ -311,7 +311,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("def clean_draft_body", unsigned)
         self.assertIn("allow_legacy_draft", unsigned)
         self.assertIn("def append_finalizer", unsigned)
-        self.assertIn("## 无签名 Release Finalizer", unsigned)
+        self.assertIn("## 下载与安装", unsigned)
         self.assertIn("publish-unsigned-channel.py", unsigned)
         self.assertIn("prepare-release-artifacts.py", unsigned)
         self.assertIn("generate_finalizer_appendix", unsigned)

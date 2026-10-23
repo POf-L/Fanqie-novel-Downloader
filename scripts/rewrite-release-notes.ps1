@@ -149,7 +149,7 @@ function Build-Notes {
   $lines = New-Object System.Collections.Generic.List[string]
   $lines.Add($header) | Out-Null
   $lines.Add('') | Out-Null
-  $lines.Add('基于 **Rust + Tauri v2** 的番茄小说下载器。') | Out-Null
+  $lines.Add('番茄小说下载器：小说、漫画、短剧的下载与阅读工具。') | Out-Null
   $lines.Add('') | Out-Null
   $lines.Add('> 📱 **项目目标平台**：Windows / Linux / macOS / Android / iOS。') | Out-Null
   $lines.Add("> 📦 **本版本实际产出**：$shippedStr。") | Out-Null
