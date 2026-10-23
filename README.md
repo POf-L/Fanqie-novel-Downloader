@@ -1,368 +1,332 @@
+<div align="center">
+
+<img src="docs/images/logo.png" width="112" alt="番茄小说下载器图标">
+
 # 番茄小说下载器
 
-基于 **Rust + Tauri v2** 的跨平台番茄小说下载与阅读工具：搜索、书籍详情、在线阅读、
-离线书库、本地 TXT / EPUB 导入和段评查看，并可导出 TXT / EPUB。桌面端与移动端共用
-同一套界面与后端。
+**小说、漫画、短剧，搜得到、存得下、读得爽。**
 
-[![最新版本](https://img.shields.io/github/v/release/POf-L/Fanqie-novel-Downloader?display_name=tag&sort=date)](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
-[![仓库校验](https://github.com/POf-L/Fanqie-novel-Downloader/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/POf-L/Fanqie-novel-Downloader/actions/workflows/ci.yml)
+免费的番茄小说下载与阅读工具，Windows、macOS、Linux、Android、iOS 全平台可用。
 
-- [下载最新版本](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
-- [查看全部版本](https://github.com/POf-L/Fanqie-novel-Downloader/releases)
-- [提交问题或建议](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose)
+[![最新版本](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgithub.com%2FPOf-L%2FFanqie-novel-Downloader%2Freleases%2Flatest%2Fdownload%2Flatest.json&query=%24.version&prefix=v&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=ff6a3d)](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
+[![总下载量](https://img.shields.io/github/downloads/POf-L/Fanqie-novel-Downloader/total?label=%E6%80%BB%E4%B8%8B%E8%BD%BD%E9%87%8F&color=2ea44f)](https://github.com/POf-L/Fanqie-novel-Downloader/releases)
+[![Star](https://img.shields.io/github/stars/POf-L/Fanqie-novel-Downloader?label=Star&color=f5c518&logo=github)](https://github.com/POf-L/Fanqie-novel-Downloader/stargazers)
+[![最近更新](https://img.shields.io/github/release-date/POf-L/Fanqie-novel-Downloader?label=%E6%9C%80%E8%BF%91%E6%9B%B4%E6%96%B0&color=8a63d2)](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
+[![支持平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-0a84ff)](#-下载安装)
 
-## 本次更新（2026.10.23）
+<br>
 
-- **接口对齐番茄免费小说官方 Android 7.4.1.32**：App 版本号统一为 7.4.1.32，请求 UA 改为
-  官方新版格式，阅读接口与设备注册优先使用官方新版域名、旧域名保留兜底；接口目录补充
-  官方新增接口，并移除 4 个官方已下线的接口。已注册的设备只升级版本号，设备标识不变
-- **全平台界面改版**：桌面端改为左侧导航栏，窗口较窄时收成图标栏；Windows、macOS、Linux
-  的窗口按钮、字体、滚动条和焦点样式按各自系统习惯适配；iOS 底部标签栏与刘海 / 安全区
-  重新适配；平板改为侧边导航，横屏时列表与详情左右并排；Android 阅读器的返回按钮不再被
-  状态栏挡住，底部导航栏和顶部标题栏的留白也收紧了；“批量导入”移到搜索框下方
-- **历史 / 下载页重做**：按钮加大更容易点中，每条记录只保留主操作，打开目录、重新
-  下载、删除等收进“更多”；窄窗口和手机上改为卡片列表；下载进度可收起为一行简报条
-- **设置页与书架页**：下载相关设置拆成“保存与格式”“段评导出”“EPUB 排版”“封面与更新”
-  四个可折叠分组，宽屏下设置分类改为左侧分节导航；书架页的字号、圆角和按钮尺寸与新界面
-  统一
-- **官方书架分组内支持自定义排序**（[#398](https://github.com/POf-L/Fanqie-novel-Downloader/issues/398)）：
-  用法见下方“书架”一节
-- **阅读器键盘操作**：滚动模式下方向键、空格、PageUp / PageDown 按屏滚动，到章节底部或
-  顶部再按才跨章；Home / End 跳到本章开头或结尾
+[![Windows 下载](https://img.shields.io/badge/Windows-%E4%B8%8B%E8%BD%BD-0078D4?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDMuNCA5LjggMnY5LjVIMHpNMTEgMS44IDI0IDB2MTEuNUgxMXpNMCAxMi42aDkuOFYyMkwwIDIwLjZ6TTExIDEyLjZoMTNWMjRsLTEzLTEuOHoiLz48L3N2Zz4=)](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
+[![macOS 下载](https://img.shields.io/badge/macOS-%E4%B8%8B%E8%BD%BD-111111?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
+[![Linux 下载](https://img.shields.io/badge/Linux-%E4%B8%8B%E8%BD%BD-E95420?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
+[![Android 下载](https://img.shields.io/badge/Android-%E4%B8%8B%E8%BD%BD-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
+[![iOS 下载](https://img.shields.io/badge/iOS-%E4%B8%8B%E8%BD%BD-007AFF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
 
-## 界面预览
+[下载最新版](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest) ·
+[安装说明](#-下载安装) ·
+[常见问题](#-常见问题) ·
+[反馈问题](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose)
 
-以下截图来自 Windows x64 客户端，使用隔离的应用数据目录生成，不包含个人书架、账号、
-Cookie 或本地路径信息。截图拍摄于 2026.10.23 界面改版之前，新版的导航位置和页面布局
-有所调整，请以实际客户端为准。
+</div>
 
-![搜索与书籍详情](docs/images/app-overview.png)
+<br>
 
-在搜索页用关键词、番茄小说链接或书籍 ID 查找，左侧列出结果；选中书籍后，右侧详情页显示
-封面、作者、字数、章节数、书籍 ID 和简介，并可设置保存目录、导出格式与下载章节范围。
+<div align="center">
+<img src="docs/images/demo.webp" width="820" alt="演示：搜索和书籍详情、阅读器、书架、深色主题">
+</div>
 
-![阅读器正文与章节信息](docs/images/reader-chapter.png)
+## ✨ 能做什么
 
-阅读器提供章节目录、上一章 / 下一章、字号与行距调整、阅读主题与背景、沉浸模式，以及
-翻页 / 滚动两种阅读方式。
+<table>
+<tr>
+<td width="33%" valign="top">
 
-![自动阅读面板](docs/images/reader-auto-reading.png)
+### 🔍 搜书
 
-![自动阅读运行状态](docs/images/reader-auto-running.png)
+输入书名、作者，或者直接粘贴番茄小说链接、书籍 ID 就能找到；整份书单可以一次批量导入。
 
-自动阅读只需选择速度和是否滚动续章，点击“开始”后面板立即收起；运行时底栏入口显示
-启用状态，点击入口即可暂停。
+</td>
+<td width="33%" valign="top">
 
-## 主要功能
+### 📥 下载
 
-### 搜索与书籍信息
+导出 TXT / EPUB，可以只下指定章节；支持批量下载、暂停继续，书籍更新后一键重新下载。
 
-- 通过关键词、番茄小说链接或书籍 ID 搜索和直接载入书籍；支持粘贴分享文本批量导入
-- 查看封面、作者、分类、字数、连载状态、最近更新时间和简介
-- 章节目录显示分卷、章节字数和章节更新时间；唯一且无正文的默认卷会自动隐藏
-- 书籍改名后，用改名前的旧名称搜索仍能命中
+</td>
+<td width="33%" valign="top">
 
-### 在线阅读与离线书库
+### 📖 阅读
 
-- 应用内在线阅读，支持目录跳转、章内位置恢复和阅读进度记录
-- 独立离线书库：可缓存整本章节、查看缓存进度、暂停后继续、更新或删除单本离线正文
-- 在线与离线结合：阅读时会检查最新目录，发现新章可直接阅读并按需补入离线缓存，
-  不会在后台自动下载整本书
-- 联网失败、超时或目录不完整时保留已有正文与进度，不误报“已是最新”，也不删除离线正文
+翻页和滚动两种模式，多种阅读主题、沉浸模式、自动阅读，还能看每段的段评。
 
-### 本地导入阅读（TXT / EPUB）
+</td>
+</tr>
+<tr>
+<td valign="top">
 
-- 在“书架”点击“导入 TXT / EPUB”即可导入本机文件：TXT 支持 UTF-8、GB18030 / GBK 和
-  带 BOM 的 UTF-16，EPUB 支持无 DRM 的 EPUB 2 / 3 并保留插图与图注
-- 单本原文件最大 32 MiB；EPUB 解压总量最多 128 MiB，单篇 XHTML 最多 4 MiB，单张图片
-  最多 8 MiB
-- 只显示提取后的正文，不执行脚本、不加载外部资源，也不修改原文件
-- 导入内容仅保存在本机，不会上传，也不会把文件内容发送给番茄接口；重复导入相同内容
-  不会重复创建书籍
-- 本地书籍不提供官方书架、联网更新和段评功能
+### 📚 书架
 
-### 导出
+本地书架加番茄官方书架，登录后自动同步；分组里可以按书名、最近阅读、更新时间等排序。
 
-- 导出 TXT / EPUB，支持指定章节范围
-- 导出文件名格式可用 `{title}`、`{author}`、`{book_id}`、`{status}`、`{chapter_count}`、
-  `{word_count}`、`{last_update}` 组合，例如 `{title}-{author}-{book_id}`；留空使用默认的
-  “书名 - 作者”
-- EPUB 可开关卷目录分组、插图内嵌和封面内嵌，并可为所有 EPUB 指定统一的行距与段间距
-- 可选“导出时同时保存封面图片”，也可在详情页单独另存封面
-- 可选“导出时附带热门段评”（默认关闭），并可设置段评最低点赞数
+</td>
+<td valign="top">
 
-### 下载任务与历史记录
+### 🎬 漫画和短剧
 
-- 单本下载、批量下载和任务清单导入；清单去重后每次最多 10,000 本，按顺序逐本下载
-- 任务支持暂停、继续、取消和失败 / 缺失章节重试；批量失败可只重试未完成的书
-- 进度可切换百分比、章节（已获取 / 已缓存）和分组（本轮完成 x/y 组）三种显示方式
-- 队列、暂停和取消状态保存在本机；退出程序后不继续后台下载，再次启动可从“历史”继续
-- 历史页是唯一的下载记录页面：筛选、检查书籍更新、重下、删除记录、删除文档和清空记录；
-  “检查书籍更新”和“清空记录”在顶部“更多”菜单里，每条记录的次要操作在行内“更多”里
-- “检查书籍更新”对比已下载书籍的最新目录，可只检查选中记录，并支持重下全部更新、重下
-  选中或单条重新下载；正文全部成功后才会替换旧文件
+漫画在线看、下载章节图片；短剧在线播放、下载视频，也能加进书架。
 
-### 阅读器
+</td>
+<td valign="top">
 
-- 章节目录、上一章 / 下一章；长目录展开或收起时保持当前位置，不会跳回当前章节
-- 翻页与滚动两种阅读方式：翻页按屏翻动，到边界才跨章；桌面端滚动模式下方向键、空格、
-  PageUp / PageDown 按屏滚动，到章节底部或顶部再按才跨章，Home / End 跳到本章首尾
-- 字号调节、行距切换和图片放大预览
-- 阅读主题与背景：跟随应用、羊皮纸、深夜、素白、豆沙绿、雾蓝、淡粉或自定义；自定义
-  支持文字与背景颜色，并可叠加一张本地 PNG / JPEG / WebP 背景图片
-- 沉浸阅读：可在设置中改为进入阅读器即隐藏工具栏，点击正文中央临时显示或隐藏
-- 简洁阅读模式：只保留目录、上下章与字号等基础操作，隐藏其余阅读工具
-- 自动阅读：慢、标准、快、极快四档速度，可选滚动到底部自动接续下一章；按住正文暂停，
-  松开 3 秒后自动恢复
-- 记录本机有效阅读时长，并按段落位置恢复章内阅读进度
+### 📂 本地书
 
-### 段评
+导入自己的 TXT / EPUB 直接读，文件只留在本机，不会上传。
 
-- 阅读器底部“段评”查看本章概览（各段的上游统计数量），可切换热门 / 最新、加载更多、
-  查看回复，并通过“定位原文”返回对应段落
-- 段评和回复自带的图片会直接显示在评论下方（图片来自官方接口返回的公开图片地址，无需登录）
-- 无需登录即可查看；当前仅提供查看，不提供发表、点赞或删除评论
-- 可在设置中关闭正文气泡，或彻底关闭段评功能
+</td>
+</tr>
+<tr>
+<td valign="top">
 
-### 短剧与漫画
+### 🎨 个性化
 
-- 搜索短剧与漫画并查看详情；短剧可在线播放并下载视频，漫画可在线阅读并下载章节图片
-- 短剧和漫画可加入或移出书架，并与番茄账号的官方收藏同步
+浅色、深色随心切换，可调强调色、界面密度和按钮大小；支持中文、English、Русский。
 
-### 书架
+</td>
+<td valign="top">
 
-- 本地书架与官方书架分别管理；点击封面直接阅读，在详情页管理离线内容与下载
-- 官方书架支持全部 / 分组 / 出版分类和刷新
-- 官方书架分组内可自定义排序：在“书架”切到“官方书架”，选择“分组”并点开一个分组，
-  标题旁的“排序”下拉框可选跟随 App（默认，置顶优先、最近操作在前）、书名、加入书架
-  时间、最近阅读、最近更新或本机阅读时长；旁边的按钮切换升序 / 降序（按书名时显示
-  A→Z / Z→A）。换排序方式时，书名默认 A→Z，其余默认最新或最多的在前；选择会被记住，
-  所有分组共用同一设置。缺少对应数据的书始终排在最后，“本机阅读时长”只统计本机记录，
-  不是官方累计时长
-- 批量操作：全选、加入本地书架、缓存离线、批量下载、导出 / 导入书籍 ID、清理本书、
-  移动分组和移出书架
-- 紧凑书架模式可在同一屏显示更多书籍
+### 🔄 自动更新
 
-### 外观与个性化
+电脑版在应用里就能下载安装新版本；手机版有新版本会提醒你。
 
-- 明暗模式：跟随系统、浅色、深色或经典；顶部按钮可临时切换
-- 强调配色：默认、草野、柠檬、黑白、暮紫、樱粉
-- 界面密度：紧凑、标准、宽松
-- 选项大小：小、中、大，同时影响阅读页、书架与历史页的操作按钮
-- 界面语言：中文、English、Русский
-- 启动页面可选搜索、本地书架或官方书架
+</td>
+<td valign="top">
 
-### 隐私与系统
+### 🕶️ 隐私
 
-- 应用伪装：开启后应用显示为计算器，输入解锁密码后按 `=` 恢复；可自定义伪装标题和
-  4–12 位数字密码；Android 还可伪装桌面图标（计算器、记事、天气）与最近任务卡片
-- Android：沉浸式全屏、沉浸式保留底部导航栏，以及“始终隐藏状态栏”
-- 安全诊断日志：默认关闭，可开启、打开日志目录或导出为文本文件
+阅读记录都存在本机；还能把应用伪装成计算器，输入密码才能打开。
 
-### 更新
+</td>
+</tr>
+</table>
 
-- 桌面版检查到新版本后可在应用内下载并安装更新包，按发行形态与架构精确匹配
-- Android、iOS 提示新版本后跳转下载页手动安装，同一版本只提示一次
-- 顶部版本卡片始终保留为手动检查与下载入口
+## 📸 界面预览
 
-## 下载使用
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/desktop-home-dark.webp">
+  <img src="docs/images/desktop-home.webp" width="900" alt="桌面版：左侧导航栏，搜索结果和书籍详情并排">
+</picture>
+<br>
+<sub>桌面版主界面：左侧导航，搜索结果和书籍详情左右并排（会跟着你的 GitHub 深浅色主题切换）</sub>
+</p>
 
-普通用户请优先从[最新版本](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)
-下载。每个 Release 的说明会列出实际附件、签名状态、安装限制和校验文件；没有发布的
-平台或架构不要使用其他安装包代替。
+<table>
+<tr>
+<td width="50%" align="center"><img src="docs/images/desktop-reader.webp" alt="阅读器"><br><sub>阅读器</sub></td>
+<td width="50%" align="center"><img src="docs/images/desktop-bookshelf.webp" alt="书架"><br><sub>书架</sub></td>
+</tr>
+</table>
 
-| 平台 | 支持架构 | 普通用户选择 | 当前发布方式 |
-| --- | --- | --- | --- |
-| Windows | x64、ARM64 | 安装版选 `windows-*-setup.exe`；免安装使用选 `windows-*-portable.exe` | 两种形态都支持自动更新和手动下载，且不会互相转换 |
-| Linux | x64、ARM64 | Debian / Ubuntu 选 `.deb`，其他发行版可选 `.AppImage` | DEB 与 AppImage 只更新到相同包类型 |
-| macOS | Intel、Apple Silicon | 对应架构的 DMG 或 APP ZIP | APP 形态只接收同架构 APP 更新；无 Apple 签名时仍会受 Gatekeeper 限制 |
-| Android | arm64-v8a、armeabi-v7a、x86_64、universal | 优先 `arm64-v8a.apk`，不确定架构时选 `universal.apk` | 应用内提示新版本，需手动安装；Android 7.0 / API 24 起 |
-| iOS | ARM64 | 无签名 IPA | 应用内提示新版本；需要自行侧载；不上架 App Store |
+<table>
+<tr>
+<td width="33%" align="center"><img src="docs/images/mobile-search.webp" width="240" alt="手机版搜索"><br><sub>手机版：搜索</sub></td>
+<td width="33%" align="center"><img src="docs/images/mobile-detail.webp" width="240" alt="手机版书籍详情"><br><sub>手机版：书籍详情</sub></td>
+<td width="33%" align="center"><img src="docs/images/mobile-reader.webp" width="240" alt="手机版阅读器"><br><sub>手机版：阅读</sub></td>
+</tr>
+</table>
 
-### Windows
+<sub>截图使用虚构的示例书籍生成，以实际客户端为准。</sub>
 
-大多数电脑选择 `x64`，Windows on ARM 设备选择 `ARM64`。安装版会运行 NSIS 安装器并保留
-安装目录和卸载信息；便携版会在退出后原位覆盖当前程序并重启，不会创建安装目录、快捷
-方式或卸载项。
+## 📦 下载安装
 
-当前安装包尚未配置 Windows Authenticode 发行商证书，因此 Windows 可能提示“未知发布者”
-或触发 SmartScreen。安装或手动覆盖前请核对 Release 中的 SHA-256 校验清单。
+所有安装包都在 **[Releases 最新版](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest)** 页面底部的 Assets 里，按下表挑一个就行。
 
-旧便携版无法安全区分安装包与便携包，需要从最新 Release 手动下载一次同架构
-`windows-*-portable.exe`，关闭程序后覆盖旧文件；完成这次迁移后即可使用便携版原位自动
-更新。不要用 `setup.exe` 覆盖便携版，也不要把便携版附件当作安装器运行。
+| 平台 | 下载哪个文件 | 说明 |
+| --- | --- | --- |
+| 🪟 **Windows** | `windows-x64-setup.exe` | 安装版，推荐大多数人用 |
+| | `windows-x64-portable.exe` | 免安装版，双击就能运行 |
+| | 文件名里是 `arm64` 的 | Surface、骁龙等 ARM 电脑用 |
+| 🍎 **macOS** | `darwin-aarch64.dmg` | Apple M 系列芯片 |
+| | `darwin-x64.dmg` | Intel 芯片 |
+| 🐧 **Linux** | `.deb` | Debian、Ubuntu 等 |
+| | `.AppImage` | 其他发行版，免安装 |
+| 🤖 **Android** | `android-arm64-v8a.apk` | 绝大多数手机选这个 |
+| | `android-universal.apk` | 不确定手机型号时选这个，体积大一些 |
+| 📱 **iOS** | `.ipa` | 需要自签安装，见下方说明 |
 
-### Linux
+> [!TIP]
+> Linux 和 Android 也分 x64 / ARM64，文件名里写着架构，选和设备一致的。Android 需要 7.0 及以上，iOS 需要 14 及以上。`.aab`、`.sig`、`latest.json` 和校验文件是给应用商店和自动更新用的，不用下载。
 
-桌面壳依赖 **WebKitGTK 4.1**。AppImage 首次运行前需要授予执行权限：
+<details>
+<summary><b>🪟 Windows：安装版还是免安装版？</b></summary>
+
+<br>
+
+- **安装版**（`setup.exe`）：会创建开始菜单快捷方式，可以在系统设置里卸载。
+- **免安装版**（`portable.exe`）：放在哪儿都能直接打开，不写入系统，适合放 U 盘。
+
+两种都能在应用里自动更新，而且各自更新成各自的版本，不会互相转换。首次运行如果被 SmartScreen 拦下，见[常见问题](#-常见问题)。
+
+</details>
+
+<details>
+<summary><b>🍎 macOS：第一次打开被拦住怎么办？</b></summary>
+
+<br>
+
+安装包没有经过苹果公证，第一次打开时系统会拦一下，这是正常的：
+
+1. 打开 DMG，把应用拖进“应用程序”文件夹。
+2. 双击打开，看到提示后点“完成”。
+3. 打开“系统设置 → 隐私与安全性”，在页面下方找到这个应用，点“仍要打开”，再确认一次。
+
+以后就能正常打开了。如果提示“已损坏，无法打开”，见[常见问题](#-常见问题)。
+
+</details>
+
+<details>
+<summary><b>🤖 Android：怎么安装？</b></summary>
+
+<br>
+
+用手机浏览器下载 APK，打开后按提示允许“安装未知应用”即可。升级时直接装新版覆盖，阅读记录和书架都会保留。
+
+</details>
+
+<details>
+<summary><b>📱 iOS：怎么安装？</b></summary>
+
+<br>
+
+应用没有上架 App Store，需要用 [AltStore](https://altstore.io/)、[Sideloadly](https://sideloadly.io/) 或 TrollStore 等工具把 `.ipa` 装到手机上。装好后如果打不开，到“设置 → 通用 → VPN 与设备管理”里信任对应的证书。
+
+</details>
+
+<details>
+<summary><b>🐧 Linux：AppImage 双击没反应？</b></summary>
+
+<br>
+
+先给它执行权限：
 
 ```bash
 chmod +x FanqieNovelDownloader-*.AppImage
 ```
 
-具体是否同时提供 DEB 与 AppImage，以对应 Release 的实际附件为准。应用内更新只会选择与
-当前运行包类型及架构完全一致的条目；缺少对应条目时会转为手动下载。
+还打不开的话，用发行版自带的包管理器装上 WebKitGTK 4.1。
 
-### macOS
+</details>
 
-Apple Silicon 选择 `arm64`，Intel 选择 `x64`。当前 macOS 包未经过 Developer ID 签名和
-公证，首次启动会被 Gatekeeper 拦截：先核对 SHA-256，再前往“系统设置 → 隐私与安全性”
-选择“仍要打开”。只有 Release 说明明确要求时，才对该应用单独移除隔离属性；不需要全局
-关闭 Gatekeeper。
+## ❓ 常见问题
 
-### Android
+<details>
+<summary><b>新版已经发布了，应用里却提示“已是最新版”？</b></summary>
 
-APK 可以直接安装；AAB 是应用商店上传产物，不能像 APK 一样直接打开安装。安装 APK 时
-需要允许当前文件管理器或浏览器安装未知来源应用，并且只有新旧版本使用同一签名证书时
-才能覆盖升级。应用通过系统目录选择器保存 TXT / EPUB，并可交给已安装的阅读器打开，或
-回退到系统分享 / 保存面板。
+<br>
 
-### iOS
+新版刚发布的一段时间里，GitHub 的 CDN 缓存还没刷新，老版本检查更新时会暂时拿到旧的版本信息，所以显示“已是最新版”。过一段时间再点一次“检查更新”就能识别到。着急的话，直接到 [Releases 最新版](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest) 下载安装即可。
 
-提供的是无 Apple 签名 IPA，需要使用 AltStore、Sideloadly 或其他受信任方式自行侧载。
-安装后可能需要在“设置 → 通用 → VPN 与设备管理”中信任对应证书。它不属于 App Store 或
-TestFlight 正式发布。
+</details>
 
-## 快速上手
+<details>
+<summary><b>macOS 提示“已损坏，无法打开”或“无法验证开发者”？</b></summary>
 
-1. 安装与系统架构匹配的版本。
-2. 在“设置”中选择默认保存目录和 TXT / EPUB 格式，修改后会自动保存，无需手动点击保存。
-3. 在“搜索”输入关键词，或直接粘贴番茄小说链接、书籍 ID；需要整份书单时点击“批量导入”。
-4. 在详情页选择在线阅读、缓存离线正文、加入书架、全本下载或章节范围下载；需要释放空间
-   时，可在详情页或任一书架卡片点击“清理本书”。
-5. 在“历史”查看下载进度或打开已导出的文件；需要批量释放导出文件空间时，勾选记录后在
-   “删除”菜单中点击“删除选中文档”。“更多”菜单里的“清空记录”只删除历史条目，不删除
-   磁盘文件。
-6. 阅读时可从底栏打开“自动阅读”，选择速度后点击“开始”；自动阅读会连续下滑并在章节
-   末尾接续下一章。阅读中按住正文会暂停，松开手指或鼠标后等待 3 秒自动继续；点击底栏
-   入口则永久暂停。
-7. 只想阅读本机文件时，在“书架”点击“导入 TXT / EPUB”选择文件。
+<br>
 
-遇到网络超时或上游接口暂时不可用时，请等待一段时间再重试，避免短时间内连续发起大量
-请求。诊断日志默认关闭；需要排查时可在“设置 → 系统”临时开启，日志会对接口参数、签名、
-Cookie 和书籍标识进行脱敏。
+文件并没有坏，是因为安装包没有苹果公证。先按上面的步骤到“系统设置 → 隐私与安全性”点“仍要打开”。如果还是提示已损坏，打开“终端”，输入下面这行后回车（应用放在其他位置的话，把路径换成实际位置），再重新打开：
 
-## 数据与隐私
+```bash
+xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
+```
 
-- 阅读进度、阅读时长、本地书架、官方书架缓存和离线正文保存在你的设备上；官方账号返回
-  的累计阅读时间与应用记录的本机阅读时长是两套独立数据，项目不会把本机时长当作官方字段
-  写入
-- 退出官方账号只删除本机凭据和官方书架缓存，不会删除阅读进度、阅读时长、书架和离线正文
-- 离线正文保存在应用数据目录下的独立书库（`offline-books`）中；“删除离线正文”只删除该书
-  的离线书库，其余数据保留
-- 应用的网络访问只用于番茄接口与版本更新；本地导入的文件内容、标题、阅读进度和时长不会
-  发送给这些接口
-- 诊断日志默认关闭，需要时可在“设置 → 系统”开启、打开日志目录或导出；日志字段统一经过脱敏，
-  URL、主机名和长标识符只写哈希或占位
+不需要关闭系统的 Gatekeeper。
 
-## 常见问题
+</details>
 
-**大书单批量导入后无法开始下载**
+<details>
+<summary><b>Windows 弹出“Windows 已保护你的电脑”（SmartScreen）？</b></summary>
 
-超过 500 本时后台会拒绝、界面却不显示错误的问题已修复。当前版本每次支持去重后最多
-10,000 本，一个任务按清单顺序逐本下载，不会同时启动数千本；退出后可在“历史”继续未完成
-任务。解析结果会显示数量与上限；超限、目录无效或任务冲突等错误直接显示在导入弹窗中，
-输入不会丢失。若连接中断、未确认创建成功，请先检查任务列表，再决定是否重试。
+<br>
 
-**设置需要手动保存吗**
+安装包没有购买微软的代码签名证书，所以会显示“未知发布者”。点 **“更多信息” → “仍要运行”** 即可。介意的话，可以先用 Release 里的 `SHA256SUMS` 文件核对一下下载的文件。
 
-不需要。设置页的开关、选项和目录选择会立即自动保存；文件名格式在停止输入 0.5 秒或
-离开输入框后保存。顶部会显示等待保存、保存中、已保存或失败状态，退出前请确认已保存。
-无效的文件名格式不会提交，需先修正；保存失败会保留当前输入，可点“重试保存”。本机
-WebView / 浏览器存储可用时，快速关闭或刷新后还会恢复待保存草稿并再次尝试保存。
+</details>
 
-**检查到书籍更新后会自动重新下载吗**
+<details>
+<summary><b>以前的免安装版怎么更新？</b></summary>
 
-不会。默认在启动后及运行期间每小时检查已下载在线书籍的最新目录，也可以在“历史”手动
-“检查书籍更新”。确认后由你选择“重下全部更新”“重下选中”或单条“重新下载”；重下会沿用
-原来的文件名、目录、格式和章节范围，正文全部成功后才替换旧文件。本地导入的书籍不参与
-联网检查。
+<br>
 
-**本地导入的 TXT / EPUB 会上传吗**
+比较老的免安装版没法自动区分自己是哪个版本，需要手动更新一次：关掉程序，下载同架构的 `windows-*-portable.exe` 覆盖原文件。之后就会在原位置自动更新了。不要用 `setup.exe` 去覆盖免安装版。
 
-不会。导入只读取你选择的文件并保存到本机离线书库，不修改原文件，也不会把文件内容、
-标题、阅读进度或阅读时长发送给任何接口。EPUB 只提取正文与插图，不执行书内脚本。
+</details>
 
-**为什么附带导出的段评不是全部评论**
+<details>
+<summary><b>Android 装新版时提示“与已安装的应用冲突”？</b></summary>
 
-导出的段评是限定选摘，不是全量：每章按正文顺序最多收录前 30 个有评段落，每段只取热门
-前 5 条，包含昵称、评论内容和点赞数，不含回复和头像。需要浏览全部评论时请在阅读器内查看。
-段评自带的图片会一并收录（issue #394）：阅读器内直接显示；EPUB 导出时在开启“保留章节
-插图”的前提下随书内嵌；TXT 导出时在段评下方写出图片地址（纯文本无法内嵌二进制文件）。
+<br>
 
-**翻页模式和滚动模式有什么区别**
+说明手机上的旧版和新版签名不一样（比如旧版是从别处下载的），需要先卸载旧版再安装。
 
-滚动模式保持连续下滑，适合逐段阅读；翻页模式按一屏翻动，只有到页面边界时才跨章，适合
-整屏阅读。两种模式都可以配合自动阅读使用。
+</details>
 
-**macOS 提示应用已损坏**
+<details>
+<summary><b>下载的书保存在哪里？</b></summary>
 
-这不表示下载文件损坏，而是 Gatekeeper 对带隔离属性且缺少 Apple 公证的应用给出的提示。
-请先确认架构并核对校验和，然后前往“系统设置 → 隐私与安全性”选择“仍要打开”。不需要、
-也不应全局关闭 Gatekeeper。
+<br>
 
-**Linux 无法启动**
+在“设置”里可以选择保存目录和 TXT / EPUB 格式，改完自动保存。下载完成后，在“历史”里点对应的记录就能打开文件或所在文件夹。Android 上找不到文件时，在设置里重新选择一次保存目录并允许访问。
 
-先确认系统已安装 WebKitGTK 4.1 运行库；AppImage 还需要执行权限。不同发行版的软件包
-名称不同，请使用发行版自己的包管理器查询。
+</details>
 
-**Android 找不到下载文件**
+<details>
+<summary><b>书更新了，会自动重新下载吗？</b></summary>
 
-请在应用内重新选择共享目录并保留系统授予的访问权限。导出完成后可从历史记录打开文件，
-或在系统文件管理器中进入所选目录查看。
+<br>
 
-**“清除临时缓存”和“删除离线正文”有什么区别**
+不会自动下载。应用会定时检查已下载的书有没有新章节，你也可以在“历史”里手动点“检查书籍更新”，然后自己选择全部重下、只重下选中的，或者单本重下。新文件全部下载成功后才会替换旧文件。
 
-临时缓存只服务于当前运行中的详情、目录和章节访问，最多保留约 10 分钟，关闭应用也会
-消失；它不会删除磁盘上的离线正文。删除离线正文会释放该书离线书库占用的空间，同时使
-相关临时缓存失效，但不会移除本地 / 官方书架记录、阅读进度、阅读时长或已导出的
-TXT / EPUB。正在缓存该书时，请先取消对应离线任务，再删除离线正文。
+</details>
 
-**“删除选中文档”和“清空记录”有什么区别**
+<details>
+<summary><b>搜索或下载一直超时？</b></summary>
 
-“删除选中文档”会删除勾选记录对应的 TXT / EPUB 文件，并在成功后移除对应历史条目；文件
-已经不存在时也会清理失效记录。出于安全考虑，目录、符号链接和非 TXT / EPUB 文件不会被
-删除。“清空记录”只清空应用内历史，不触碰本地或 Android 系统目录中的导出文件。两项操作
-都不会影响书架、阅读进度、阅读时长或离线正文。
+<br>
 
-**便携版更新后为什么不能变成安装版**
+先确认用的是最新版，再检查代理、DNS 或防火墙设置，过一会儿再试，不要短时间内反复重试。还是不行的话，按下面的方式提交反馈。
 
-新版本会先识别当前 Windows 发行形态：正常安装目录中的 NSIS 版本只选择安装版附件，原始
-便携程序或被复制到其他目录的兼容形态只选择便携版附件。找不到精确附件或签名时只提供
-Release 页面。旧便携版需要按上面的 Windows 说明手动覆盖一次修复版。
+</details>
 
-**搜索或下载持续超时**
+## 💬 反馈与交流
 
-先确认正在使用最新版本，并排除代理、私有 DNS、防火墙或网络波动。仍可复现时，提交错误
-反馈并附上脱敏后的完整错误文本、平台、版本和复现步骤。
+遇到问题或有想法，欢迎[提交 Issue](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose)，按情况选一个模板：
 
-## 问题反馈
+- 🐞 **错误反馈**：软件出错、闪退或功能不正常
+- 💡 **功能建议**：希望新增或改进的功能
+- 🙋 **使用求助**：安装、设置或使用上的问题
 
-请从 [Issue 提交入口](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose)
-选择“错误反馈”“功能建议”或“使用求助”。仓库不接受空白 Issue，结构化表单会收集版本、
-平台、架构、复现步骤和必要的诊断信息。
+> [!IMPORTANT]
+> 提交 Issue 前需要先给本项目点一个 **Star** ⭐。提交后机器人会自动检查：还没 Star 的话会先提醒你，10 分钟内补上 Star 就没事；超过 10 分钟仍未 Star，Issue 会被自动关闭。被关闭后补了 Star，重新打开或重新提交即可。
 
-提交 Issue 前需要先公开 Star 当前项目。Issue 创建或重新打开后会由 Actions 自动核验；
-未通过时会先收到礼貌提醒，Issue 在 10 分钟宽限期内保持开放。宽限期内核验通过后，提醒
-会自动删除且 Issue 继续开放；超过 10 分钟仍未公开 Star 才会以 `not planned` 关闭。
+提交时请填写版本号和平台，并删掉截图、日志里的账号、Cookie 等个人信息。安全问题请走[私密报告](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)，不要公开发 Issue。每个版本的更新内容见 [Releases](https://github.com/POf-L/Fanqie-novel-Downloader/releases)。
 
-公开内容中请删除 token、签名、Cookie、设备标识和其他个人数据。安全漏洞请使用
-[私密漏洞报告](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)，
-不要创建公开 Issue。
+## ⭐ Star 趋势
 
-## 支持与赞助
+觉得好用的话，点个 Star 支持一下吧！
 
-如果这个项目对你有帮助，也欢迎自愿通过下面的合作服务支持项目维护。
+<a href="https://star-history.com/#POf-L/Fanqie-novel-Downloader&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=pof-l/fanqie-novel-downloader&type=Date&theme=dark">
+   <img alt="Star 趋势图" src="https://api.star-history.com/svg?repos=pof-l/fanqie-novel-downloader&type=Date" width="700">
+ </picture>
+</a>
 
-> 这是推广邀请链接。合作方目前标注通过该链接注册可获 **1 美元**，项目方也可能获得
-> 推广收益；是否使用该链接不影响软件功能、Issue 受理或问题处理。
+## ☕ 支持项目
 
-注册链接：<https://999554.xyz/register?aff=Xf2p>
+如果这个项目对你有帮助，也欢迎自愿通过下面的合作服务支持项目维护：<https://999554.xyz/register?aff=Xf2p>
 
-赞助与推广合作请通过[仓库所有者主页](https://github.com/POf-L)公开的联系方式沟通，
-不要提交为产品 Issue。
+<sub>这是推广邀请链接，合作方标注通过该链接注册可获 1 美元，项目方也可能获得推广收益；用不用都不影响软件功能和问题处理。赞助与推广合作请通过[仓库所有者主页](https://github.com/POf-L)的联系方式沟通，不要提交为 Issue。</sub>
 
-## 使用声明
+## 📜 免责声明
 
-请合理使用本工具，并遵守相关平台规则与当地法律法规。项目不保证上游接口永久可用，
-也不建议将自动化下载用于高频、批量滥用或侵犯他人权益的场景。
+本工具免费提供，仅供个人学习和阅读使用，请支持正版。使用时请遵守相关平台规则和当地法律法规，不要用于高频批量下载、传播或其他侵犯作者与平台权益的用途。项目不保证上游接口一直可用，因使用本工具产生的后果由使用者自行承担。
