@@ -902,7 +902,10 @@ jobs:
             --github-output "${GITHUB_OUTPUT}"
 
   desktop:
-    needs: [prepare, verify, release-bootstrap]
+    # 不等 verify：构建只往 release-bootstrap 预建的 Draft 上传，Draft 不公开；
+    # finalize / finalize-unsigned-release 都要求 needs.verify.result == 'success'
+    # 才会发布，verify 失败时 Draft 留着，下次运行 prepare 会清掉。
+    needs: [prepare, release-bootstrap]
     if: needs.prepare.outputs.desktop_count != '0'
     strategy:
       fail-fast: false
@@ -1876,7 +1879,10 @@ jobs:
           spctl --assess --type execute --verbose=2 "${app_path}"
 
   android:
-    needs: [prepare, verify, release-bootstrap]
+    # 不等 verify：构建只往 release-bootstrap 预建的 Draft 上传，Draft 不公开；
+    # finalize / finalize-unsigned-release 都要求 needs.verify.result == 'success'
+    # 才会发布，verify 失败时 Draft 留着，下次运行 prepare 会清掉。
+    needs: [prepare, release-bootstrap]
     if: needs.prepare.outputs.android_enabled == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -2051,7 +2057,10 @@ jobs:
             dist/android/*
 
   ios:
-    needs: [prepare, verify, release-bootstrap]
+    # 不等 verify：构建只往 release-bootstrap 预建的 Draft 上传，Draft 不公开；
+    # finalize / finalize-unsigned-release 都要求 needs.verify.result == 'success'
+    # 才会发布，verify 失败时 Draft 留着，下次运行 prepare 会清掉。
+    needs: [prepare, release-bootstrap]
     if: needs.prepare.outputs.ios_enabled == 'true'
     # macos-15 still ships Xcode 16.x; Xcode 26 breaks Tauri iOS via SwiftUICore.
     runs-on: macos-15

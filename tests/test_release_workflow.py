@@ -545,6 +545,23 @@ class ReleaseWorkflowTest(unittest.TestCase):
             ),
         )
 
+    def test_builds_overlap_verify_but_publishing_still_requires_it(self):
+        # 桌面 / Android / iOS 和 verify 同时跑，只往不公开的 Draft 上传；
+        # 真正发布的两个 finalize 必须显式要求 verify 成功。
+        self.assertEqual(
+            self.workflow.count("    needs: [prepare, release-bootstrap]\n"), 3
+        )
+        for job in ("finalize", "finalize-unsigned-release"):
+            section = self.workflow.split(f"\n  {job}:\n", 1)[1].split(
+                "\n    steps:\n", 1
+            )[0]
+            self.assertIn("verify", section.split("\n", 1)[0])
+            self.assertIn("needs.verify.result == 'success' &&", section)
+        fallback = self.workflow.split("\n  desktop-fallback:\n", 1)[1].split(
+            "\n    strategy:\n", 1
+        )[0]
+        self.assertIn("needs.verify.result == 'success' &&", fallback)
+
     def test_private_source_builds_do_not_use_public_actions_cache(self):
         self.assertNotIn("Swatinem/rust-cache", self.workflow)
         self.assertNotIn("actions/cache", self.workflow)
