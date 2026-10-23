@@ -55,7 +55,7 @@ function pad(text, width) {
 }
 
 // 运行一条命令，输出只进本地文件。返回退出码，并打印一行汇总。
-function runQuiet(name, command, args) {
+function runQuiet(name, command, args, { report = true } = {}) {
   return new Promise((resolve) => {
     if (isWindows && ![command, ...args].every((part) => SAFE_ARG.test(part))) {
       console.log(`::error::silent-run: ${name} 的参数含有不安全字符，拒绝经过 cmd.exe 运行`);
@@ -82,8 +82,10 @@ function runQuiet(name, command, args) {
       clearInterval(heartbeat);
       closeSync(fd);
       child = null;
-      const status = code === 0 ? "通过" : "失败";
-      console.log(`${status}  ${pad(name, 22)}退出码 ${pad(String(code), 4)}用时 ${seconds()}s`);
+      if (report) {
+        const status = code === 0 ? "通过" : "失败";
+        console.log(`${status}  ${pad(name, 22)}退出码 ${pad(String(code), 4)}用时 ${seconds()}s`);
+      }
       resolve(code);
     };
     if (!child) {
@@ -128,7 +130,8 @@ async function main() {
     const name = ["tauri", sub[0] || "run", target].filter(Boolean).join("-");
     const repro = `"cargo tauri ${tauriArgs.join(" ")}"`;
 
-    if ((await runQuiet("tauri-cli-check", "tauri", ["--version"])) !== 0) {
+    // 只是探测有没有 tauri 命令，不打印汇总行（没装时的“失败”会误导人）。
+    if ((await runQuiet("tauri-cli-check", "tauri", ["--version"], { report: false })) !== 0) {
       const installed = await runQuiet("tauri-cli-install", "npm", ["install", "-g", "@tauri-apps/cli@v2"]);
       if (installed !== 0) fail("tauri-cli-install", installed, '"npm install -g @tauri-apps/cli@v2"');
     }

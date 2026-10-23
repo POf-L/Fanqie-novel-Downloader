@@ -128,7 +128,7 @@ class SilentRunTest(unittest.TestCase):
         result, output = self.run_script(*args)
         self.assertEqual(result.returncode, 0, output)
         self.assert_no_leak(output)
-        self.assertRegex(result.stdout, r"通过  tauri-cli-check\s+退出码 0")
+        self.assertNotIn("tauri-cli-check", result.stdout)
         self.assertRegex(result.stdout, r"通过  tauri-build-aarch64-unknown-linux-gnu\s+退出码 0")
         self.assertNotIn("tauri-cli-install", result.stdout)
 
@@ -155,7 +155,8 @@ class SilentRunTest(unittest.TestCase):
         result, output = self.run_script("--tauri", "build", "--target", "x86_64-apple-darwin")
         self.assertEqual(result.returncode, 0, output)
         self.assert_no_leak(output)
-        self.assertRegex(result.stdout, r"失败  tauri-cli-check\s+退出码 127")
+        self.assertNotIn("tauri-cli-check", result.stdout)
+        self.assertNotIn("失败", result.stdout)
         self.assertRegex(result.stdout, r"通过  tauri-cli-install\s+退出码 0")
         self.assertRegex(result.stdout, r"通过  tauri-build-x86_64-apple-darwin\s+退出码 0")
         self.assertNotIn("::error::", result.stdout)
