@@ -562,6 +562,22 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )[0]
         self.assertIn("needs.verify.result == 'success' &&", fallback)
 
+    def test_verify_keeps_private_output_out_of_public_logs(self):
+        # verify 仍在公开 runner 上跑，但所有私有检查的输出都只写 runner 本地
+        # 临时文件：workflow 里不能直接出现 cargo/node 检查命令，apt 输出也要重定向。
+        verify = self.workflow.split("\n  verify:\n", 1)[1].split(
+            "\n  release-bootstrap:\n", 1
+        )[0]
+        self.assertIn(
+            'bash release-wrapper/scripts/silent-verify.sh "${PRIVATE_SOURCE_PATH}"',
+            verify,
+        )
+        for raw in ("cargo test", "cargo clippy", "cargo fmt", "node --test", "git diff --check"):
+            self.assertNotIn(raw, verify)
+        self.assertIn('</dev/null >"${log}" 2>&1', verify)
+        self.assertNotIn("upload-artifact", verify)
+        self.assertNotIn("set -x", verify)
+
     def test_private_source_builds_do_not_use_public_actions_cache(self):
         self.assertNotIn("Swatinem/rust-cache", self.workflow)
         self.assertNotIn("actions/cache", self.workflow)

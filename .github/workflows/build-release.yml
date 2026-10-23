@@ -450,13 +450,20 @@ jobs:
           fi
 
   verify:
+    # 静默 verify：私有源码的 fmt / clippy / test / node 检查仍在公开 runner 上跑
+    # （不占私有仓库的 Actions 额度），但所有输出（含依赖编译、apt 安装）只写进
+    # runner 本地临时文件，不打印、不上传。日志里只有每项通过/失败、退出码、用时；
+    # 失败时到私有仓库本地运行 scripts/verify-local.sh <检查名> 看完整输出。
+    # finalize / finalize-unsigned-release / desktop-fallback 仍要求本 job 成功。
     needs: prepare
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - name: Checkout release wrapper
         uses: actions/checkout@v4
         with:
           path: release-wrapper
+          persist-credentials: false
 
       - name: Test release metadata tooling
         working-directory: release-wrapper
@@ -476,25 +483,30 @@ jobs:
         with:
           components: rustfmt,clippy
 
-      - name: Install Tauri Linux dependencies
+      - name: Install Tauri Linux dependencies (silent)
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            xdg-utils
+          set -uo pipefail
+          log="$(mktemp "${RUNNER_TEMP}/apt.XXXXXX")"
+          start=${SECONDS}
+          if { sudo apt-get update && sudo apt-get install -y \
+                libwebkit2gtk-4.1-dev \
+                libappindicator3-dev \
+                librsvg2-dev \
+                patchelf \
+                xdg-utils; } </dev/null >"${log}" 2>&1; then
+            echo "通过  apt-install     用时 $((SECONDS - start))s"
+            rm -f "${log}"
+          else
+            code=$?
+            rm -f "${log}"
+            echo "::error::Linux 依赖安装失败（退出码 ${code}），输出未打印。"
+            exit 1
+          fi
 
-      - name: Test and lint Tauri source
-        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-          cargo test --manifest-path src-tauri/Cargo.toml --all-features
-          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-          node --test tests/*.js
-          node --check web/static/app.js
-          git diff --check
+      - name: Test and lint Tauri source (silent)
+        shell: bash
+        run: bash release-wrapper/scripts/silent-verify.sh "${PRIVATE_SOURCE_PATH}"
 
   release-bootstrap:
     needs: prepare
