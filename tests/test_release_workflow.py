@@ -578,6 +578,27 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("upload-artifact", verify)
         self.assertNotIn("set -x", verify)
 
+    def test_public_builds_quiet_cargo_and_rustc_warnings(self):
+        def section(job, end):
+            return self.workflow.split(f"\n  {job}:\n", 1)[1].split(f"\n  {end}:\n", 1)[0]
+
+        append = 'echo "RUSTFLAGS=${RUSTFLAGS:+${RUSTFLAGS} }-Awarnings"'
+        for job, end in (
+            ("desktop", "desktop-fallback"),
+            ("desktop-fallback", "android"),
+            ("macos-unsigned-build", "macos-unsigned-publish"),
+        ):
+            body = section(job, end)
+            self.assertEqual(body.count(append), 1, job)
+            self.assertEqual(body.count('echo "CARGO_TERM_QUIET=true"'), 1, job)
+        # 移动端不能设 RUSTFLAGS：会顶掉 cargo-mobile2 写的 target rustflags。
+        for job, end in (("android", "ios"), ("ios", "finalize")):
+            body = section(job, end)
+            self.assertNotIn("RUSTFLAGS=", body, job)
+            self.assertIn('echo "CARGO_TERM_QUIET=true" >> "${GITHUB_ENV}"', body)
+        # 只追加，不在任何地方直接覆盖 RUSTFLAGS。
+        self.assertNotRegex(self.workflow, r"\n\s+RUSTFLAGS:")
+
     def test_private_source_builds_do_not_use_public_actions_cache(self):
         self.assertNotIn("Swatinem/rust-cache", self.workflow)
         self.assertNotIn("actions/cache", self.workflow)

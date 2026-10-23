@@ -937,6 +937,16 @@ jobs:
     timeout-minutes: 90
     name: Desktop ${{ matrix.platform }}
     steps:
+      - name: Quiet cargo / rustc output in public logs
+        # 公开日志不打印 rustc warning（会带源码片段）和 Compiling/Downloaded
+        # 依赖清单。RUSTFLAGS 是在已有值后追加，不覆盖；编译错误仍会打印。
+        shell: bash
+        run: |
+          {
+            echo "RUSTFLAGS=${RUSTFLAGS:+${RUSTFLAGS} }-Awarnings"
+            echo "CARGO_TERM_QUIET=true"
+          } >> "${GITHUB_ENV}"
+
       - name: Checkout private Tauri source
         uses: actions/checkout@v4
         with:
@@ -1381,6 +1391,16 @@ jobs:
     timeout-minutes: 90
     name: Desktop fallback ${{ matrix.platform }} (cross on ${{ matrix.os }})
     steps:
+      - name: Quiet cargo / rustc output in public logs
+        # 公开日志不打印 rustc warning（会带源码片段）和 Compiling/Downloaded
+        # 依赖清单。RUSTFLAGS 是在已有值后追加，不覆盖；编译错误仍会打印。
+        shell: bash
+        run: |
+          {
+            echo "RUSTFLAGS=${RUSTFLAGS:+${RUSTFLAGS} }-Awarnings"
+            echo "CARGO_TERM_QUIET=true"
+          } >> "${GITHUB_ENV}"
+
       - name: Checkout release wrapper
         uses: actions/checkout@v4
         with:
@@ -1898,6 +1918,14 @@ jobs:
     if: needs.prepare.outputs.android_enabled == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Quiet cargo output in public logs
+        # 公开日志不打印 Compiling/Downloaded 依赖清单。这里故意不设 RUSTFLAGS：
+        # cargo-mobile2 会在生成的 .cargo/config.toml 里写 target.<triple>.rustflags
+        # （Android 的 -landroid/-llog/-lOpenSLES 链接参数），RUSTFLAGS 环境变量会
+        # 整个顶掉它们导致链接失败。编译错误和 warning 仍会打印。
+        shell: bash
+        run: echo "CARGO_TERM_QUIET=true" >> "${GITHUB_ENV}"
+
       - name: Checkout private Tauri source
         uses: actions/checkout@v4
         with:
@@ -2078,6 +2106,14 @@ jobs:
     runs-on: macos-15
     continue-on-error: true
     steps:
+      - name: Quiet cargo output in public logs
+        # 公开日志不打印 Compiling/Downloaded 依赖清单。这里故意不设 RUSTFLAGS：
+        # cargo-mobile2 会在生成的 .cargo/config.toml 里写 target.<triple>.rustflags
+        # （Android 的 -landroid/-llog/-lOpenSLES 链接参数），RUSTFLAGS 环境变量会
+        # 整个顶掉它们导致链接失败。编译错误和 warning 仍会打印。
+        shell: bash
+        run: echo "CARGO_TERM_QUIET=true" >> "${GITHUB_ENV}"
+
       - name: Checkout private Tauri source
         uses: actions/checkout@v4
         with:
@@ -2581,6 +2617,16 @@ jobs:
     timeout-minutes: 90
     name: Build unsigned macOS ${{ matrix.arch }}
     steps:
+      - name: Quiet cargo / rustc output in public logs
+        # 公开日志不打印 rustc warning（会带源码片段）和 Compiling/Downloaded
+        # 依赖清单。RUSTFLAGS 是在已有值后追加，不覆盖；编译错误仍会打印。
+        shell: bash
+        run: |
+          {
+            echo "RUSTFLAGS=${RUSTFLAGS:+${RUSTFLAGS} }-Awarnings"
+            echo "CARGO_TERM_QUIET=true"
+          } >> "${GITHUB_ENV}"
+
       - name: Checkout private Tauri source
         uses: actions/checkout@v4
         with:
