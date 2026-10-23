@@ -196,7 +196,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("uploadWorkflowArtifacts: true", self.workflow)
         self.assertEqual(
             self.workflow.count(
-                "(inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || ''"
+                "releaseId: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.release-bootstrap.outputs.release_id || '' }}"
             ),
             2,
         )
@@ -204,10 +204,17 @@ class ReleaseWorkflowTest(unittest.TestCase):
             self.workflow.count("- name: Upload unsigned desktop installers"),
             2,
         )
+        # 两个桌面 job 都只按 release-bootstrap 给的 Release ID 上传。
         self.assertEqual(
-            self.workflow.count('"gh",\n                  "release",\n                  "upload"'),
+            self.workflow.count(
+                '                  sys.executable,\n'
+                '                  uploader,\n'
+                '                  "upload",\n'
+                '                  *release_target,'
+            ),
             2,
         )
+        self.assertNotIn('"gh",\n                  "release",\n                  "upload"', self.workflow)
         self.assertEqual(self.workflow.count('single_directory(source / "macos", ".app")'), 2)
         self.assertGreaterEqual(self.workflow.count('stem = f"FanqieNovelDownloader-tauri-linux-{arch}"'), 2)
         self.assertEqual(
@@ -233,11 +240,20 @@ class ReleaseWorkflowTest(unittest.TestCase):
             ),
             2,
         )
-        self.assertEqual(self.workflow.count('"delete-asset"'), 2)
+        self.assertNotIn('"delete-asset"', self.workflow)
+        self.assertEqual(
+            self.workflow.count(
+                '                      uploader,\n'
+                '                      "delete",\n'
+                '                      *release_target,'
+            ),
+            2,
+        )
         self.assertIn('r"unsigned-v[^/]+-r[1-9][0-9]*"', self.unsigned_finalizer)
         self.assertIn('expected="FanqieNovelDownloader-tauri-linux-${expected_arch}.deb"', self.workflow)
+        # 预发布状态只由 release-bootstrap 建 Draft 时决定；tauri-action 不再建 Release。
         self.assertIn(
-            "prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}",
+            "PRERELEASE: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}",
             self.workflow,
         )
 
@@ -465,7 +481,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertEqual(
             section.count("token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}"), 1
         )
-        self.assertEqual(section.count("persist-credentials: false"), 1)
+        # 私有源码检出一次，外加 bootstrap / publish 两次 wrapper 检出。
+        self.assertEqual(section.count("persist-credentials: false"), 3)
         upload_section = section.split(
             "- name: Upload unsigned macOS bundles", 1
         )[1].split("\n\n  macos-unsigned-publish:", 1)[0]
@@ -478,10 +495,16 @@ class ReleaseWorkflowTest(unittest.TestCase):
             "token: ${{ secrets.PRIVATE_SOURCE_TOKEN }}"
         )
         self.assertEqual(private_checkouts, 7)
-        self.assertEqual(
-            self.workflow.count("persist-credentials: false"),
-            private_checkouts,
+        checkouts = re.findall(
+            r"uses: actions/checkout@v4\n        with:\n(?:          .*\n)+",
+            self.workflow,
         )
+        private = [block for block in checkouts if "PRIVATE_SOURCE_TOKEN" in block]
+        self.assertEqual(len(private), private_checkouts)
+        upload_wrappers = [block for block in checkouts if "sparse-checkout: scripts" in block]
+        self.assertEqual(len(upload_wrappers), 5)
+        for block in private + upload_wrappers:
+            self.assertIn("persist-credentials: false", block)
 
     def test_private_source_builds_do_not_use_public_actions_cache(self):
         self.assertNotIn("Swatinem/rust-cache", self.workflow)

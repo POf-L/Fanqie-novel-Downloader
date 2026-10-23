@@ -67,6 +67,16 @@ def release_id(repo: str, tag: str) -> int:
     return value
 
 
+def resolve_database_id(repo: str, tag: str, explicit: str) -> int:
+    """Prefer the ID handed over by release-bootstrap over a tag lookup."""
+    text = (explicit or "").strip()
+    if not text:
+        return release_id(repo, tag)
+    if not re.fullmatch(r"[1-9][0-9]*", text):
+        fail(f"invalid release ID: {explicit!r}")
+    return int(text)
+
+
 def fetch_release(repo: str, database_id: int, path: Path) -> dict:
     release: object = None
     assets: list[dict] = []
@@ -314,6 +324,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--tag", required=True)
+    parser.add_argument(
+        "--release-id",
+        default="",
+        help=(
+            "numeric ID of the Draft created by release-bootstrap; when given, "
+            "the release is fetched by ID instead of being looked up by tag"
+        ),
+    )
     parser.add_argument("--version", default="")
     parser.add_argument("--source-ref", default="")
     parser.add_argument("--source-commit", default="")
@@ -342,7 +360,7 @@ def main() -> int:
     manifest_path = work_dir / MANIFEST_NAME
     notes_path = work_dir / "release-notes.md"
 
-    database_id = release_id(repo, tag)
+    database_id = resolve_database_id(repo, tag, args.release_id)
     release = fetch_release(repo, database_id, release_path)
     validate_release_identity(release, tag, draft=True)
     prerelease = bool(release.get("prerelease"))

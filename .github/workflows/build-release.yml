@@ -500,7 +500,15 @@ jobs:
     needs: prepare
     if: inputs.macos_unsigned_channel != true
     runs-on: ubuntu-latest
+    outputs:
+      # 后续所有上传步骤都只按这个 ID 上传，不再按 tag 找草稿。
+      release_id: ${{ steps.release-id.outputs.release_id }}
     steps:
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Create draft release
         if: >-
           inputs.publish_release == true ||
@@ -872,6 +880,27 @@ jobs:
               --draft
           fi
 
+      - name: Resolve draft release ID
+        id: release-id
+        if: >-
+          inputs.publish_release == true ||
+          inputs.publish_unsigned_prerelease == true ||
+          inputs.publish_unsigned_release == true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          # 该 tag 必须恰好对应一个 Draft；出现同 tag 的多个 Release 时直接失败，
+          # 交给 maintenance-merge-drafts.yml 先合并。
+          python scripts/release-assets.py resolve \
+            --repo "${GH_REPO}" \
+            --tag "${TAG_NAME}" \
+            --require-draft \
+            --github-output "${GITHUB_OUTPUT}"
+
   desktop:
     needs: [prepare, verify, release-bootstrap]
     if: needs.prepare.outputs.desktop_count != '0'
@@ -896,6 +925,27 @@ jobs:
           persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
+
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          path: release-wrapper
+          persist-credentials: false
+          sparse-checkout: scripts
+
+      - name: Require pre-created release ID
+        if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
+        shell: bash
+        env:
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          # 所有上传只认 release-bootstrap 预建的那个 Draft。拿不到 ID 就直接失败，
+          # 绝不退回按 tag 查找或另建草稿（那正是附件被拆到两个同 tag 草稿的原因）。
+          if [[ ! "${RELEASE_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::release-bootstrap 没有提供预建 Draft 的 Release ID，拒绝按 tag 查找或新建草稿"
+            exit 1
+          fi
 
       - name: Validate macOS app icon
         if: runner.os == 'macOS'
@@ -1032,11 +1082,12 @@ jobs:
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
           # User installers may have no OS/vendor signature, but updater assets
           # are still signed by the dedicated Tauri key and uploaded to the draft.
-          tagName: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || '' }}
-          releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
+          # Upload straight into the Draft that release-bootstrap created, by ID.
+          # Never pass tagName here: tauri-action would look the Draft up in the
+          # release list and create a second same-tag Draft whenever it misses it.
+          releaseId: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.release-bootstrap.outputs.release_id || '' }}
+          # Only used as the notes field of latest.json; no release is created.
           releaseBody: Rust + Tauri v2 全平台正式构建。
-          releaseDraft: true
-          prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}
 
       - name: Stage, sign and upload Windows portable executable
         if: runner.os == 'Windows' && (inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
@@ -1045,6 +1096,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
           SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
           TARGET: ${{ matrix.target }}
           CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
@@ -1072,7 +1124,9 @@ jobs:
             }
             $uploads += $signature
           }
-          gh release upload $env:TAG_NAME @uploads --repo $env:GH_REPO --clobber
+          $uploader = Join-Path $env:GITHUB_WORKSPACE 'release-wrapper/scripts/release-assets.py'
+          python $uploader upload --repo $env:GH_REPO --release-id $env:RELEASE_ID --tag $env:TAG_NAME @uploads
+          if ($LASTEXITCODE -ne 0) { throw "便携版上传失败（Release ID $env:RELEASE_ID）" }
 
       - name: Verify unsigned macOS bundle before upload
         if: runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
@@ -1096,6 +1150,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
           SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
           TARGET: ${{ matrix.target }}
           PLATFORM: ${{ matrix.platform }}
@@ -1106,7 +1161,23 @@ jobs:
           import os
           import shutil
           import subprocess
+          import sys
           from pathlib import Path
+
+          uploader = str(
+              Path(os.environ["GITHUB_WORKSPACE"])
+              / "release-wrapper"
+              / "scripts"
+              / "release-assets.py"
+          )
+          release_target = [
+              "--repo",
+              os.environ["GH_REPO"],
+              "--release-id",
+              os.environ.get("RELEASE_ID", ""),
+              "--tag",
+              os.environ["TAG_NAME"],
+          ]
 
           source = (
               Path(os.environ["SOURCE_PATH"])
@@ -1229,13 +1300,10 @@ jobs:
               raise SystemExit("unsigned desktop asset directory has unexpected signatures")
           subprocess.run(
               [
-                  "gh",
-                  "release",
+                  sys.executable,
+                  uploader,
                   "upload",
-                  os.environ["TAG_NAME"],
-                  "--repo",
-                  os.environ["GH_REPO"],
-                  "--clobber",
+                  *release_target,
                   *(str(asset) for asset in assets),
               ],
               check=True,
@@ -1246,23 +1314,18 @@ jobs:
               # 否则 Release 会同时挂两个 AppImage，且残留签名会被
               # normalize-updater-metadata.py 判为未知签名资产。
               stale = f"FanqieNovelDownloader-tauri-linux-{appimage_arch}.AppImage"
-              for name in (stale, f"{stale}.sig"):
-                  subprocess.run(
-                      [
-                          "gh",
-                          "release",
-                          "delete-asset",
-                          os.environ["TAG_NAME"],
-                          name,
-                          "--repo",
-                          os.environ["GH_REPO"],
-                          "--yes",
-                      ],
-                      check=False,
-                      stdout=subprocess.DEVNULL,
-                      stderr=subprocess.DEVNULL,
-                      env=os.environ.copy(),
-                  )
+              subprocess.run(
+                  [
+                      sys.executable,
+                      uploader,
+                      "delete",
+                      *release_target,
+                      stale,
+                      f"{stale}.sig",
+                  ],
+                  check=True,
+                  env=os.environ.copy(),
+              )
 
       - name: Verify macOS signing and notarization
         if: runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
@@ -1293,6 +1356,27 @@ jobs:
     timeout-minutes: 90
     name: Desktop fallback ${{ matrix.platform }} (cross on ${{ matrix.os }})
     steps:
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          path: release-wrapper
+          persist-credentials: false
+          sparse-checkout: scripts
+
+      - name: Require pre-created release ID
+        if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
+        shell: bash
+        env:
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          # 所有上传只认 release-bootstrap 预建的那个 Draft。拿不到 ID 就直接失败，
+          # 绝不退回按 tag 查找或另建草稿（那正是附件被拆到两个同 tag 草稿的原因）。
+          if [[ ! "${RELEASE_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::release-bootstrap 没有提供预建 Draft 的 Release ID，拒绝按 tag 查找或新建草稿"
+            exit 1
+          fi
+
       - name: Check whether native build already uploaded assets
         id: need
         shell: bash
@@ -1300,6 +1384,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
           ASSET_SUBSTR: ${{ matrix.asset_substr }}
           RELEASE_ENABLED: ${{ inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release }}
           PUBLISH_UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
@@ -1314,11 +1399,11 @@ jobs:
             echo "run=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          if ! gh release view "${TAG_NAME}" --repo "${GH_REPO}" >/dev/null 2>&1; then
-            echo "run=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          assets="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json assets -q '.assets[].name' || true)"
+          # 只看 release-bootstrap 预建的 Draft；读不到就失败，不按 tag 猜。
+          assets="$(python release-wrapper/scripts/release-assets.py list \
+            --repo "${GH_REPO}" \
+            --release-id "${RELEASE_ID}" \
+            --tag "${TAG_NAME}" | tr -d '\r')"
           if [[ "${TARGET}" == *-pc-windows-msvc ]]; then
             arch="$([[ "${TARGET}" == aarch64-* ]] && echo arm64 || echo x64)"
             setup="FanqieNovelDownloader-tauri-windows-${arch}-setup.exe"
@@ -1524,11 +1609,12 @@ jobs:
           releaseAssetNamePattern: FanqieNovelDownloader-tauri-[platform]-[arch][setup][ext]
           # User installers may have no OS/vendor signature, but updater assets
           # are still signed by the dedicated Tauri key and uploaded to the draft.
-          tagName: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.prepare.outputs.tag_name || '' }}
-          releaseName: 番茄小说下载器 ${{ needs.prepare.outputs.version }}
+          # Upload straight into the Draft that release-bootstrap created, by ID.
+          # Never pass tagName here: tauri-action would look the Draft up in the
+          # release list and create a second same-tag Draft whenever it misses it.
+          releaseId: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.prepare.outputs.create_updater_artifacts == 'true' && needs.release-bootstrap.outputs.release_id || '' }}
+          # Only used as the notes field of latest.json; no release is created.
           releaseBody: Rust + Tauri v2 全平台正式构建（含稀缺 runner 交叉回退）。
-          releaseDraft: true
-          prerelease: ${{ inputs.publish_unsigned_prerelease || inputs.prerelease }}
 
       - name: Stage, sign and upload Windows portable executable
         if: steps.need.outputs.run == 'true' && runner.os == 'Windows' && (inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
@@ -1537,6 +1623,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
           SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
           TARGET: ${{ matrix.target }}
           CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
@@ -1564,7 +1651,9 @@ jobs:
             }
             $uploads += $signature
           }
-          gh release upload $env:TAG_NAME @uploads --repo $env:GH_REPO --clobber
+          $uploader = Join-Path $env:GITHUB_WORKSPACE 'release-wrapper/scripts/release-assets.py'
+          python $uploader upload --repo $env:GH_REPO --release-id $env:RELEASE_ID --tag $env:TAG_NAME @uploads
+          if ($LASTEXITCODE -ne 0) { throw "便携版上传失败（Release ID $env:RELEASE_ID）" }
 
       - name: Verify unsigned macOS bundle before upload
         if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
@@ -1588,6 +1677,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
           SOURCE_PATH: ${{ env.PRIVATE_SOURCE_PATH }}
           TARGET: ${{ matrix.target }}
           PLATFORM: ${{ matrix.platform }}
@@ -1598,7 +1688,23 @@ jobs:
           import os
           import shutil
           import subprocess
+          import sys
           from pathlib import Path
+
+          uploader = str(
+              Path(os.environ["GITHUB_WORKSPACE"])
+              / "release-wrapper"
+              / "scripts"
+              / "release-assets.py"
+          )
+          release_target = [
+              "--repo",
+              os.environ["GH_REPO"],
+              "--release-id",
+              os.environ.get("RELEASE_ID", ""),
+              "--tag",
+              os.environ["TAG_NAME"],
+          ]
 
           source = (
               Path(os.environ["SOURCE_PATH"])
@@ -1721,13 +1827,10 @@ jobs:
               raise SystemExit("unsigned desktop asset directory has unexpected signatures")
           subprocess.run(
               [
-                  "gh",
-                  "release",
+                  sys.executable,
+                  uploader,
                   "upload",
-                  os.environ["TAG_NAME"],
-                  "--repo",
-                  os.environ["GH_REPO"],
-                  "--clobber",
+                  *release_target,
                   *(str(asset) for asset in assets),
               ],
               check=True,
@@ -1738,23 +1841,18 @@ jobs:
               # 否则 Release 会同时挂两个 AppImage，且残留签名会被
               # normalize-updater-metadata.py 判为未知签名资产。
               stale = f"FanqieNovelDownloader-tauri-linux-{appimage_arch}.AppImage"
-              for name in (stale, f"{stale}.sig"):
-                  subprocess.run(
-                      [
-                          "gh",
-                          "release",
-                          "delete-asset",
-                          os.environ["TAG_NAME"],
-                          name,
-                          "--repo",
-                          os.environ["GH_REPO"],
-                          "--yes",
-                      ],
-                      check=False,
-                      stdout=subprocess.DEVNULL,
-                      stderr=subprocess.DEVNULL,
-                      env=os.environ.copy(),
-                  )
+              subprocess.run(
+                  [
+                      sys.executable,
+                      uploader,
+                      "delete",
+                      *release_target,
+                      stale,
+                      f"{stale}.sig",
+                  ],
+                  check=True,
+                  env=os.environ.copy(),
+              )
 
       - name: Verify macOS signing and notarization
         if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
@@ -1780,6 +1878,27 @@ jobs:
           persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
+
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          path: release-wrapper
+          persist-credentials: false
+          sparse-checkout: scripts
+
+      - name: Require pre-created release ID
+        if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
+        shell: bash
+        env:
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          # 所有上传只认 release-bootstrap 预建的那个 Draft。拿不到 ID 就直接失败，
+          # 绝不退回按 tag 查找或另建草稿（那正是附件被拆到两个同 tag 草稿的原因）。
+          if [[ ! "${RELEASE_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::release-bootstrap 没有提供预建 Draft 的 Release ID，拒绝按 tag 查找或新建草稿"
+            exit 1
+          fi
 
       - uses: actions/setup-java@v4
         with:
@@ -1910,7 +2029,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
-        run: gh release upload "${TAG_NAME}" dist/android/* --clobber
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          python "${GITHUB_WORKSPACE}/release-wrapper/scripts/release-assets.py" upload \
+            --repo "${GH_REPO}" \
+            --release-id "${RELEASE_ID}" \
+            --tag "${TAG_NAME}" \
+            dist/android/*
 
   ios:
     needs: [prepare, verify, release-bootstrap]
@@ -1928,6 +2054,27 @@ jobs:
           persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
+
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          path: release-wrapper
+          persist-credentials: false
+          sparse-checkout: scripts
+
+      - name: Require pre-created release ID
+        if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
+        shell: bash
+        env:
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          # 所有上传只认 release-bootstrap 预建的那个 Draft。拿不到 ID 就直接失败，
+          # 绝不退回按 tag 查找或另建草稿（那正是附件被拆到两个同 tag 草稿的原因）。
+          if [[ ! "${RELEASE_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::release-bootstrap 没有提供预建 Draft 的 Release ID，拒绝按 tag 查找或新建草稿"
+            exit 1
+          fi
 
       - name: Select Xcode 16 (avoid SwiftUICore link error on Xcode 26)
         shell: bash
@@ -2042,7 +2189,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
-        run: gh release upload "${TAG_NAME}" dist/ios/* --clobber
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          python "${GITHUB_WORKSPACE}/release-wrapper/scripts/release-assets.py" upload \
+            --repo "${GH_REPO}" \
+            --release-id "${RELEASE_ID}" \
+            --tag "${TAG_NAME}" \
+            dist/ios/*
 
   finalize:
     needs: [prepare, verify, release-bootstrap, desktop, desktop-fallback, android, ios]
@@ -2068,6 +2222,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
           VERSION: ${{ needs.prepare.outputs.version }}
           SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
           SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
@@ -2078,6 +2233,7 @@ jobs:
           arguments=(
             --repo "${GH_REPO}"
             --tag "${TAG_NAME}"
+            --release-id "${RELEASE_ID}"
             --version "${VERSION}"
             --source-ref "${SOURCE_REF}"
             --source-commit "${SOURCE_COMMIT}"
@@ -2141,6 +2297,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
           VERSION: ${{ needs.prepare.outputs.version }}
           SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
           SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
@@ -2156,6 +2313,7 @@ jobs:
           arguments=(
             --repo "${GH_REPO}"
             --tag "${TAG_NAME}"
+            --release-id "${RELEASE_ID}"
             --mode "${mode}"
             --version "${VERSION}"
             --source-ref "${SOURCE_REF}"
@@ -2174,14 +2332,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.release-bootstrap.outputs.release_id }}
           PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
           UNSIGNED_PRERELEASE: ${{ inputs.publish_unsigned_prerelease }}
           CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
         run: |
           set -euo pipefail
           release_json="${RUNNER_TEMP}/published-unsigned-release.json"
-          release_id="$(gh release view "${TAG_NAME}" --repo "${GH_REPO}" --json databaseId --jq .databaseId)"
-          gh api "repos/${GH_REPO}/releases/${release_id}" > "${release_json}"
+          gh api "repos/${GH_REPO}/releases/${RELEASE_ID}" > "${release_json}"
+          test "$(jq -r .tag_name "${release_json}")" = "${TAG_NAME}"
           python - "${release_json}" <<'PY'
           import json
           import os
@@ -2281,7 +2440,13 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       stable_tag: ${{ steps.release.outputs.stable_tag }}
+      release_id: ${{ steps.release-id.outputs.release_id }}
     steps:
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Create unsigned macOS draft prerelease
         id: release
         shell: bash
@@ -2356,6 +2521,21 @@ jobs:
               --draft \
               --prerelease
           fi
+
+      - name: Resolve draft release ID
+        id: release-id
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          python scripts/release-assets.py resolve \
+            --repo "${GH_REPO}" \
+            --tag "${TAG_NAME}" \
+            --require-draft \
+            --github-output "${GITHUB_OUTPUT}"
 
   macos-unsigned-build:
     needs: [prepare, verify, macos-unsigned-bootstrap]
@@ -2528,6 +2708,13 @@ jobs:
     if: inputs.macos_unsigned_channel == true
     runs-on: ubuntu-22.04
     steps:
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          path: release-wrapper
+          persist-credentials: false
+          sparse-checkout: scripts
+
       - name: Download unsigned macOS bundles
         uses: actions/download-artifact@v4
         with:
@@ -2561,6 +2748,7 @@ jobs:
           SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
           STABLE_TAG: ${{ needs.macos-unsigned-bootstrap.outputs.stable_tag }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.macos-unsigned-bootstrap.outputs.release_id }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
@@ -2609,7 +2797,11 @@ jobs:
           - 稳定版保持为：\`${STABLE_TAG}\`
           EOF
 
-          gh release upload "${TAG_NAME}" dist/* --clobber
+          python release-wrapper/scripts/release-assets.py upload \
+            --repo "${GH_REPO}" \
+            --release-id "${RELEASE_ID}" \
+            --tag "${TAG_NAME}" \
+            dist/*
           gh release edit "${TAG_NAME}" \
             --title "番茄小说下载器 macOS 未签名版 ${VERSION}" \
             --notes-file release-notes.md \
