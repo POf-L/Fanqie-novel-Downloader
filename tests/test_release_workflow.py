@@ -153,13 +153,36 @@ class ReleaseWorkflowTest(unittest.TestCase):
         # 移动端不能改用 npm 的 tauri：Gradle 的 rustBuild* 任务和 Xcode 的
         # "Build Rust Code" script phase 调用的是 cargo 子命令 `cargo tauri`，
         # 而 npm 全局安装不会提供 ~/.cargo/bin/cargo-tauri，会报
-        # "no such command: tauri"。所以 Android / iOS 保留 cargo install。
+        # "no such command: tauri"。所以 Android / iOS 安装的是 tauri 官方
+        # Release 的预编译 cargo-tauri（sha256 固定），拿不到时退回 cargo install。
         self.assertEqual(
             self.workflow.count(
-                'cargo install tauri-cli --version "${TAURI_CLI_VERSION}" --locked'
+                'bash "${GITHUB_WORKSPACE}/release-wrapper/scripts/install-cargo-tauri.sh"'
             ),
             2,
         )
+        self.assertNotIn("cargo install tauri-cli", self.workflow)
+        installer = (ROOT / "scripts" / "install-cargo-tauri.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            'cargo install tauri-cli --version "${TAURI_CLI_VERSION}" --locked',
+            installer,
+        )
+        self.assertIn("shasum -a 256 -c -", installer)
+        self.assertIn('!= "tauri-cli ${version}"', installer)
+        cli_version = re.search(
+            r'TAURI_CLI_VERSION: "([0-9.]+)"', self.workflow
+        ).group(1)
+        # Android 跑在 ubuntu-latest（x86_64），iOS 跑在 macos-15（arm64）。
+        for asset in (
+            "cargo-tauri-x86_64-unknown-linux-gnu.tgz",
+            "cargo-tauri-aarch64-apple-darwin.zip",
+        ):
+            self.assertRegex(
+                installer,
+                re.escape(f"{cli_version}/{asset})") + r"\n\s+echo \"[0-9a-f]{64}\"",
+            )
         self.assertEqual(self.workflow.count('$signature = "$portable.sig"'), 2)
         self.assertIn("TAURI_CLI_VERSION: \"2.11.4\"", self.workflow)
         self.assertIn("ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}", self.workflow)

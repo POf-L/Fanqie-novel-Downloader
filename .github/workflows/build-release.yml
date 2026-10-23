@@ -1938,7 +1938,8 @@ jobs:
             "platforms;android-${ANDROID_API_LEVEL}" \
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
-          cargo install tauri-cli --version "${TAURI_CLI_VERSION}" --locked
+          # 预编译 cargo-tauri（sha256 固定）；拿不到或校验不过时脚本自动退回 cargo install。
+          bash "${GITHUB_WORKSPACE}/release-wrapper/scripts/install-cargo-tauri.sh"
 
       - name: Configure Android version
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
@@ -2127,7 +2128,8 @@ jobs:
           if ! command -v xcodegen >/dev/null 2>&1; then
             brew install xcodegen
           fi
-          cargo install tauri-cli --version "${TAURI_CLI_VERSION}" --locked
+          # 预编译 cargo-tauri（sha256 固定）；拿不到或校验不过时脚本自动退回 cargo install。
+          bash "${GITHUB_WORKSPACE}/release-wrapper/scripts/install-cargo-tauri.sh"
 
       - name: Configure and validate iOS project
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
