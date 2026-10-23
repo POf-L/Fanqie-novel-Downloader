@@ -1100,6 +1100,9 @@ jobs:
           FANQIE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
         with:
           projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
+          # 构建输出（编译错误、链接命令、打包日志）只写 runner 本地临时文件，公开日志
+          # 只有通过/失败、退出码、用时；失败时提示去私有仓库本地复现。
+          tauriScript: node ${{ github.workspace }}/release-wrapper/scripts/silent-run.mjs --tauri
           args: >-
             --target ${{ matrix.target }}
             --bundles ${{ matrix.bundles }}
@@ -1531,25 +1534,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install Linux host deps and ARM64 cross linker
+      - name: Install ARM64 cross-compile environment (multiarch)
         if: steps.need.outputs.run == 'true' && runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            xdg-utils \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu
-          {
-            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc"
-            echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc"
-            echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++"
-            # WebKit pkg-config is host-only; deb packaging still needs host tools.
-            echo "PKG_CONFIG_ALLOW_CROSS=1"
-          } >> "${GITHUB_ENV}"
+        # 以前只装了 x64 的 WebKitGTK，pkg-config 给出的是 x64 库，arm64 链接找不到
+        # glib 等库。脚本改用 multiarch 装 arm64 开发包，并只对 aarch64 目标设 pkg-config。
+        run: bash release-wrapper/scripts/setup-linux-arm64-cross.sh
 
       - name: Create release build config
         if: steps.need.outputs.run == 'true'
@@ -1641,6 +1630,9 @@ jobs:
           FANQIE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
         with:
           projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
+          # 构建输出（编译错误、链接命令、打包日志）只写 runner 本地临时文件，公开日志
+          # 只有通过/失败、退出码、用时；失败时提示去私有仓库本地复现。
+          tauriScript: node ${{ github.workspace }}/release-wrapper/scripts/silent-run.mjs --tauri
           args: >-
             --target ${{ matrix.target }}
             --bundles ${{ matrix.bundles }}
@@ -2038,14 +2030,16 @@ jobs:
           # up a universal-only APK from an earlier build/cache.
           rm -rf src-tauri/gen/android/app/build/outputs/apk \
             src-tauri/gen/android/app/build/outputs/bundle
-          echo "::group::Building all Android artifacts"
-          cargo tauri android build \
+          # cargo / Gradle 的全部输出只写 runner 本地临时文件（编译错误会带私有源码，
+          # 链接失败会打出完整依赖清单）；公开日志只有通过/失败、退出码、用时。
+          node "${GITHUB_WORKSPACE}/release-wrapper/scripts/silent-run.mjs" \
+            --name android-build \
+            -- cargo tauri android build \
             --target aarch64 armv7 i686 x86_64 \
             --apk \
             --aab \
             --ci \
             --config src-tauri/tauri.android.release.conf.json
-          echo "::endgroup::"
           echo "=== Build outputs ==="
           find src-tauri/gen/android/app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) -printf '%f  %s bytes\n' | sort
 
@@ -2217,8 +2211,11 @@ jobs:
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         env:
           FANQIE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
+        # cargo / Xcode 的全部输出只写 runner 本地临时文件；公开日志只有通过/失败。
         run: >-
-          cargo tauri ios build
+          node "${GITHUB_WORKSPACE}/release-wrapper/scripts/silent-run.mjs"
+          --name ios-build-unsigned
+          -- cargo tauri ios build
           --target aarch64
           --ci
           --no-sign
@@ -2233,8 +2230,11 @@ jobs:
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}
           APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+        # cargo / Xcode 的全部输出只写 runner 本地临时文件；公开日志只有通过/失败。
         run: >-
-          cargo tauri ios build
+          node "${GITHUB_WORKSPACE}/release-wrapper/scripts/silent-run.mjs"
+          --name ios-build-app-store
+          -- cargo tauri ios build
           --target aarch64
           --ci
           --export-method app-store-connect
@@ -2637,6 +2637,13 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
+      - name: Checkout release wrapper
+        uses: actions/checkout@v4
+        with:
+          path: release-wrapper
+          persist-credentials: false
+          sparse-checkout: scripts
+
       - name: Validate macOS app icon
         shell: bash
         run: |
@@ -2682,6 +2689,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: ${{ env.PRIVATE_SOURCE_PATH }}
+          # 构建输出（编译错误、链接命令、打包日志）只写 runner 本地临时文件，公开日志
+          # 只有通过/失败、退出码、用时；失败时提示去私有仓库本地复现。
+          tauriScript: node ${{ github.workspace }}/release-wrapper/scripts/silent-run.mjs --tauri
           retryAttempts: 5
           args: >-
             --target ${{ matrix.target }}
