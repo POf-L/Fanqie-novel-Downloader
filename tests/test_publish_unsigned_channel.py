@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -79,6 +80,54 @@ class PublishUnsignedChannelTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(SystemExit, "does not point"):
             MODULE.validate_metadata("o/r", source, metadata)
+
+
+class ReleaseLookupRetryTest(unittest.TestCase):
+    """A transient GitHub failure must not read as "the alias does not exist"."""
+
+    @staticmethod
+    def completed(returncode, stdout="", stderr=""):
+        return subprocess.CompletedProcess([], returncode, stdout=stdout, stderr=stderr)
+
+    def test_not_found_means_missing_release(self):
+        with patch.object(
+            MODULE.subprocess,
+            "run",
+            return_value=self.completed(1, stderr="gh: Not Found (HTTP 404)"),
+        ) as run:
+            self.assertIsNone(MODULE.release_by_tag("o/r", "TAG", sleep=lambda _: None))
+        self.assertEqual(run.call_count, 1)
+
+    def test_transient_failures_are_retried_with_backoff(self):
+        delays = []
+        responses = [
+            self.completed(1, stderr="gh: HTTP 502: Bad Gateway"),
+            self.completed(1, stderr="API rate limit exceeded (HTTP 403)"),
+            self.completed(0, stdout=json.dumps({"id": 7, "tag_name": "TAG"})),
+        ]
+        with patch.object(MODULE.subprocess, "run", side_effect=responses):
+            release = MODULE.release_by_tag("o/r", "TAG", sleep=delays.append)
+        self.assertEqual(release["id"], 7)
+        self.assertEqual(delays, [2, 4])
+
+    def test_persistent_or_non_transient_failures_stop_instead_of_creating(self):
+        with patch.object(
+            MODULE.subprocess,
+            "run",
+            return_value=self.completed(1, stderr="gh: HTTP 503"),
+        ) as run:
+            with self.assertRaises(SystemExit) as raised:
+                MODULE.release_by_tag("o/r", "TAG", attempts=3, sleep=lambda _: None)
+        self.assertEqual(run.call_count, 3)
+        self.assertIn("HTTP 503", str(raised.exception))
+        with patch.object(
+            MODULE.subprocess,
+            "run",
+            return_value=self.completed(1, stderr="gh: Bad credentials (HTTP 401)"),
+        ) as run:
+            with self.assertRaises(SystemExit):
+                MODULE.release_by_tag("o/r", "TAG", sleep=lambda _: None)
+        self.assertEqual(run.call_count, 1)
 
 
 if __name__ == "__main__":
