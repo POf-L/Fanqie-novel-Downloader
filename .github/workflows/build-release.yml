@@ -46,8 +46,10 @@ on:
         default: ""
         type: string
 
+# 默认只读；需要创建/编辑 Release 的 job 各自声明 contents: write。
+# verify 在公开 runner 上执行私有源码的构建脚本与测试，不需要也不应拿到写权限。
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -64,6 +66,8 @@ env:
 
 jobs:
   prepare:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     outputs:
       desktop_matrix: ${{ steps.platforms.outputs.desktop_matrix }}
@@ -97,7 +101,7 @@ jobs:
           fi
 
       - name: Checkout private Tauri source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ inputs.source_ref }}
@@ -460,7 +464,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: release-wrapper
           persist-credentials: false
@@ -470,7 +474,7 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_*.py'
 
       - name: Checkout private Tauri source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
@@ -479,7 +483,7 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
-      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0
         with:
           components: rustfmt,clippy
 
@@ -511,13 +515,15 @@ jobs:
   release-bootstrap:
     needs: prepare
     if: inputs.macos_unsigned_channel != true
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     outputs:
       # 后续所有上传步骤都只按这个 ID 上传，不再按 tag 找草稿。
       release_id: ${{ steps.release-id.outputs.release_id }}
     steps:
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -919,6 +925,8 @@ jobs:
     # 才会发布，verify 失败时 Draft 留着，下次运行 prepare 会清掉。
     needs: [prepare, release-bootstrap]
     if: needs.prepare.outputs.desktop_count != '0'
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       # 桌面各平台并行构建。并行上传是安全的：
@@ -948,7 +956,7 @@ jobs:
           } >> "${GITHUB_ENV}"
 
       - name: Checkout private Tauri source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
@@ -958,7 +966,7 @@ jobs:
           fetch-depth: 1
 
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: release-wrapper
           persist-credentials: false
@@ -989,7 +997,7 @@ jobs:
           iconutil -c iconset "${icon}" -o "${iconset}"
           test -f "${iconset}/icon_512x512@2x.png"
 
-      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0
         with:
           targets: ${{ matrix.target }}
 
@@ -1092,7 +1100,7 @@ jobs:
           done
 
       - name: Build, sign updater artifacts and upload
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -1168,9 +1176,11 @@ jobs:
       - name: Verify unsigned macOS bundle before upload
         if: runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
         shell: bash
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          bundle_root="${PRIVATE_SOURCE_PATH}/src-tauri/target/${{ matrix.target }}/release/bundle"
+          bundle_root="${PRIVATE_SOURCE_PATH}/src-tauri/target/${MATRIX_TARGET}/release/bundle"
           app_path="$(find "${bundle_root}/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
           dmg_path="$(find "${bundle_root}/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
           test -n "${app_path}"
@@ -1367,8 +1377,10 @@ jobs:
       - name: Verify macOS signing and notarization
         if: runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
         shell: bash
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
         run: |
-          app_path="$(find "${PRIVATE_SOURCE_PATH}/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          app_path="$(find "${PRIVATE_SOURCE_PATH}/src-tauri/target/${MATRIX_TARGET}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
           test -n "${app_path}"
           test -d "${app_path}/Contents/_CodeSignature"
           codesign --verify --deep --strict --verbose=2 "${app_path}"
@@ -1385,6 +1397,8 @@ jobs:
       needs.release-bootstrap.result == 'success' &&
       needs.prepare.outputs.desktop_fallback_count != '0' &&
       needs.desktop.result != 'cancelled'
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       # 与 desktop 相同：按 Draft ID 上传、附件名按平台区分，latest.json 由
@@ -1405,7 +1419,7 @@ jobs:
           } >> "${GITHUB_ENV}"
 
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: release-wrapper
           persist-credentials: false
@@ -1508,7 +1522,7 @@ jobs:
 
       - name: Checkout private Tauri source
         if: steps.need.outputs.run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
@@ -1530,7 +1544,7 @@ jobs:
 
       - name: Install Rust toolchain (cross target)
         if: steps.need.outputs.run == 'true'
-        uses: dtolnay/rust-toolchain@1.97.0
+        uses: dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0
         with:
           targets: ${{ matrix.target }}
 
@@ -1622,7 +1636,7 @@ jobs:
 
       - name: Cross-build, sign updater artifacts and upload
         if: steps.need.outputs.run == 'true'
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -1696,9 +1710,11 @@ jobs:
       - name: Verify unsigned macOS bundle before upload
         if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && (inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true)
         shell: bash
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          bundle_root="${PRIVATE_SOURCE_PATH}/src-tauri/target/${{ matrix.target }}/release/bundle"
+          bundle_root="${PRIVATE_SOURCE_PATH}/src-tauri/target/${MATRIX_TARGET}/release/bundle"
           app_path="$(find "${bundle_root}/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
           dmg_path="$(find "${bundle_root}/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
           test -n "${app_path}"
@@ -1895,8 +1911,10 @@ jobs:
       - name: Verify macOS signing and notarization
         if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
         shell: bash
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
         run: |
-          app_path="$(find "${PRIVATE_SOURCE_PATH}/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          app_path="$(find "${PRIVATE_SOURCE_PATH}/src-tauri/target/${MATRIX_TARGET}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)"
           test -n "${app_path}"
           test -d "${app_path}/Contents/_CodeSignature"
           codesign --verify --deep --strict --verbose=2 "${app_path}"
@@ -1908,6 +1926,8 @@ jobs:
     # 才会发布，verify 失败时 Draft 留着，下次运行 prepare 会清掉。
     needs: [prepare, release-bootstrap]
     if: needs.prepare.outputs.android_enabled == 'true'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Quiet cargo output in public logs
@@ -1919,7 +1939,7 @@ jobs:
         run: echo "CARGO_TERM_QUIET=true" >> "${GITHUB_ENV}"
 
       - name: Checkout private Tauri source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
@@ -1929,7 +1949,7 @@ jobs:
           fetch-depth: 1
 
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: release-wrapper
           persist-credentials: false
@@ -1949,18 +1969,18 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
           # The legacy "tools" package in the action's defaults is no longer
           # available. SDK platforms, build tools and NDK are installed below.
           packages: platform-tools
 
-      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0
         with:
           targets: >-
             aarch64-linux-android,
@@ -2097,6 +2117,8 @@ jobs:
     needs: [prepare, release-bootstrap]
     if: needs.prepare.outputs.ios_enabled == 'true'
     # macos-15 still ships Xcode 16.x; Xcode 26 breaks Tauri iOS via SwiftUICore.
+    permissions:
+      contents: write
     runs-on: macos-15
     continue-on-error: true
     steps:
@@ -2109,7 +2131,7 @@ jobs:
         run: echo "CARGO_TERM_QUIET=true" >> "${GITHUB_ENV}"
 
       - name: Checkout private Tauri source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_ref }}
@@ -2119,7 +2141,7 @@ jobs:
           fetch-depth: 1
 
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: release-wrapper
           persist-credentials: false
@@ -2170,7 +2192,7 @@ jobs:
           xcodebuild -version
           xcrun --show-sdk-path --sdk iphoneos
 
-      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
 
@@ -2243,10 +2265,12 @@ jobs:
       - name: Collect iOS IPA
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           mkdir -p dist/ios
           while IFS= read -r file; do
-            cp "$file" "dist/ios/FanqieNovelDownloader-${{ needs.prepare.outputs.version }}-$(basename "$file")"
+            cp "$file" "dist/ios/FanqieNovelDownloader-${RELEASE_VERSION}-$(basename "$file")"
           done < <(find src-tauri/gen/apple -type f -name '*.ipa' | sort)
           test -n "$(find dist/ios -type f -name '*.ipa' -print -quit)"
           shasum -a 256 dist/ios/*.ipa > dist/ios/SHA256SUMS-ios.txt
@@ -2281,10 +2305,14 @@ jobs:
       (needs.desktop-fallback.result == 'success' || needs.desktop-fallback.result == 'skipped') &&
       (needs.android.result == 'success' || needs.android.result == 'skipped') &&
       (needs.ios.result == 'success' || needs.ios.result == 'skipped' || needs.ios.result == 'failure')
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Finalize and publish draft release
         shell: bash
@@ -2316,19 +2344,29 @@ jobs:
           python scripts/finalize-release.py "${arguments[@]}"
 
       - name: Release summary
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag_name }}
+          SOURCE_COMMIT_SHORT: ${{ needs.prepare.outputs.source_commit }}
+          SELECTED_PLATFORMS: ${{ needs.prepare.outputs.selected_platforms }}
+          IS_PRERELEASE: ${{ inputs.prerelease }}
+          HAS_UPDATER_METADATA: ${{ needs.prepare.outputs.desktop_count != '0' }}
+          DESKTOP_FALLBACK_COUNT: ${{ needs.prepare.outputs.desktop_fallback_count }}
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+          DESKTOP_FALLBACK_RESULT: ${{ needs.desktop-fallback.result }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## Tauri Release
 
-          - Version: \`${{ needs.prepare.outputs.version }}\`
-          - Tag: \`${{ needs.prepare.outputs.tag_name }}\`
-          - Private source: \`${{ env.PRIVATE_SOURCE_REPOSITORY }}@${{ needs.prepare.outputs.source_commit }}\`
-          - Platforms: ${{ needs.prepare.outputs.selected_platforms }}
-          - Prerelease: \`${{ inputs.prerelease }}\`
-          - Updater metadata: \`${{ needs.prepare.outputs.desktop_count != '0' }}\`
-          - Desktop fallback jobs: \`${{ needs.prepare.outputs.desktop_fallback_count }}\`
-          - Desktop native result: \`${{ needs.desktop.result }}\`
-          - Desktop fallback result: \`${{ needs.desktop-fallback.result }}\`
+          - Version: \`${RELEASE_VERSION}\`
+          - Tag: \`${RELEASE_TAG}\`
+          - Private source: \`${PRIVATE_SOURCE_REPOSITORY}@${SOURCE_COMMIT_SHORT}\`
+          - Platforms: ${SELECTED_PLATFORMS}
+          - Prerelease: \`${IS_PRERELEASE}\`
+          - Updater metadata: \`${HAS_UPDATER_METADATA}\`
+          - Desktop fallback jobs: \`${DESKTOP_FALLBACK_COUNT}\`
+          - Desktop native result: \`${DESKTOP_RESULT}\`
+          - Desktop fallback result: \`${DESKTOP_FALLBACK_RESULT}\`
           EOF
 
   # 无签名发布是在原有签名 finalizer 之外追加的独立收尾器。它拥有独立
@@ -2345,10 +2383,14 @@ jobs:
       (needs.desktop-fallback.result == 'success' || needs.desktop-fallback.result == 'skipped') &&
       (needs.android.result == 'success' || needs.android.result == 'skipped') &&
       (needs.ios.result == 'success' || needs.ios.result == 'skipped' || needs.ios.result == 'failure')
+    permissions:
+      contents: write
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Ensure stable updater channel
         shell: bash
@@ -2507,13 +2549,15 @@ jobs:
   macos-unsigned-bootstrap:
     needs: [prepare, verify]
     if: inputs.macos_unsigned_channel == true
+    permissions:
+      contents: write
     runs-on: ubuntu-22.04
     outputs:
       stable_tag: ${{ steps.release.outputs.stable_tag }}
       release_id: ${{ steps.release-id.outputs.release_id }}
     steps:
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -2610,6 +2654,8 @@ jobs:
   macos-unsigned-build:
     needs: [prepare, verify, macos-unsigned-bootstrap]
     if: inputs.macos_unsigned_channel == true
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.macos_unsigned_matrix) }}
@@ -2628,7 +2674,7 @@ jobs:
           } >> "${GITHUB_ENV}"
 
       - name: Checkout private Tauri source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ env.PRIVATE_SOURCE_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.source_commit_full }}
@@ -2638,7 +2684,7 @@ jobs:
           fetch-depth: 1
 
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: release-wrapper
           persist-credentials: false
@@ -2654,7 +2700,7 @@ jobs:
           iconutil -c iconset "${icon}" -o "${iconset}"
           test -f "${iconset}/icon_512x512@2x.png"
 
-      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0
         with:
           targets: ${{ matrix.target }}
 
@@ -2684,7 +2730,7 @@ jobs:
           )
 
       - name: Build unsigned macOS bundles
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -2786,7 +2832,7 @@ jobs:
           shasum -a 256 "${dmg_asset}" "${zip_asset}"
 
       - name: Upload unsigned macOS bundles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: unsigned-macos-${{ matrix.arch }}
           path: ${{ runner.temp }}/unsigned-macos-${{ matrix.arch }}/*
@@ -2796,17 +2842,19 @@ jobs:
   macos-unsigned-publish:
     needs: [prepare, verify, macos-unsigned-bootstrap, macos-unsigned-build]
     if: inputs.macos_unsigned_channel == true
+    permissions:
+      contents: write
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout release wrapper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: release-wrapper
           persist-credentials: false
           sparse-checkout: scripts
 
       - name: Download unsigned macOS bundles
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: unsigned-macos-*
           path: dist
@@ -2914,11 +2962,15 @@ jobs:
           test "${stable_source}" = "${STABLE_TAG}"
 
       - name: Write publication summary
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag_name }}
+          SOURCE_COMMIT_FULL: ${{ needs.prepare.outputs.source_commit_full }}
+          STABLE_TAG_NAME: ${{ needs.macos-unsigned-bootstrap.outputs.stable_tag }}
         run: |
           cat >> "${GITHUB_STEP_SUMMARY}" <<EOF
           ## Unsigned macOS prerelease published
 
-          - Release: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.tag_name }}
-          - Source commit: \`${{ needs.prepare.outputs.source_commit_full }}\`
-          - Stable latest remains: \`${{ needs.macos-unsigned-bootstrap.outputs.stable_tag }}\`
+          - Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}
+          - Source commit: \`${SOURCE_COMMIT_FULL}\`
+          - Stable latest remains: \`${STABLE_TAG_NAME}\`
           EOF
