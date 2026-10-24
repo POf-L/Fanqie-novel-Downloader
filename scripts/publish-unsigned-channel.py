@@ -31,6 +31,16 @@ STRICT_PACKAGE_KEYS = {
 }
 
 
+RELEASE_LOOKUP_ATTEMPTS = 4
+RELEASE_NOT_FOUND_RE = re.compile(r"HTTP 404|\bNot Found\b", re.IGNORECASE)
+TRANSIENT_GH_ERROR_RE = re.compile(
+    r"\b(429|5\d\d)\b|rate limit|secondary rate|abuse detection|"
+    r"try again later|temporarily unavailable|timed out|timeout|"
+    r"connection reset|connection refused|EOF",
+    re.IGNORECASE,
+)
+
+
 def fail(message: str) -> None:
     raise SystemExit(message)
 
@@ -109,21 +119,49 @@ def select_source(releases: list[dict], requested: str = "") -> dict:
     return candidates[0]
 
 
-def release_by_tag(repo: str, tag: str) -> dict | None:
-    result = subprocess.run(
-        ["gh", "api", f"repos/{repo}/releases/tags/{quote(tag, safe='')}"],
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    if result.returncode != 0:
-        return None
-    try:
-        value = json.loads(result.stdout)
-    except json.JSONDecodeError as error:
-        fail(f"GitHub release API returned invalid JSON: {error}")
-    return value if isinstance(value, dict) else None
+def release_by_tag(
+    repo: str,
+    tag: str,
+    *,
+    attempts: int = RELEASE_LOOKUP_ATTEMPTS,
+    sleep=time.sleep,
+) -> dict | None:
+    """Return the release for ``tag``, or None only when GitHub answers 404.
+
+    A rate limit, 5xx or network hiccup used to read as "no such release", so
+    the caller tried to create an alias that already existed and the publish
+    step failed for no real reason. Transient failures are retried with
+    backoff; any other failure stops the run with the GitHub error.
+    """
+    last_error = ""
+    for attempt in range(1, attempts + 1):
+        result = subprocess.run(
+            ["gh", "api", f"repos/{repo}/releases/tags/{quote(tag, safe='')}"],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if result.returncode == 0:
+            try:
+                payload = json.loads(result.stdout)
+            except json.JSONDecodeError as error:
+                fail(f"GitHub release API returned invalid JSON: {error}")
+            return payload if isinstance(payload, dict) else None
+        stderr = (result.stderr or "").strip()
+        if RELEASE_NOT_FOUND_RE.search(stderr):
+            return None
+        last_error = stderr or f"gh exited with code {result.returncode}"
+        if attempt == attempts or not TRANSIENT_GH_ERROR_RE.search(stderr):
+            break
+        delay = 2**attempt
+        print(
+            f"GitHub release lookup for {tag!r} failed "
+            f"(attempt {attempt}/{attempts}); retrying in {delay}s: {last_error}",
+            flush=True,
+        )
+        sleep(delay)
+    fail(f"GitHub release lookup for {tag!r} failed: {last_error}")
 
 
 def validate_metadata(repo: str, source: dict, metadata: dict) -> None:
