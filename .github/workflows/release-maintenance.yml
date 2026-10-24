@@ -73,7 +73,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: 检出发布调度仓库
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: 校验维护参数
         shell: bash

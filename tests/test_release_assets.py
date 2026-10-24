@@ -19,6 +19,8 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 
+TAURI_ACTION_USES = "uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0"
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "release-assets.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "build-release.yml"
@@ -277,8 +279,8 @@ class WorkflowUsesReleaseIdTest(unittest.TestCase):
     def test_tauri_action_never_gets_a_tag_in_release_jobs(self):
         for name in ("desktop", "desktop-fallback"):
             job = self.job(name)
-            self.assertEqual(job.count("uses: tauri-apps/tauri-action@v1"), 1)
-            step = job.split("uses: tauri-apps/tauri-action@v1", 1)[1].split("\n      - name:", 1)[0]
+            self.assertEqual(job.count(TAURI_ACTION_USES), 1)
+            step = job.split(TAURI_ACTION_USES, 1)[1].split("\n      - name:", 1)[0]
             self.assertIn("needs.release-bootstrap.outputs.release_id || ''", step)
             self.assertIn("releaseId: ", step)
             for forbidden in ("tagName:", "releaseName:", "releaseDraft:", "prerelease:"):

@@ -8,6 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 
+TAURI_ACTION_USES = "uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0"
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "build-release.yml"
 MAINTENANCE_WORKFLOW = (
@@ -383,7 +385,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
     def test_release_jobs_use_the_pinned_rust_toolchain(self):
         self.assertNotIn("dtolnay/rust-toolchain@stable", self.workflow)
         self.assertGreaterEqual(
-            self.workflow.count("dtolnay/rust-toolchain@1.97.0"),
+            self.workflow.count("dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0"),
             5,
         )
 
@@ -391,7 +393,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         android_job = self.workflow.split("\n  android:\n", 1)[1].split(
             "\n  ios:\n", 1
         )[0]
-        setup = android_job.split("- uses: android-actions/setup-android@v3\n", 1)[1]
+        setup = android_job.split("- uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2\n", 1)[1]
         setup = setup.split("\n      - ", 1)[0]
         self.assertIn("        with:\n", setup)
         packages = re.findall(r"^          packages: (.+)$", setup, re.MULTILINE)
@@ -519,7 +521,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(private_checkouts, 7)
         checkouts = re.findall(
-            r"uses: actions/checkout@v4\n        with:\n(?:          .*\n)+",
+            r"uses: actions/checkout@[0-9a-f]{40} # v4[^\n]*\n        with:\n(?:          .*\n)+",
             self.workflow,
         )
         private = [block for block in checkouts if "PRIVATE_SOURCE_TOKEN" in block]
@@ -591,7 +593,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
         desktop = self.workflow.split("\n  desktop:\n", 1)[1].split(
             "\n  android:\n", 1
         )[0]
-        self.assertEqual(desktop.count("uses: tauri-apps/tauri-action@v1"), 2)
+        self.assertEqual(desktop.count(TAURI_ACTION_USES), 2)
         self.assertEqual(desktop.count("retryAttempts: 5"), 2)
         self.assertIn(
             "metadata[\"platforms\"] = expected",
@@ -754,7 +756,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
         ):
             self.assertEqual(self.ci_workflow.count(documentation_path), 2)
         self.assertIn("python -m unittest discover", self.ci_workflow)
-        self.assertIn("rhysd/actionlint:1.7.7", self.ci_workflow)
+        self.assertIn("rhysd/actionlint@sha256:", self.ci_workflow)
+        self.assertIn("# 1.7.7", self.ci_workflow)
 
     def test_release_maintenance_combines_all_recovery_operations(self):
         workflow = self.maintenance_workflow
@@ -806,6 +809,66 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 "release-maintenance.yml",
             },
         )
+
+
+class WorkflowHardeningTest(unittest.TestCase):
+    """供应链与令牌最小化：所有 workflow 都要满足的硬性约束。"""
+
+    WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+
+    def test_every_action_is_pinned_to_a_full_commit_sha(self):
+        for path in self.WORKFLOWS:
+            text = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"^\s*(?:-\s+)?uses:\s*(\S+)", text, re.MULTILINE):
+                reference = match.group(1)
+                with self.subTest(workflow=path.name, uses=reference):
+                    if reference.startswith("./"):
+                        continue
+                    if reference.startswith("docker://"):
+                        self.assertRegex(reference, r"@sha256:[0-9a-f]{64}$")
+                    else:
+                        self.assertRegex(reference, r"@[0-9a-f]{40}$")
+
+    def test_every_checkout_drops_its_credentials(self):
+        for path in self.WORKFLOWS:
+            text = path.read_text(encoding="utf-8")
+            blocks = re.findall(
+                r"uses: actions/checkout@\S+[^\n]*\n((?:        (?!- ).*\n|\s*\n)*)",
+                text,
+            )
+            for block in blocks:
+                with self.subTest(workflow=path.name):
+                    self.assertIn("persist-credentials: false", block)
+
+    def test_no_pull_request_target_trigger(self):
+        for path in self.WORKFLOWS:
+            self.assertNotIn("pull_request_target", path.read_text(encoding="utf-8"), path.name)
+
+    def test_release_token_is_read_only_by_default_and_verify_never_writes(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        header = workflow.split("\njobs:\n", 1)[0]
+        self.assertRegex(header, r"\npermissions:\n  contents: read\n")
+        verify = workflow.split("\n  verify:\n", 1)[1].split("\n  release-bootstrap:\n", 1)[0]
+        self.assertNotIn("contents: write", verify)
+
+    def test_run_blocks_do_not_interpolate_expressions(self):
+        for path in self.WORKFLOWS:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            index = 0
+            while index < len(lines):
+                match = re.match(r"^(\s+)run: \|", lines[index])
+                if not match:
+                    index += 1
+                    continue
+                indent = len(match.group(1))
+                index += 1
+                while index < len(lines) and (
+                    not lines[index].strip()
+                    or len(lines[index]) - len(lines[index].lstrip()) > indent
+                ):
+                    with self.subTest(workflow=path.name, line=index + 1):
+                        self.assertNotIn("${{", lines[index])
+                    index += 1
 
 
 if __name__ == "__main__":
