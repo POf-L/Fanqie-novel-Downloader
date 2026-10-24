@@ -189,7 +189,7 @@ class UploadTest(unittest.TestCase):
         self.assertEqual(len(posts), 2)
         for arguments, _input in posts:
             self.assertTrue(
-                any(f"/releases/42/assets?name=" in value for value in arguments)
+                any("/releases/42/assets?name=" in value for value in arguments)
             )
 
     def test_missing_release_id_fails_without_touching_github(self):

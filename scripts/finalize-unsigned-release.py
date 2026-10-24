@@ -1310,7 +1310,8 @@ def main() -> int:
             updater_available=updater_available,
             mode=args.mode,
         )
-        observed_latest = wait_for_latest_tag(repo, tag) if args.mode == "formal" else ""
+        if args.mode == "formal":
+            wait_for_latest_tag(repo, tag)
         if updater_available and args.mode == "formal":
             unsigned_publisher = Path(__file__).with_name(
                 "publish-unsigned-channel.py"
@@ -1417,7 +1418,8 @@ def main() -> int:
         updater_available=updater_available,
         mode=args.mode,
     )
-    observed_latest = wait_for_latest_tag(repo, tag) if args.mode == "formal" else ""
+    if args.mode == "formal":
+        wait_for_latest_tag(repo, tag)
     if updater_available and args.mode == "formal":
         unsigned_publisher = Path(__file__).with_name("publish-unsigned-channel.py")
         unsigned_dir = Path(os.environ.get("RUNNER_TEMP", str(work_dir.parent))) / (

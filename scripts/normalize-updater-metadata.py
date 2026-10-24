@@ -88,7 +88,6 @@ PACKAGE_SPECS = (
         "aarch64",
     ),
 )
-SPECS_BY_ASSET = {spec.asset_name: spec for spec in PACKAGE_SPECS}
 PLATFORM_KEYS = {spec.platform for spec in PACKAGE_SPECS}
 
 
