@@ -44,6 +44,11 @@ on:
 permissions:
   contents: write
 
+# 合并草稿会改写 Release，两次手动触发不能并发。
+concurrency:
+  group: maintenance-merge-drafts
+  cancel-in-progress: false
+
 jobs:
   merge-and-publish:
     runs-on: ubuntu-22.04

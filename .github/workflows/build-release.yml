@@ -51,9 +51,11 @@ on:
 permissions:
   contents: read
 
+# 不取消进行中的运行：finalize 正在上传资产 / 发布时被新一次 dispatch 取消，会留下
+# 半发布的 Release（latest.json 与资产不一致）。新的 dispatch 排队等待即可。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"

@@ -701,6 +701,15 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("upload-artifact", verify)
         self.assertNotIn("set -x", verify)
 
+    def test_release_runs_are_never_cancelled_mid_publish(self):
+        head = self.workflow.split("\njobs:\n", 1)[0]
+        self.assertIn("cancel-in-progress: false", head)
+        self.assertNotIn("cancel-in-progress: true", head)
+        merge = (ROOT / ".github" / "workflows" / "maintenance-merge-drafts.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("cancel-in-progress: false", merge)
+
     def test_verify_summary_reaches_both_finalize_steps(self):
         verify = self.workflow.split("\n  verify:\n", 1)[1].split(
             "\n  release-bootstrap:\n", 1
