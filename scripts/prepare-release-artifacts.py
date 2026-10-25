@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -417,6 +418,18 @@ def platform_status_lines(
     return lines
 
 
+VERIFY_SUMMARY_PATTERN = re.compile(r"verify \d+/\d+ 通过")
+
+
+def verify_summary_from_env() -> str:
+    """build-release.yml 的 verify job 输出（如 "verify 8/8 通过"），经 FANQIE_VERIFY_SUMMARY 传入。
+
+    只接受固定格式，其他内容一律忽略，避免任意文本进入发布说明。
+    """
+    value = os.environ.get("FANQIE_VERIFY_SUMMARY", "").strip()
+    return value if VERIFY_SUMMARY_PATTERN.fullmatch(value) else ""
+
+
 def generate_notes(
     release: dict,
     *,
@@ -430,7 +443,12 @@ def generate_notes(
     channel: str = "signed",
     manifest_name: str = MANIFEST_NAME,
     updater_available: bool = False,
+    verify_summary: str | None = None,
 ) -> str:
+    if verify_summary is None:
+        verify_summary = verify_summary_from_env()
+    elif not VERIFY_SUMMARY_PATTERN.fullmatch(verify_summary.strip()):
+        verify_summary = ""
     names = sorted(assets_by_name(release))
     installers = [
         name
@@ -556,6 +574,13 @@ def generate_notes(
             [
                 ">",
                 "> 🔄 已安装旧版的用户，可直接在软件内使用「一键更新」。",
+            ]
+        )
+    if verify_summary:
+        lines.extend(
+            [
+                ">",
+                f"> 🧪 **发布前校验**：私有源码提交 `{source_commit}` · {verify_summary}。",
             ]
         )
     if highlights:
@@ -759,6 +784,7 @@ def generate_notes(
              f"- 更新通道：\u0060{'unsigned' if channel == 'unsigned' else 'stable'}\u0060",
             f"- 源码引用：`{source_ref}`",
             f"- 源码提交：`{source_commit}`",
+            *([f"- 发布前校验：{verify_summary}"] if verify_summary else []),
             f"- 构建平台：{platforms}",
             f"- 本版本实际产出：{shipped_text}",
             f"- 可下载安装包数量：{len(installers)}（不含更新签名和校验文件）",

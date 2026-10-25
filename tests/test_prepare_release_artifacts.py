@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -45,7 +46,7 @@ class PrepareReleaseArtifactsTest(unittest.TestCase):
             ],
         }
 
-    def run_preparer(self, release, *, check=False, mutate_manifest=None):
+    def run_preparer(self, release, *, check=False, mutate_manifest=None, verify_summary=None):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         directory = Path(temporary.name)
@@ -70,8 +71,34 @@ class PrepareReleaseArtifactsTest(unittest.TestCase):
             command.append("--check")
         else:
             command.extend(["--notes", str(notes_path)])
-        result = subprocess.run(command, capture_output=True, text=True)
+        env = dict(os.environ)
+        env.pop("FANQIE_VERIFY_SUMMARY", None)
+        if verify_summary is not None:
+            env["FANQIE_VERIFY_SUMMARY"] = verify_summary
+        result = subprocess.run(command, capture_output=True, text=True, env=env)
         return result, notes_path, manifest_path
+
+    def test_verify_summary_and_source_commit_are_shown_near_the_top(self):
+        result, notes_path, _ = self.run_preparer(
+            self.fixture(), verify_summary="verify 8/8 通过"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        notes = notes_path.read_text(encoding="utf-8")
+        line = "> 🧪 **发布前校验**：私有源码提交 `cb131f422564` · verify 8/8 通过。"
+        self.assertIn(line, notes)
+        self.assertLess(notes.index(line), notes.index("## 平台状态与安装限制"))
+        self.assertIn("- 发布前校验：verify 8/8 通过", notes)
+
+    def test_verify_summary_is_omitted_when_missing_or_malformed(self):
+        for value in (None, "", "verify passed <script>", "verify 8/8 通过\n- 注入"):
+            with self.subTest(value=value):
+                result, notes_path, _ = self.run_preparer(
+                    self.fixture(), verify_summary=value
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                notes = notes_path.read_text(encoding="utf-8")
+                self.assertNotIn("发布前校验", notes)
+                self.assertNotIn("注入", notes)
 
     def test_generates_notes_and_manifest_from_authenticated_digests(self):
         result, notes_path, manifest_path = self.run_preparer(self.fixture())

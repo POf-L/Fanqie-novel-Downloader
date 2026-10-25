@@ -701,6 +701,19 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("upload-artifact", verify)
         self.assertNotIn("set -x", verify)
 
+    def test_verify_summary_reaches_both_finalize_steps(self):
+        verify = self.workflow.split("\n  verify:\n", 1)[1].split(
+            "\n  release-bootstrap:\n", 1
+        )[0]
+        self.assertIn("summary: ${{ steps.silent_verify.outputs.summary }}", verify)
+        self.assertIn("id: silent_verify", verify)
+        self.assertEqual(
+            self.workflow.count(
+                "FANQIE_VERIFY_SUMMARY: ${{ needs.verify.outputs.summary }}"
+            ),
+            2,
+        )
+
     def test_public_builds_quiet_cargo_and_rustc_warnings(self):
         def section(job, end):
             return self.workflow.split(f"\n  {job}:\n", 1)[1].split(f"\n  {end}:\n", 1)[0]
