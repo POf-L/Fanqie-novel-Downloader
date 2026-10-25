@@ -22,6 +22,7 @@ DRAFT_START = "<!-- fanqie:unsigned-draft:start -->"
 DRAFT_END = "<!-- fanqie:unsigned-draft:end -->"
 FINALIZER_START = "<!-- fanqie:unsigned-finalizer:start -->"
 FINALIZER_END = "<!-- fanqie:unsigned-finalizer:end -->"
+VERIFY_LINE_PREFIX = "> 🧪 **发布前校验**："
 LEGACY_DRAFT_STATUS = "> ⏳ **本版本正在构建中**。"
 DIGEST_RE = re.compile(r"sha256:([0-9a-f]{64})\Z")
 FORBIDDEN_EXACT = {"latest.json", "sha256sums-release.txt"}
@@ -954,8 +955,16 @@ def generate_finalizer_appendix(
         )
     )
     validate_assets(release, platforms, allow_updater=updater_available)
-    parts = [
-        FINALIZER_START,
+    # 无签名版的顶部说明在 release-bootstrap 时就写好了（那时 verify 还没跑完），
+    # 共享渲染器放在头部的「发布前校验」那一行只能由 finalizer 带上：放在附录最前面，
+    # 紧跟在顶部的签名说明之后。没有合法的 FANQIE_VERIFY_SUMMARY 时渲染器不会生成它。
+    verify_lines = [
+        line for line in rendered.splitlines() if line.startswith(VERIFY_LINE_PREFIX)
+    ][:1]
+    parts = [FINALIZER_START]
+    if verify_lines:
+        parts.extend([*verify_lines, ""])
+    parts += [
         "---",
         "",
         "## 下载与安装",

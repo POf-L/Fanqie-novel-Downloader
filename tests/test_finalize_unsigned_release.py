@@ -162,6 +162,35 @@ class FinalizeUnsignedReleaseTest(unittest.TestCase):
             mode="formal",
         )
 
+    def test_unsigned_finalizer_puts_verify_summary_first(self):
+        release = self.fixture()
+        release["prerelease"] = False
+        arguments = dict(
+            release=release,
+            repo="POf-L/Fanqie-novel-Downloader",
+            tag="unsigned-v2099.1.1-r1",
+            version="2099.1.1",
+            source_ref="main",
+            source_commit="0123456789ab",
+            platforms=(
+                "windows-x64, windows-arm64, linux-x64, linux-arm64, "
+                "macos-x64, macos-arm64, android, ios"
+            ),
+            mode="formal",
+            highlights=["修复一项"],
+        )
+        line = "> 🧪 **发布前校验**：私有源码提交 `0123456789ab` · verify 9/9 通过。"
+        with patch.dict("os.environ", {"FANQIE_VERIFY_SUMMARY": "verify 9/9 通过"}):
+            appendix = MODULE.generate_finalizer_appendix(**arguments)
+        self.assertTrue(appendix.startswith(f"{MODULE.FINALIZER_START}\n{line}\n\n---\n"))
+        self.assertEqual(appendix.count(line), 1)
+        self.assertLess(appendix.index(line), appendix.index("## 本次修复"))
+
+        with patch.dict("os.environ", {"FANQIE_VERIFY_SUMMARY": ""}):
+            without = MODULE.generate_finalizer_appendix(**arguments)
+        self.assertNotIn("发布前校验**", without)
+        self.assertTrue(without.startswith(f"{MODULE.FINALIZER_START}\n---\n"))
+
     def test_unsigned_finalizer_appends_device_guide_without_overwriting_draft(self):
         release = self.fixture()
         release["prerelease"] = False
