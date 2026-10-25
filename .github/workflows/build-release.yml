@@ -98,6 +98,7 @@ jobs:
       macos_signing: ${{ steps.secrets.outputs.macos_signing }}
       unsigned_mode: ${{ steps.secrets.outputs.unsigned_mode }}
       update_channel: ${{ steps.secrets.outputs.update_channel }}
+      third_party_licenses: ${{ steps.licenses.outputs.available }}
     steps:
       - name: Validate private source token
         env:
@@ -136,6 +137,58 @@ jobs:
             gh release delete "${tag}" --repo "${GH_REPO}" --yes --cleanup-tag || true
           done <<< "${drafts}"
           echo "draft release 清理完成"
+
+      # 第三方许可证清单只生成一次：既是门禁（用私有仓库 about.toml 的白名单跑 cargo-about，
+      # 出现白名单外或无法识别的许可证直接失败，只打印通过/失败，不打印 cargo-about 的输出），
+      # 也作为 artifact 交给各构建 job 打进安装包，并由 release-bootstrap 作为 Release 资产上传。
+      # 这个 artifact 只有生成的 HTML 一个文件，内容本来就要公开发布。
+      - uses: dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0
+
+      - name: Generate third-party license list (silent)
+        id: licenses
+        shell: bash
+        env:
+          CARGO_ABOUT_VERSION: "0.9.2"
+          CARGO_ABOUT_SHA256: "9099a59e820c38a68b9d65f300662a567d56562f9a10f6aa4c7e86c17c2566af"
+        run: |
+          set -uo pipefail
+          generator="${PRIVATE_SOURCE_PATH}/scripts/generate-third-party-licenses.sh"
+          if [[ ! -f "${generator}" ]]; then
+            echo "::warning::私有源码没有 scripts/generate-third-party-licenses.sh，跳过许可证检查和随包分发。"
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          out="${RUNNER_TEMP}/third-party-licenses"
+          mkdir -p "${out}"
+          work="$(mktemp -d "${RUNNER_TEMP}/cargo-about.XXXXXX")"
+          trap 'rm -rf "${work}"' EXIT
+          archive="cargo-about-${CARGO_ABOUT_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL --retry 3 -o "${work}/${archive}" \
+            "https://github.com/EmbarkStudios/cargo-about/releases/download/${CARGO_ABOUT_VERSION}/${archive}"
+          echo "${CARGO_ABOUT_SHA256}  ${work}/${archive}" | sha256sum --check --quiet || exit 1
+          tar -xzf "${work}/${archive}" -C "${work}" --strip-components=1
+          if PATH="${work}:${PATH}" bash "${generator}" "${out}/THIRD_PARTY_LICENSES.html" \
+            >"${work}/log" 2>&1 </dev/null; then
+            echo "通过  third-party-licenses"
+          else
+            echo "::error::第三方许可证检查未通过（出现白名单外或无法识别的许可证）。公开日志不包含输出，请在私有仓库本地运行 scripts/generate-third-party-licenses.sh 查看。"
+            exit 1
+          fi
+          if [[ ! -s "${out}/THIRD_PARTY_LICENSES.html" ]] \
+            || grep -q "fanqie-third-party-licenses-placeholder" "${out}/THIRD_PARTY_LICENSES.html"; then
+            echo "::error::生成的第三方许可证清单为空或仍是占位文件。"
+            exit 1
+          fi
+          echo "available=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload third-party license list
+        if: steps.licenses.outputs.available == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: third-party-licenses
+          path: ${{ runner.temp }}/third-party-licenses/THIRD_PARTY_LICENSES.html
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Select build platforms
         id: platforms
@@ -531,35 +584,6 @@ jobs:
         shell: bash
         run: bash release-wrapper/scripts/silent-verify.sh "${PRIVATE_SOURCE_PATH}"
 
-      # 第三方许可证门禁：用私有仓库的 about.toml 白名单跑 cargo-about，出现白名单外的许可证
-      # 或无法识别的许可证时失败。和 silent verify 一样只打印通过/失败，不打印、不上传输出。
-      - name: Check third-party licenses (silent)
-        shell: bash
-        env:
-          CARGO_ABOUT_VERSION: "0.9.2"
-          CARGO_ABOUT_SHA256: "9099a59e820c38a68b9d65f300662a567d56562f9a10f6aa4c7e86c17c2566af"
-        run: |
-          set -uo pipefail
-          generator="${PRIVATE_SOURCE_PATH}/scripts/generate-third-party-licenses.sh"
-          if [[ ! -f "${generator}" ]]; then
-            echo "::warning::私有源码没有 scripts/generate-third-party-licenses.sh，跳过许可证检查。"
-            exit 0
-          fi
-          work="$(mktemp -d "${RUNNER_TEMP}/third-party-licenses.XXXXXX")"
-          trap 'rm -rf "${work}"' EXIT
-          archive="cargo-about-${CARGO_ABOUT_VERSION}-x86_64-unknown-linux-musl.tar.gz"
-          curl -fsSL --retry 3 -o "${work}/${archive}" \
-            "https://github.com/EmbarkStudios/cargo-about/releases/download/${CARGO_ABOUT_VERSION}/${archive}"
-          echo "${CARGO_ABOUT_SHA256}  ${work}/${archive}" | sha256sum --check --quiet || exit 1
-          tar -xzf "${work}/${archive}" -C "${work}" --strip-components=1
-          if PATH="${work}:${PATH}" bash "${generator}" "${work}/THIRD_PARTY_LICENSES.html" \
-            >"${work}/log" 2>&1 </dev/null; then
-            echo "通过  third-party-licenses"
-          else
-            echo "::error::第三方许可证检查未通过（出现白名单外或无法识别的许可证）。公开日志不包含输出，请在私有仓库本地运行 scripts/generate-third-party-licenses.sh 查看。"
-            exit 1
-          fi
-
   release-bootstrap:
     needs: prepare
     if: inputs.macos_unsigned_channel != true
@@ -654,6 +678,7 @@ jobs:
                   and n not in {
                       "latest.json", "SHA256SUMS-release.txt",
                       "SHA256SUMS-android.txt", "SHA256SUMS-ios.txt", "SIGNING.txt",
+                      "THIRD_PARTY_LICENSES.html",
                   }
               ]
               if useful:
@@ -750,6 +775,7 @@ jobs:
                   and a["name"] not in {
                       "latest.json", "SHA256SUMS-release.txt",
                       "SHA256SUMS-android.txt", "SHA256SUMS-ios.txt", "SIGNING.txt",
+                      "THIRD_PARTY_LICENSES.html",
                   }
               ]
               win_x64 = pick(assets, "windows-x64", ".exe")
@@ -967,6 +993,29 @@ jobs:
             --require-draft \
             --github-output "${GITHUB_OUTPUT}"
 
+      - name: Download third-party license list
+        if: steps.release-id.outputs.release_id != '' && needs.prepare.outputs.third_party_licenses == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: third-party-licenses
+          path: ${{ runner.temp }}/third-party-licenses
+
+      - name: Upload third-party license list
+        if: steps.release-id.outputs.release_id != '' && needs.prepare.outputs.third_party_licenses == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ steps.release-id.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          python scripts/release-assets.py upload \
+            --repo "${GH_REPO}" \
+            --release-id "${RELEASE_ID}" \
+            --tag "${TAG_NAME}" \
+            "${RUNNER_TEMP}/third-party-licenses/THIRD_PARTY_LICENSES.html"
+
   desktop:
     # 不等 verify：构建只往 release-bootstrap 预建的 Draft 上传，Draft 不公开；
     # finalize / finalize-unsigned-release 都要求 needs.verify.result == 'success'
@@ -1013,6 +1062,24 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
+      - name: Download third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: third-party-licenses
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri/licenses
+
+      - name: Check bundled third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true'
+        shell: bash
+        run: |
+          f="${PRIVATE_SOURCE_PATH}/src-tauri/licenses/THIRD_PARTY_LICENSES.html"
+          if [[ ! -s "${f}" ]] || grep -q "fanqie-third-party-licenses-placeholder" "${f}"; then
+            echo "::error::要打进安装包的第三方许可证清单仍是占位文件。"
+            exit 1
+          fi
+          echo "第三方许可证清单已就位"
+
       - name: Checkout release wrapper
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -1048,6 +1115,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0
         with:
           targets: ${{ matrix.target }}
+
+      # 只缓存公开依赖的编译产物：cache-workspace-crates=false 让 rust-cache 保存前清掉工作区 crate，
+      # 下面 job 末尾的 "Remove private build outputs before cache save" 再按名字兜底删一遍私有 crate；
+      # 只有 main 上的运行写缓存（fork PR 能读 main 的缓存，所以缓存里绝不能有私有源码的产物）。
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
+          key: desktop-${{ matrix.target }}
+          cache-workspace-crates: "false"
+          cache-bin: "false"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Tauri Linux dependencies
         if: runner.os == 'Linux'
@@ -1434,6 +1512,22 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "${app_path}"
           spctl --assess --type execute --verbose=2 "${app_path}"
 
+      - name: Remove private build outputs before cache save
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${PRIVATE_SOURCE_PATH}/src-tauri/target"
+          [[ -d "${target}" ]] || exit 0
+          # 私有 crate 的编译产物、增量编译数据和打包目录都不进缓存。
+          find "${target}" -type d \( -name 'incremental' -o -name 'bundle' \) -prune -exec rm -rf {} + 2>/dev/null || true
+          find "${target}" \( -name '*fanqie*' -o -name '*account_auth*' -o -name '*account-auth*' \) -prune -exec rm -rf {} + 2>/dev/null || true
+          if find "${target}" \( -name '*fanqie*' -o -name '*account_auth*' -o -name '*account-auth*' \) -print -quit | grep -q .; then
+            # 删不干净就整个 target 都不缓存，宁可这次没有缓存也不让私有产物进缓存。
+            echo "::warning::target 里还有私有 crate 的产物，这次不缓存 target。"
+            rm -rf "${target}"
+          fi
+
   # When scarce native runners fail (resource pressure / OOM / unavailable),
   # cross-compile the same targets on more available x64/arm64 runners.
   desktop-fallback:
@@ -1578,6 +1672,24 @@ jobs:
           persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
+
+      - name: Download third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true' && steps.need.outputs.run == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: third-party-licenses
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri/licenses
+
+      - name: Check bundled third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true' && steps.need.outputs.run == 'true'
+        shell: bash
+        run: |
+          f="${PRIVATE_SOURCE_PATH}/src-tauri/licenses/THIRD_PARTY_LICENSES.html"
+          if [[ ! -s "${f}" ]] || grep -q "fanqie-third-party-licenses-placeholder" "${f}"; then
+            echo "::error::要打进安装包的第三方许可证清单仍是占位文件。"
+            exit 1
+          fi
+          echo "第三方许可证清单已就位"
 
       - name: Validate macOS app icon
         if: steps.need.outputs.run == 'true' && runner.os == 'macOS'
@@ -1996,6 +2108,24 @@ jobs:
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
 
+      - name: Download third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: third-party-licenses
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri/licenses
+
+      - name: Check bundled third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true'
+        shell: bash
+        run: |
+          f="${PRIVATE_SOURCE_PATH}/src-tauri/licenses/THIRD_PARTY_LICENSES.html"
+          if [[ ! -s "${f}" ]] || grep -q "fanqie-third-party-licenses-placeholder" "${f}"; then
+            echo "::error::要打进安装包的第三方许可证清单仍是占位文件。"
+            exit 1
+          fi
+          echo "第三方许可证清单已就位"
+
       - name: Checkout release wrapper
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -2035,6 +2165,17 @@ jobs:
             armv7-linux-androideabi,
             i686-linux-android,
             x86_64-linux-android
+
+      # 只缓存公开依赖的编译产物：cache-workspace-crates=false 让 rust-cache 保存前清掉工作区 crate，
+      # 下面 job 末尾的 "Remove private build outputs before cache save" 再按名字兜底删一遍私有 crate；
+      # 只有 main 上的运行写缓存（fork PR 能读 main 的缓存，所以缓存里绝不能有私有源码的产物）。
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
+          key: android
+          cache-workspace-crates: "false"
+          cache-bin: "false"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Android SDK, NDK and Tauri CLI
         run: |
@@ -2194,6 +2335,22 @@ jobs:
             --tag "${TAG_NAME}" \
             dist/android/*
 
+      - name: Remove private build outputs before cache save
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${PRIVATE_SOURCE_PATH}/src-tauri/target"
+          [[ -d "${target}" ]] || exit 0
+          # 私有 crate 的编译产物、增量编译数据和打包目录都不进缓存。
+          find "${target}" -type d \( -name 'incremental' -o -name 'bundle' \) -prune -exec rm -rf {} + 2>/dev/null || true
+          find "${target}" \( -name '*fanqie*' -o -name '*account_auth*' -o -name '*account-auth*' \) -prune -exec rm -rf {} + 2>/dev/null || true
+          if find "${target}" \( -name '*fanqie*' -o -name '*account_auth*' -o -name '*account-auth*' \) -print -quit | grep -q .; then
+            # 删不干净就整个 target 都不缓存，宁可这次没有缓存也不让私有产物进缓存。
+            echo "::warning::target 里还有私有 crate 的产物，这次不缓存 target。"
+            rm -rf "${target}"
+          fi
+
   ios:
     # 不等 verify：构建只往 release-bootstrap 预建的 Draft 上传，Draft 不公开；
     # finalize / finalize-unsigned-release 都要求 needs.verify.result == 'success'
@@ -2223,6 +2380,24 @@ jobs:
           persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
+
+      - name: Download third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: third-party-licenses
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri/licenses
+
+      - name: Check bundled third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true'
+        shell: bash
+        run: |
+          f="${PRIVATE_SOURCE_PATH}/src-tauri/licenses/THIRD_PARTY_LICENSES.html"
+          if [[ ! -s "${f}" ]] || grep -q "fanqie-third-party-licenses-placeholder" "${f}"; then
+            echo "::error::要打进安装包的第三方许可证清单仍是占位文件。"
+            exit 1
+          fi
+          echo "第三方许可证清单已就位"
 
       - name: Checkout release wrapper
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -2279,6 +2454,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@f08ac54821369508305fcb9e0121ec6e30ae9ada # 1.97.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      # 只缓存公开依赖的编译产物：cache-workspace-crates=false 让 rust-cache 保存前清掉工作区 crate，
+      # 下面 job 末尾的 "Remove private build outputs before cache save" 再按名字兜底删一遍私有 crate；
+      # 只有 main 上的运行写缓存（fork PR 能读 main 的缓存，所以缓存里绝不能有私有源码的产物）。
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri -> target
+          key: ios
+          cache-workspace-crates: "false"
+          cache-bin: "false"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install XcodeGen and Tauri CLI
         run: |
@@ -2375,6 +2561,22 @@ jobs:
             --release-id "${RELEASE_ID}" \
             --tag "${TAG_NAME}" \
             dist/ios/*
+
+      - name: Remove private build outputs before cache save
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${PRIVATE_SOURCE_PATH}/src-tauri/target"
+          [[ -d "${target}" ]] || exit 0
+          # 私有 crate 的编译产物、增量编译数据和打包目录都不进缓存。
+          find "${target}" -type d \( -name 'incremental' -o -name 'bundle' \) -prune -exec rm -rf {} + 2>/dev/null || true
+          find "${target}" \( -name '*fanqie*' -o -name '*account_auth*' -o -name '*account-auth*' \) -prune -exec rm -rf {} + 2>/dev/null || true
+          if find "${target}" \( -name '*fanqie*' -o -name '*account_auth*' -o -name '*account-auth*' \) -print -quit | grep -q .; then
+            # 删不干净就整个 target 都不缓存，宁可这次没有缓存也不让私有产物进缓存。
+            echo "::warning::target 里还有私有 crate 的产物，这次不缓存 target。"
+            rm -rf "${target}"
+          fi
 
   finalize:
     needs: [prepare, verify, release-bootstrap, desktop, desktop-fallback, android, ios]
@@ -2768,6 +2970,24 @@ jobs:
           persist-credentials: false
           path: ${{ env.PRIVATE_SOURCE_PATH }}
           fetch-depth: 1
+
+      - name: Download third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: third-party-licenses
+          path: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri/licenses
+
+      - name: Check bundled third-party license list
+        if: needs.prepare.outputs.third_party_licenses == 'true'
+        shell: bash
+        run: |
+          f="${PRIVATE_SOURCE_PATH}/src-tauri/licenses/THIRD_PARTY_LICENSES.html"
+          if [[ ! -s "${f}" ]] || grep -q "fanqie-third-party-licenses-placeholder" "${f}"; then
+            echo "::error::要打进安装包的第三方许可证清单仍是占位文件。"
+            exit 1
+          fi
+          echo "第三方许可证清单已就位"
 
       - name: Checkout release wrapper
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

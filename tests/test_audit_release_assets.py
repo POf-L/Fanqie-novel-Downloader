@@ -43,6 +43,7 @@ class ReleaseAssetAuditTest(unittest.TestCase):
             "latest.json",
             "SHA256SUMS-release.txt",
             "SIGNING.txt",
+            "THIRD_PARTY_LICENSES.html",
         )
         for name in names:
             with self.subTest(name=name):
@@ -55,6 +56,7 @@ class ReleaseAssetAuditTest(unittest.TestCase):
             "FanqieNovelDownloader-tauri-windows-x64.pdb",
             "FanqieNovelDownloader-tauri-windows-x64-debug.zip",
             "random-output.bin",
+            "licenses.html",
         ):
             with self.subTest(name=name), self.assertRaises(SystemExit):
                 AUDIT.validate_asset_name(name)

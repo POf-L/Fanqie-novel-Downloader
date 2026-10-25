@@ -20,6 +20,7 @@ CONTROL_ASSETS = {
     "SHA256SUMS-release.txt",
     "SHA256SUMS-unsigned.txt",
     "SIGNING.txt",
+    "THIRD_PARTY_LICENSES.html",
 }
 INSTALLER_SUFFIXES = (
     ".aab",

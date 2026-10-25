@@ -21,6 +21,7 @@ CONTROL_ASSETS = {
     "SHA256SUMS-android.txt",
     "SHA256SUMS-ios.txt",
     "SIGNING.txt",
+    "THIRD_PARTY_LICENSES.html",
     "SHA256SUMS-unsigned.txt",
 }
 INSTALLER_SUFFIXES = (

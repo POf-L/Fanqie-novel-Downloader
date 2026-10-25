@@ -701,13 +701,41 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("upload-artifact", verify)
         self.assertNotIn("set -x", verify)
 
-    def test_verify_runs_silent_third_party_license_gate(self):
-        verify = self.workflow.split("\n  verify:\n", 1)[1].split(
-            "\n  release-bootstrap:\n", 1
+    def test_prepare_runs_silent_third_party_license_gate(self):
+        prepare = self.workflow.split("\n  prepare:\n", 1)[1].split("\n  verify:\n", 1)[0]
+        self.assertIn("- name: Generate third-party license list (silent)", prepare)
+        self.assertRegex(prepare, r'CARGO_ABOUT_SHA256: "[0-9a-f]{64}"')
+        self.assertIn('>"${work}/log" 2>&1 </dev/null', prepare)
+        self.assertIn(
+            "third_party_licenses: ${{ steps.licenses.outputs.available }}", prepare
+        )
+        upload = prepare.split("- name: Upload third-party license list", 1)[1].split(
+            "\n\n", 1
         )[0]
-        self.assertIn("- name: Check third-party licenses (silent)", verify)
-        self.assertRegex(verify, r'CARGO_ABOUT_SHA256: "[0-9a-f]{64}"')
-        self.assertIn('>"${work}/log" 2>&1 </dev/null', verify)
+        # artifact 里只有生成的 HTML，不带私有源码。
+        self.assertIn(
+            "path: ${{ runner.temp }}/third-party-licenses/THIRD_PARTY_LICENSES.html",
+            upload,
+        )
+        self.assertNotIn("PRIVATE_SOURCE_PATH", upload)
+        self.assertIn("retention-days: 3", upload)
+
+    def test_installers_and_release_ship_third_party_license_list(self):
+        for job in ("desktop", "desktop-fallback", "android", "ios", "macos-unsigned-build"):
+            section = self.workflow.split(f"\n  {job}:\n", 1)[1]
+            section = re.split(r"\n  [a-z][a-z-]*:\n", section, maxsplit=1)[0]
+            with self.subTest(job=job):
+                self.assertIn("- name: Download third-party license list", section)
+                self.assertIn(
+                    "path: ${{ env.PRIVATE_SOURCE_PATH }}/src-tauri/licenses", section
+                )
+                self.assertIn("fanqie-third-party-licenses-placeholder", section)
+        bootstrap = self.workflow.split("\n  release-bootstrap:\n", 1)[1].split(
+            "\n  desktop:\n", 1
+        )[0]
+        self.assertIn(
+            '"${RUNNER_TEMP}/third-party-licenses/THIRD_PARTY_LICENSES.html"', bootstrap
+        )
 
     def test_published_release_requires_updater_signing_key(self):
         prepare = self.workflow.split("\n  prepare:\n", 1)[1].split("\n  verify:\n", 1)[0]
@@ -777,15 +805,42 @@ class ReleaseWorkflowTest(unittest.TestCase):
         # 只追加，不在任何地方直接覆盖 RUSTFLAGS。
         self.assertNotRegex(self.workflow, r"\n\s+RUSTFLAGS:")
 
-    def test_private_source_builds_do_not_use_public_actions_cache(self):
-        self.assertNotIn("Swatinem/rust-cache", self.workflow)
+    def test_rust_cache_never_stores_private_build_outputs(self):
+        # fork PR 的 workflow 能读 main 的缓存，所以缓存只放公开依赖的编译产物。
         self.assertNotIn("actions/cache", self.workflow)
+        self.assertEqual(
+            self.workflow.count(
+                "uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3"
+            ),
+            3,
+        )
+        self.assertEqual(self.workflow.count('cache-workspace-crates: "false"'), 3)
+        self.assertEqual(
+            self.workflow.count("save-if: ${{ github.ref == 'refs/heads/main' }}"), 3
+        )
+        self.assertNotIn("cache-on-failure", self.workflow)
+        for job, nxt in (
+            ("desktop", "desktop-fallback"),
+            ("android", "ios"),
+            ("ios", "finalize"),
+        ):
+            section = self.workflow.split(f"\n  {job}:\n", 1)[1].split(f"\n  {nxt}:\n", 1)[0]
+            with self.subTest(job=job):
+                self.assertIn("Swatinem/rust-cache@", section)
+                last_step = section.rsplit("\n      - ", 1)[1]
+                self.assertTrue(
+                    last_step.startswith("name: Remove private build outputs before cache save")
+                )
+                self.assertIn("if: always()", last_step)
+                self.assertIn("-name '*fanqie*'", last_step)
+                self.assertIn('rm -rf "${target}"', last_step)
 
     def test_main_release_workflow_does_not_upload_workflow_artifacts(self):
-        # 唯一允许的 workflow artifact 是 macOS 未签名通道 build → publish 的交接，
-        # 它只包含 runner.temp 里的成品包（见 keeps_private_source_out_of_artifacts）。
-        self.assertEqual(self.workflow.count("actions/upload-artifact"), 1)
-        self.assertEqual(self.workflow.count("retention-days:"), 1)
+        # 只允许两个 workflow artifact：macOS 未签名通道 build → publish 的交接
+        # （只含 runner.temp 里的成品包，见 keeps_private_source_out_of_artifacts），
+        # 以及 prepare 生成的第三方许可证清单（见 prepare_runs_silent_third_party_license_gate）。
+        self.assertEqual(self.workflow.count("actions/upload-artifact"), 2)
+        self.assertEqual(self.workflow.count("retention-days:"), 2)
         self.assertEqual(self.workflow.count("uploadWorkflowArtifacts: false"), 3)
 
     def test_finalization_normalizes_and_rechecks_updater_metadata(self):
