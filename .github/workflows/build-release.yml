@@ -63,6 +63,12 @@ env:
   ANDROID_API_LEVEL: "36"
   ANDROID_BUILD_TOOLS: "36.0.0"
   ANDROID_NDK_VERSION: "27.2.12479018"
+  # 正式 Android 发布证书的 SHA-256 指纹（公开信息，不是密钥）。用正式 keystore
+  # 签出的每个 APK 都必须是这张证书：Secrets 被换成别的 keystore 时在这里失败，
+  # 而不是发出一版用户无法覆盖升级的安装包。取值核对自已发布的
+  # 2026.9.14-944、2026.10.23-2316、2026.10.24-1638 APK（v2/v3 签名块一致）。
+  # 有意更换签名证书时，先在这里更新指纹并在发布说明中告知需要卸载重装。
+  ANDROID_RELEASE_SIGNER_SHA256: "995daeb9b65c87b259f574ec51ea2212efd1eae7fe69558372edc72ba26121ad"
 
 jobs:
   prepare:
@@ -2082,13 +2088,37 @@ jobs:
           echo "=== Collected Android artifacts ==="
           find dist/android -type f -printf '%f  %s bytes\n' | sort
           APKSIGNER="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner"
+          expected_signer="${ANDROID_RELEASE_SIGNER_SHA256,,}"
+          if [[ ! "${expected_signer}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::ANDROID_RELEASE_SIGNER_SHA256 不是 64 位十六进制指纹" >&2
+            exit 1
+          fi
           while IFS= read -r apk; do
             echo "Verifying signature: ${apk}"
-            "${APKSIGNER}" verify --verbose --print-certs "$apk"
+            certs="$("${APKSIGNER}" verify --verbose --print-certs "$apk")"
+            printf '%s\n' "${certs}"
+            # 正式 keystore 签出的包必须且只能带固定的发布证书；CI 临时 keystore
+            # 每次运行证书都不同，只给警告（发布正式版时上一步已经拒绝这种模式）。
+            mapfile -t signers < <(
+              printf '%s\n' "${certs}" \
+                | sed -n -E 's/^Signer #[0-9]+ certificate SHA-256 digest: ([0-9a-fA-F]+)$/\1/p' \
+                | tr 'A-F' 'a-f' | sort -u
+            )
+            if [[ "${FANQIE_ANDROID_SIGNING_MODE}" == "release-secret" ]]; then
+              if [[ "${#signers[@]}" -ne 1 || "${signers[0]}" != "${expected_signer}" ]]; then
+                echo "::error::${apk##*/} 的签名证书与固定的发布证书不一致（期望 ${expected_signer}，实际 ${signers[*]:-无}）。请检查 ANDROID_KEYSTORE_* Secrets。" >&2
+                exit 1
+              fi
+            else
+              echo "::warning::${apk##*/} 使用 CI 临时证书签名（${signers[*]:-无}），无法覆盖安装正式版。"
+            fi
           done < <(find dist/android -type f -name '*.apk' | sort)
           {
             echo "signing_mode=${FANQIE_ANDROID_SIGNING_MODE}"
             echo "verified_with=apksigner"
+            if [[ "${FANQIE_ANDROID_SIGNING_MODE}" == "release-secret" ]]; then
+              echo "signer_sha256=${expected_signer}"
+            fi
             echo "installable=true"
           } > dist/android/SIGNING.txt
           sha256sum dist/android/* > dist/android/SHA256SUMS-android.txt

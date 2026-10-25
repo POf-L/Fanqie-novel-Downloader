@@ -389,6 +389,72 @@ class ReleaseWorkflowTest(unittest.TestCase):
             5,
         )
 
+    def run_android_signer_check(self, mode, digests):
+        """运行 Android 收集步骤里的签名校验片段，apksigner 用假的替代。"""
+        import subprocess
+        import tempfile
+
+        android_job = self.workflow.split("\n  android:\n", 1)[1].split(
+            "\n  ios:\n", 1
+        )[0]
+        step = android_job.split("- name: Collect and verify signed Android artifacts\n", 1)[1]
+        step = step.split("\n      - name: ", 1)[0]
+        body = step.split('          APKSIGNER="', 1)[1]
+        body = '          APKSIGNER="' + body.split("} > dist/android/SIGNING.txt", 1)[0]
+        body += "} > dist/android/SIGNING.txt\n"
+        expected = re.search(
+            r'(?m)^  ANDROID_RELEASE_SIGNER_SHA256: "([0-9a-f]{64})"$', self.workflow
+        ).group(1)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tools = root / "sdk" / "build-tools" / "36.0.0"
+            tools.mkdir(parents=True)
+            fake = tools / "apksigner"
+            lines = "".join(
+                f"echo 'Signer #{i} certificate SHA-256 digest: {d}'\n"
+                for i, d in enumerate(digests, 1)
+            )
+            fake.write_text("#!/usr/bin/env bash\necho Verifies\n" + lines, encoding="utf-8")
+            fake.chmod(0o755)
+            (root / "dist" / "android").mkdir(parents=True)
+            (root / "dist" / "android" / "app-arm64-v8a.apk").write_bytes(b"apk")
+            env = dict(
+                os.environ,
+                ANDROID_HOME=str(root / "sdk"),
+                ANDROID_BUILD_TOOLS="36.0.0",
+                ANDROID_RELEASE_SIGNER_SHA256=expected,
+                FANQIE_ANDROID_SIGNING_MODE=mode,
+            )
+            result = subprocess.run(
+                ["bash", "-c", "set -euo pipefail\n" + textwrap.dedent(body)],
+                cwd=root, env=env, capture_output=True, text=True,
+            )
+            signing = root / "dist" / "android" / "SIGNING.txt"
+            text = signing.read_text(encoding="utf-8") if signing.exists() else ""
+            return result, expected, text
+
+    def test_android_release_apks_must_carry_the_pinned_signer(self):
+        result, expected, signing = self.run_android_signer_check("release-secret", [])
+        self.assertNotEqual(result.returncode, 0)
+        ok, expected, signing = self.run_android_signer_check(
+            "release-secret", [expected.upper()]
+        )
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertIn(f"signer_sha256={expected}", signing)
+        wrong, _, _ = self.run_android_signer_check("release-secret", ["ab" * 32])
+        self.assertNotEqual(wrong.returncode, 0)
+        self.assertIn("ANDROID_KEYSTORE_", wrong.stderr)
+        extra, _, _ = self.run_android_signer_check(
+            "release-secret", [expected, "cd" * 32]
+        )
+        self.assertNotEqual(extra.returncode, 0)
+
+    def test_ci_internal_android_signing_only_warns(self):
+        result, _, signing = self.run_android_signer_check("ci-internal", ["ab" * 32])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("::warning::", result.stdout)
+        self.assertNotIn("signer_sha256=", signing)
+
     def test_android_setup_does_not_request_the_retired_tools_package(self):
         android_job = self.workflow.split("\n  android:\n", 1)[1].split(
             "\n  ios:\n", 1
