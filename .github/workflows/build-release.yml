@@ -426,6 +426,13 @@ jobs:
             unsigned_mode=true
           fi
           create_updater_artifacts="${updater}"
+          # 正式版也必须带 updater 签名：缺了就不会生成 latest.json / .sig，已安装的客户端
+          # 会静默收不到这次更新。tauri.conf.json 里 createUpdaterArtifacts 默认 false
+          # （本地构建没有私钥），发布构建由 tauri.release.conf.json 按这里的结果覆盖。
+          if [[ "${PUBLISH_RELEASE}" == "true" && "${updater}" != "true" ]]; then
+            echo "::error::Publishing a release requires TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD so the in-app updater keeps working."
+            exit 1
+          fi
           update_channel=stable
           if [[ "${unsigned_mode}" == "true" ]]; then
             update_channel=unsigned

@@ -701,6 +701,13 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("upload-artifact", verify)
         self.assertNotIn("set -x", verify)
 
+    def test_published_release_requires_updater_signing_key(self):
+        prepare = self.workflow.split("\n  prepare:\n", 1)[1].split("\n  verify:\n", 1)[0]
+        self.assertIn(
+            'if [[ "${PUBLISH_RELEASE}" == "true" && "${updater}" != "true" ]]; then',
+            prepare,
+        )
+
     def test_published_android_release_requires_official_keystore_up_front(self):
         self.assertIn(
             "FANQIE_ANDROID_REQUIRE_RELEASE_SIGNING: ${{ inputs.publish_release == true && 'true' || 'false' }}",
