@@ -701,6 +701,14 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("upload-artifact", verify)
         self.assertNotIn("set -x", verify)
 
+    def test_android_apks_get_16k_alignment_check_before_upload(self):
+        check = self.workflow.index("- name: Check Android 16 KiB page alignment")
+        collect = self.workflow.index("- name: Collect and verify signed Android artifacts")
+        upload = self.workflow.index("- name: Upload Android release assets")
+        self.assertLess(collect, check)
+        self.assertLess(check, upload)
+        self.assertIn("scripts/check-android-16k-alignment.py", self.workflow)
+
     def test_release_runs_are_never_cancelled_mid_publish(self):
         head = self.workflow.split("\njobs:\n", 1)[0]
         self.assertIn("cancel-in-progress: false", head)

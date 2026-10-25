@@ -2129,6 +2129,16 @@ jobs:
           } > dist/android/SIGNING.txt
           sha256sum dist/android/* > dist/android/SHA256SUMS-android.txt
 
+      # Android 15+ 的 16 KiB 页设备要求 64 位 .so 的 LOAD 段与 APK 内存放都按 16 KiB 对齐。
+      # 先以 warning 观察一两个版本，确认全部通过后再加 --strict 改为阻断发布。
+      - name: Check Android 16 KiB page alignment
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t apks < <(find dist/android -type f -name '*.apk' | sort)
+          python "${GITHUB_WORKSPACE}/release-wrapper/scripts/check-android-16k-alignment.py" "${apks[@]}"
+
       - name: Upload Android release assets
         if: inputs.publish_release == true || inputs.publish_unsigned_prerelease == true || inputs.publish_unsigned_release == true
         working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
