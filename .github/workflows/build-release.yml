@@ -531,7 +531,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     outputs:
-      # 形如 "verify 8/8 通过"；finalize 把它和私有源码短提交号写进发布说明。
+      # 形如 "verify 9/9 通过"；finalize 把它和私有源码短提交号写进发布说明。
       summary: ${{ steps.silent_verify.outputs.summary }}
     steps:
       - name: Checkout release wrapper

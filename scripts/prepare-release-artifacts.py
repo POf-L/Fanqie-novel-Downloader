@@ -423,7 +423,7 @@ VERIFY_SUMMARY_PATTERN = re.compile(r"verify \d+/\d+ 通过")
 
 
 def verify_summary_from_env() -> str:
-    """build-release.yml 的 verify job 输出（如 "verify 8/8 通过"），经 FANQIE_VERIFY_SUMMARY 传入。
+    """build-release.yml 的 verify job 输出（如 "verify 9/9 通过"），经 FANQIE_VERIFY_SUMMARY 传入。
 
     只接受固定格式，其他内容一律忽略，避免任意文本进入发布说明。
     """

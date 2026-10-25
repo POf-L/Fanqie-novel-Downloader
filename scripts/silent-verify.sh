@@ -10,6 +10,9 @@
 # cargo clippy / test 都带 --locked：Cargo.lock 与 Cargo.toml 不一致时报错，而不是
 # 在 CI 里悄悄重新解析依赖（cargo fmt 不解析依赖，不需要也不接受 --locked）。
 #
+# clippy-default 只开默认特性（desktop-app）：--all-features 会把 cli 一起打开，
+# 只被 CLI 用到的代码会掩盖桌面版里的死代码，这一遍专门把它们找出来。
+#
 # 设置了 GITHUB_OUTPUT 时写出 passed / total / summary，供发布说明引用。
 #
 # 用法：silent-verify.sh <私有源码目录>
@@ -29,6 +32,7 @@ export NO_COLOR=1
 checks=(
   "fmt|cargo fmt --manifest-path src-tauri/Cargo.toml -- --check"
   "clippy-desktop|cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"
+  "clippy-default|cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings"
   "clippy-cli|cargo clippy --locked --manifest-path src-tauri/Cargo.toml --bin fanqie --no-default-features --features cli -- -D warnings"
   "test-desktop|cargo test --locked --manifest-path src-tauri/Cargo.toml --all-features"
   "test-cli|cargo test --locked --manifest-path src-tauri/Cargo.toml --bin fanqie --no-default-features --features cli"

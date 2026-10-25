@@ -15,6 +15,7 @@ EXPECTED_CHECKS = [
     "checklist-sync",
     "fmt",
     "clippy-desktop",
+    "clippy-default",
     "clippy-cli",
     "test-desktop",
     "test-cli",
@@ -102,7 +103,7 @@ class SilentVerifyTest(unittest.TestCase):
         self.assertEqual([line.split()[1] for line in lines], EXPECTED_CHECKS)
         for line in lines:
             self.assertRegex(line, r"退出码 0\s+用时 \d+s$")
-        self.assertIn("verify 全部通过（8 项）", result.stdout)
+        self.assertIn("verify 全部通过（9 项）", result.stdout)
         self.assertEqual(leftovers, [], "本地日志应在结束时删掉")
 
     def test_failure_names_the_check_and_points_to_local_repro(self):
@@ -122,7 +123,7 @@ class SilentVerifyTest(unittest.TestCase):
     def test_cargo_checks_use_locked(self):
         block = checks_block()
         cargo_lines = [line for line in block.splitlines() if "|cargo " in line]
-        self.assertEqual(len(cargo_lines), 5)
+        self.assertEqual(len(cargo_lines), 6)
         for line in cargo_lines:
             if "cargo fmt" in line:
                 continue
@@ -146,11 +147,11 @@ class SilentVerifyTest(unittest.TestCase):
     def test_writes_summary_for_release_notes(self):
         result, _, outputs = self.run_script(github_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("passed=8\n", outputs)
-        self.assertIn("total=8\n", outputs)
-        self.assertIn("summary=verify 8/8 通过\n", outputs)
+        self.assertIn("passed=9\n", outputs)
+        self.assertIn("total=9\n", outputs)
+        self.assertIn("summary=verify 9/9 通过\n", outputs)
         result, _, outputs = self.run_script(failing="cli", github_output=True)
-        self.assertIn("passed=6\n", outputs)
+        self.assertIn("passed=7\n", outputs)
 
 
 if __name__ == "__main__":
