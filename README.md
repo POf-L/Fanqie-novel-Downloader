@@ -25,7 +25,8 @@
 [下载最新版](https://github.com/POf-L/Fanqie-novel-Downloader/releases/latest) ·
 [安装说明](#-下载安装) ·
 [常见问题](#-常见问题) ·
-[反馈问题](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose)
+[反馈问题](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose) ·
+[参与贡献](CONTRIBUTING.md)
 
 </div>
 
@@ -306,7 +307,9 @@ xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
 - 🙋 **使用求助**：安装、设置或使用上的问题
 
 > [!IMPORTANT]
-> 提交 Issue 前需要先给本项目点一个 **Star** ⭐。提交后机器人会自动检查：还没 Star 的话会先提醒你，10 分钟内补上 Star 就没事；超过 10 分钟仍未 Star，Issue 会被自动关闭。被关闭后补了 Star，重新打开或重新提交即可。
+> **错误反馈和使用求助不需要 Star**，但请先更新到最新版、搜一下有没有相同的 Issue，并填写完整版本号。
+>
+> **功能建议**需要先给本项目点一个 **Star** ⭐，并读一下[产品边界](CONTRIBUTING.md#产品边界)。提交后机器人会自动检查：还没 Star 的话会先提醒你，10 分钟内补上就没事；超过 10 分钟仍未 Star，建议会被自动关闭，补上 Star 后重新打开即可。
 
 提交时请填写版本号和平台，并删掉截图、日志里的账号、Cookie 等个人信息。安全问题请走[私密报告](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)，不要公开发 Issue。每个版本的更新内容见 [Releases](https://github.com/POf-L/Fanqie-novel-Downloader/releases)。
 
@@ -330,3 +333,17 @@ xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
 ## 📜 免责声明
 
 本工具免费提供，仅供个人学习和阅读使用，请支持正版。使用时请遵守相关平台规则和当地法律法规，不要用于高频批量下载、传播或其他侵犯作者与平台权益的用途。项目不保证上游接口一直可用，因使用本工具产生的后果由使用者自行承担。
+
+---
+
+<div align="center">
+
+**遇到问题或有想法？**
+
+[🐞 报告错误](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new?template=bug-report.yml) ·
+[💡 功能建议](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new?template=feature-request.yml) ·
+[🙋 使用求助](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new?template=help-request.yml) ·
+[🤝 参与贡献与产品边界](CONTRIBUTING.md) ·
+[🔒 私密报告安全问题](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)
+
+</div>

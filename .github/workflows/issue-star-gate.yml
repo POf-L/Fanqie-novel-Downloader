@@ -1,4 +1,8 @@
-name: Issue / Star 门禁
+name: Issue / Star 门禁（仅功能建议）
+
+# Star 门禁只对功能建议生效：缺陷报告和使用求助靠表单里的必填确认项
+# （已更新到最新版、已搜索过、版本号必填）过滤，避免挡掉真实的故障反馈。
+# 参考 fqapp 的低门槛 issue 流程。
 
 on:
   issues:
@@ -19,7 +23,7 @@ concurrency:
 
 jobs:
   enforce-star:
-    name: 核验 Issue 提交者的公开 Star
+    name: 核验功能建议提交者的公开 Star
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -117,9 +121,9 @@ jobs:
               const author = issue.user.login;
               const body = [
                 marker,
-                `@${author}，感谢你花时间提交 Issue。`,
+                `@${author}，感谢你花时间提交功能建议。`,
                 '',
-                `为了让 Issue 支持优先服务于关注项目的用户，请先为当前项目点一个公开 Star：${repositoryUrl}`,
+                `为了让功能建议优先服务于关注项目的用户，请先为当前项目点一个公开 Star：${repositoryUrl}`,
                 '',
                 '本 Issue 目前会保持开放，请在收到本提醒后的 10 分钟内完成 Star。工作流随后会自动复查；核验通过后会删除本条提醒，并继续保持 Issue 开放。',
                 '',
@@ -136,8 +140,25 @@ jobs:
               return created.data;
             }
 
+            const featureLabel = '增强功能';
+            const featureTitlePrefix = '[feature]';
+
+            // 只有功能建议走 Star 门禁；按表单自动打的标签或标题前缀识别。
+            function isFeatureRequest(issue) {
+              const labels = (issue?.labels || []).map((label) => (
+                typeof label === 'string' ? label : label?.name
+              ));
+              if (labels.includes(featureLabel)) return true;
+              const title = typeof issue?.title === 'string' ? issue.title : '';
+              return title.trim().toLowerCase().startsWith(featureTitlePrefix);
+            }
+
             async function enforce(issue) {
               if (!issue || issue.pull_request || issue.state !== 'open') return;
+              if (!isFeatureRequest(issue)) {
+                core.info(`Issue #${issue.number}: 不是功能建议，Star 门禁不适用。`);
+                return;
+              }
               const author = issue.user?.login;
               if (typeof author !== 'string' || author.length === 0) {
                 throw new Error(`Issue #${issue.number} 缺少提交者登录名`);
@@ -201,7 +222,9 @@ jobs:
                 github.rest.issues.listForRepo,
                 { owner, repo, state: 'open', per_page: 100 },
               );
-              const openIssues = openItems.filter((item) => !item.pull_request);
-              core.info(`开始审核 ${openIssues.length} 个开放 Issue。`);
+              const openIssues = openItems.filter(
+                (item) => !item.pull_request && isFeatureRequest(item),
+              );
+              core.info(`开始审核 ${openIssues.length} 个开放的功能建议。`);
               await Promise.all(openIssues.map((issue) => enforce(issue)));
             }

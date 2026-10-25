@@ -8,6 +8,8 @@ body:
       value: |
         感谢你的建议。请先说清要解决的实际问题，再描述希望采用的方案。
 
+        提交前请先读一下[产品边界](https://github.com/POf-L/Fanqie-novel-Downloader/blob/main/CONTRIBUTING.md#产品边界)：表里列出的方向不会做，相关建议会直接关闭。
+
         提交 Issue 前请先公开 Star 当前项目。Issue 创建后会自动核验；未通过时会先礼貌提醒并保持开放，10 分钟后仍未公开 Star 才会暂时关闭。
   - type: checkboxes
     id: preflight
@@ -19,6 +21,8 @@ body:
         - label: 我已搜索现有 Issue，确认没有相同或高度相似的建议。
           required: true
         - label: 这是一项具体的软件功能建议，不是安全漏洞、推广或商务合作信息。
+          required: true
+        - label: 我读过 CONTRIBUTING 中的“产品边界”，这项建议不属于明确不做的范围。
           required: true
   - type: dropdown
     id: platforms

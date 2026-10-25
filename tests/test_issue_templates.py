@@ -41,14 +41,16 @@ class IssueTemplateTest(unittest.TestCase):
                 self.assertIn(title, form)
                 self.assertIn(f'labels: ["{label}"]', form)
 
-    def test_forms_require_a_public_star(self):
-        for name, form in self.forms.items():
+    def test_only_feature_requests_require_a_public_star(self):
+        feature = self.forms["feature-request.yml"]
+        self.assertIn("提交 Issue 前请先公开 Star 当前项目", feature)
+        self.assertRegex(
+            feature,
+            r"我已公开 Star 当前项目[^\n]*10 分钟[^\n]*\n\s+required: true",
+        )
+        for name in ("bug-report.yml", "help-request.yml"):
             with self.subTest(name=name):
-                self.assertIn("提交 Issue 前请先公开 Star 当前项目", form)
-                self.assertRegex(
-                    form,
-                    r"我已公开 Star 当前项目[^\n]*10 分钟[^\n]*\n\s+required: true",
-                )
+                self.assertNotIn("Star", self.forms[name])
 
         github_config = "\n".join(
             path.read_text(encoding="utf-8")
@@ -56,6 +58,66 @@ class IssueTemplateTest(unittest.TestCase):
             if path.is_file()
         )
         self.assertNotIn("是否 Star **不影响** Issue 的受理和处理", github_config)
+
+    def test_feature_request_requires_reading_product_boundaries(self):
+        feature = self.forms["feature-request.yml"]
+        self.assertIn("CONTRIBUTING.md#产品边界", feature)
+        self.assertRegex(
+            feature,
+            r"我读过 CONTRIBUTING 中的“产品边界”[^\n]*\n\s+required: true",
+        )
+        contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+        self.assertIn("## 产品边界", contributing)
+        table_rows = re.findall(r"^\| (?!不做什么|---)[^|]+\| [^|]+\|$", contributing, re.MULTILINE)
+        self.assertGreaterEqual(len(table_rows), 5)
+
+    def test_bug_report_requires_latest_version_search_and_version_number(self):
+        form = self.forms["bug-report.yml"]
+        self.assertRegex(form, r"我已更新到 Releases 中的最新版本[^\n]*\n\s+required: true")
+        self.assertRegex(form, r"我已搜索现有 Issue[^\n]*\n\s+required: true")
+        version = form[form.index("id: version"):form.index("id: platform")]
+        self.assertIn("required: true", version)
+
+    def test_star_gate_only_applies_to_feature_requests(self):
+        workflow = self.star_workflow
+        self.assertIn("function isFeatureRequest(issue)", workflow)
+        self.assertIn("const featureLabel = '增强功能';", workflow)
+        self.assertIn("const featureTitlePrefix = '[feature]';", workflow)
+        enforce = workflow[workflow.index("async function enforce(issue)"):]
+        self.assertLess(
+            enforce.index("if (!isFeatureRequest(issue))"),
+            enforce.index("hasVerifiableStar(author, issue.number)"),
+        )
+        self.assertIn("!item.pull_request && isFeatureRequest(item)", workflow)
+        # 表单自动打的标签必须和门禁识别的标签一致。
+        self.assertIn('labels: ["增强功能"]', self.forms["feature-request.yml"])
+        self.assertIn('title: "[Feature] "', self.forms["feature-request.yml"])
+
+    def test_star_gate_feature_detection_behaves(self):
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node 不可用")
+        workflow = self.star_workflow
+        start = workflow.index("            const featureLabel")
+        end = workflow.index("            async function enforce(issue)")
+        snippet = "\n".join(line[12:] for line in workflow[start:end].splitlines())
+        cases = [
+            ({"labels": [{"name": "增强功能"}], "title": "x"}, True),
+            ({"labels": ["增强功能"], "title": "x"}, True),
+            ({"labels": [], "title": "  [Feature] 新功能"}, True),
+            ({"labels": [{"name": "错误反馈"}], "title": "[Bug] 崩溃"}, False),
+            ({"labels": [{"name": "求助"}], "title": "[Help] 怎么用"}, False),
+            ({"title": None}, False),
+        ]
+        import json
+        script = snippet + "\nconst cases = " + json.dumps(cases, ensure_ascii=False) + ";\n" + (
+            "for (const [issue, want] of cases) {"
+            " if (isFeatureRequest(issue) !== want) { console.error(JSON.stringify(issue)); process.exit(1); } }"
+        )
+        result = subprocess.run([node, "-e", script], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_star_gate_checks_new_reopened_and_existing_issues(self):
         workflow = self.star_workflow
@@ -84,7 +146,7 @@ class IssueTemplateTest(unittest.TestCase):
         self.assertIn("ensureCurrentGateComment", workflow)
         self.assertIn("context.payload.action === 'reopened'", workflow)
         self.assertIn("status === 404 || status === 451", workflow)
-        self.assertIn("感谢你花时间提交 Issue", workflow)
+        self.assertIn("感谢你花时间提交功能建议", workflow)
         self.assertIn("本 Issue 目前会保持开放", workflow)
         self.assertIn("await new Promise((resolve) => setTimeout(resolve, waitMs))", workflow)
         self.assertGreaterEqual(workflow.count("hasVerifiableStar(author, issue.number)"), 2)
