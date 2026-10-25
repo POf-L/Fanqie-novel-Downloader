@@ -28,12 +28,12 @@ asset_for() {
 
 checksum_for() {
   case "$1/$2" in
-    2.11.4/cargo-tauri-x86_64-unknown-linux-gnu.tgz)
-      echo "6864602a34292aa6f2ad40ae019eebe5c1064d6c623fe20696a8a8974067e60b" ;;
-    2.11.4/cargo-tauri-aarch64-apple-darwin.zip)
-      echo "82bdcb9ae7f407882321680ae50750f11623fae22445f8b00b096e10f815d604" ;;
-    2.11.4/cargo-tauri-x86_64-apple-darwin.zip)
-      echo "f10dfcc103ccb79248ca27cb9aff7b8a65499d1b0df79fe0465e8aa0a8e7cbef" ;;
+    2.12.4/cargo-tauri-x86_64-unknown-linux-gnu.tgz)
+      echo "820ae3c7580ca637cad15f65638960ee2a96e5a491e224691c86d6f25e6c9e8a" ;;
+    2.12.4/cargo-tauri-aarch64-apple-darwin.zip)
+      echo "f71a34ada728ca2d1a51c28d6d21639e1e080898ec69ec8d49c5da3b7e8bc1be" ;;
+    2.12.4/cargo-tauri-x86_64-apple-darwin.zip)
+      echo "164d184c0e50800dcae7bb31f0815066ebd27efc3e3bb73117974bcd2e982192" ;;
     *) echo "" ;;
   esac
 }

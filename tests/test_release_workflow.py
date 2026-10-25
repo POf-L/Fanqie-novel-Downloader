@@ -186,7 +186,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 re.escape(f"{cli_version}/{asset})") + r"\n\s+echo \"[0-9a-f]{64}\"",
             )
         self.assertEqual(self.workflow.count('$signature = "$portable.sig"'), 2)
-        self.assertIn("TAURI_CLI_VERSION: \"2.11.4\"", self.workflow)
+        self.assertIn("TAURI_CLI_VERSION: \"2.12.4\"", self.workflow)
         self.assertIn("ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}", self.workflow)
         self.assertIn(
             "inputs.publish_unsigned_prerelease == true || "
