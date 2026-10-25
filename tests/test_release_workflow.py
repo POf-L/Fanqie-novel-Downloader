@@ -701,6 +701,14 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("upload-artifact", verify)
         self.assertNotIn("set -x", verify)
 
+    def test_verify_runs_silent_third_party_license_gate(self):
+        verify = self.workflow.split("\n  verify:\n", 1)[1].split(
+            "\n  release-bootstrap:\n", 1
+        )[0]
+        self.assertIn("- name: Check third-party licenses (silent)", verify)
+        self.assertRegex(verify, r'CARGO_ABOUT_SHA256: "[0-9a-f]{64}"')
+        self.assertIn('>"${work}/log" 2>&1 </dev/null', verify)
+
     def test_published_release_requires_updater_signing_key(self):
         prepare = self.workflow.split("\n  prepare:\n", 1)[1].split("\n  verify:\n", 1)[0]
         self.assertIn(
