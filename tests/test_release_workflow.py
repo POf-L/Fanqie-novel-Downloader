@@ -701,6 +701,16 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("upload-artifact", verify)
         self.assertNotIn("set -x", verify)
 
+    def test_published_android_release_requires_official_keystore_up_front(self):
+        self.assertIn(
+            "FANQIE_ANDROID_REQUIRE_RELEASE_SIGNING: ${{ inputs.publish_release == true && 'true' || 'false' }}",
+            self.workflow,
+        )
+        self.assertIn(
+            "if: inputs.publish_release == true && steps.signing.outputs.mode != 'release-secret'",
+            self.workflow,
+        )
+
     def test_android_apks_get_16k_alignment_check_before_upload(self):
         check = self.workflow.index("- name: Check Android 16 KiB page alignment")
         collect = self.workflow.index("- name: Collect and verify signed Android artifacts")

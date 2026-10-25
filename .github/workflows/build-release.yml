@@ -2040,6 +2040,8 @@ jobs:
           FANQIE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           FANQIE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           FANQIE_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # 正式发布：缺少正式 keystore 时脚本和 Gradle 都直接失败，不退回临时 / debug keystore。
+          FANQIE_ANDROID_REQUIRE_RELEASE_SIGNING: ${{ inputs.publish_release == true && 'true' || 'false' }}
         run: |
           chmod +x scripts/ci-ensure-android-signing.sh
           ./scripts/ci-ensure-android-signing.sh
