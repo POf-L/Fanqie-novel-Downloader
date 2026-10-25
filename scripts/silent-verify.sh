@@ -4,7 +4,13 @@
 # 上传，脚本结束时删掉。日志里只有每项的名称、通过/失败、退出码和用时。
 #
 # 检查清单必须和私有仓库的 scripts/verify-local.sh 完全一致（名称、命令、顺序），
-# 失败时在本地运行 `scripts/verify-local.sh <名称>` 就能看到完整输出。
+# 失败时在本地运行 `scripts/verify-local.sh <名称>` 就能看到完整输出。脚本先做一次
+# checklist-sync：逐行比对两份清单，不一致直接失败，避免两边悄悄漂移。
+#
+# cargo clippy / test 都带 --locked：Cargo.lock 与 Cargo.toml 不一致时报错，而不是
+# 在 CI 里悄悄重新解析依赖（cargo fmt 不解析依赖，不需要也不接受 --locked）。
+#
+# 设置了 GITHUB_OUTPUT 时写出 passed / total / summary，供发布说明引用。
 #
 # 用法：silent-verify.sh <私有源码目录>
 set -uo pipefail
@@ -22,10 +28,10 @@ export NO_COLOR=1
 
 checks=(
   "fmt|cargo fmt --manifest-path src-tauri/Cargo.toml -- --check"
-  "clippy-desktop|cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"
-  "clippy-cli|cargo clippy --manifest-path src-tauri/Cargo.toml --bin fanqie --no-default-features --features cli -- -D warnings"
-  "test-desktop|cargo test --manifest-path src-tauri/Cargo.toml --all-features"
-  "test-cli|cargo test --manifest-path src-tauri/Cargo.toml --bin fanqie --no-default-features --features cli"
+  "clippy-desktop|cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings"
+  "clippy-cli|cargo clippy --locked --manifest-path src-tauri/Cargo.toml --bin fanqie --no-default-features --features cli -- -D warnings"
+  "test-desktop|cargo test --locked --manifest-path src-tauri/Cargo.toml --all-features"
+  "test-cli|cargo test --locked --manifest-path src-tauri/Cargo.toml --bin fanqie --no-default-features --features cli"
   "node-test|node --test tests/*.js"
   "node-check|node --check web/static/app.js"
   "diff-check|git diff --check"
@@ -33,6 +39,21 @@ checks=(
 
 failed=()
 total_start=${SECONDS}
+
+# checklist-sync：私有仓库 verify-local.sh 里 checks=( ... ) 的每一行必须与上面完全相同。
+# 比对结果只给通过/失败，不打印私有脚本内容。
+local_script="scripts/verify-local.sh"
+if [[ -f "${local_script}" ]] &&
+   diff -q <(printf '%s\n' "${checks[@]}") \
+     <(sed -n '/^checks=(/,/^)/p' "${local_script}" | sed -n 's/^  "\(.*\)"$/\1/p') \
+     >/dev/null 2>&1; then
+  printf '通过  %-15s 退出码 %-3s 用时 %ss\n' "checklist-sync" 0 0
+else
+  printf '失败  %-15s 退出码 %-3s 用时 %ss\n' "checklist-sync" 1 0
+  echo "::error::silent-verify.sh 与私有仓库 ${local_script} 的检查清单不一致（名称、命令、顺序须完全相同），请两边同步修改。"
+  failed+=("checklist-sync")
+fi
+
 for entry in "${checks[@]}"; do
   name="${entry%%|*}"
   command="${entry#*|}"
@@ -50,8 +71,24 @@ for entry in "${checks[@]}"; do
 done
 
 echo "合计用时 $((SECONDS - total_start))s；输出未打印，也不上传。"
+total=${#checks[@]}
+passed=0
+for entry in "${checks[@]}"; do
+  name="${entry%%|*}"
+  [[ " ${failed[*]} " == *" ${name} "* ]] || passed=$((passed + 1))
+done
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  {
+    echo "passed=${passed}"
+    echo "total=${total}"
+    echo "summary=verify ${passed}/${total} 通过"
+  } >>"${GITHUB_OUTPUT}"
+fi
 if [[ ${#failed[@]} -gt 0 ]]; then
   for name in "${failed[@]}"; do
+    if [[ "${name}" == "checklist-sync" ]]; then
+      continue
+    fi
     echo "::error::verify 未通过：${name}。公开日志不包含输出，请在私有仓库本地运行 scripts/verify-local.sh ${name} 复现。"
   done
   exit 1
