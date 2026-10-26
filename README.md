@@ -307,9 +307,9 @@ xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
 - 🙋 **使用求助**：安装、设置或使用上的问题
 
 > [!IMPORTANT]
-> **错误反馈和使用求助不需要 Star**，但请先更新到最新版、搜一下有没有相同的 Issue，并填写完整版本号。
+> **错误反馈和使用求助**请先更新到最新版、搜一下有没有相同的 Issue，并填写完整版本号。
 >
-> **功能建议**需要先给本项目点一个 **Star** ⭐，并读一下[产品边界](CONTRIBUTING.md#产品边界)。提交后机器人会自动检查：还没 Star 的话会先提醒你，10 分钟内补上就没事；超过 10 分钟仍未 Star，建议会被自动关闭，补上 Star 后重新打开即可。
+> **功能建议**请先读一下[产品边界](CONTRIBUTING.md#产品边界)，表里列出的方向不会做。
 
 提交时请填写版本号和平台，并删掉截图、日志里的账号、Cookie 等个人信息。安全问题请走[私密报告](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)，不要公开发 Issue。每个版本的更新内容见 [Releases](https://github.com/POf-L/Fanqie-novel-Downloader/releases)。
 

@@ -17,9 +17,6 @@ class IssueTemplateTest(unittest.TestCase):
             for path in TEMPLATE_DIR.glob("*.yml")
             if path.name != "config.yml"
         }
-        cls.star_workflow = (WORKFLOW_DIR / "issue-star-gate.yml").read_text(
-            encoding="utf-8"
-        )
 
     def test_only_structured_issue_forms_are_enabled(self):
         self.assertIn("blank_issues_enabled: false", self.config)
@@ -41,23 +38,25 @@ class IssueTemplateTest(unittest.TestCase):
                 self.assertIn(title, form)
                 self.assertIn(f'labels: ["{label}"]', form)
 
-    def test_only_feature_requests_require_a_public_star(self):
-        feature = self.forms["feature-request.yml"]
-        self.assertIn("提交 Issue 前请先公开 Star 当前项目", feature)
-        self.assertRegex(
-            feature,
-            r"我已公开 Star 当前项目[^\n]*10 分钟[^\n]*\n\s+required: true",
-        )
-        for name in ("bug-report.yml", "help-request.yml"):
+    def test_no_issue_form_or_doc_requires_a_star(self):
+        for name, form in self.forms.items():
             with self.subTest(name=name):
-                self.assertNotIn("Star", self.forms[name])
+                self.assertNotIn("Star", form)
+        for doc in ("README.md", "CONTRIBUTING.md"):
+            with self.subTest(doc=doc):
+                text = (ROOT / doc).read_text(encoding="utf-8")
+                self.assertNotIn("门禁", text)
+                self.assertNotIn("公开 Star", text)
+                self.assertNotIn("不需要 Star", text)
 
-        github_config = "\n".join(
-            path.read_text(encoding="utf-8")
-            for path in (ROOT / ".github").rglob("*")
-            if path.is_file()
-        )
-        self.assertNotIn("是否 Star **不影响** Issue 的受理和处理", github_config)
+    def test_star_gate_workflow_is_removed(self):
+        self.assertFalse((WORKFLOW_DIR / "issue-star-gate.yml").exists())
+        for path in (ROOT / ".github").rglob("*"):
+            if path.is_file():
+                with self.subTest(path=str(path.relative_to(ROOT))):
+                    text = path.read_text(encoding="utf-8")
+                    self.assertNotIn("fanqie-star-gate", text)
+                    self.assertNotIn("listReposStarredByUser", text)
 
     def test_feature_request_requires_reading_product_boundaries(self):
         feature = self.forms["feature-request.yml"]
@@ -77,93 +76,6 @@ class IssueTemplateTest(unittest.TestCase):
         self.assertRegex(form, r"我已搜索现有 Issue[^\n]*\n\s+required: true")
         version = form[form.index("id: version"):form.index("id: platform")]
         self.assertIn("required: true", version)
-
-    def test_star_gate_only_applies_to_feature_requests(self):
-        workflow = self.star_workflow
-        self.assertIn("function isFeatureRequest(issue)", workflow)
-        self.assertIn("const featureLabel = '增强功能';", workflow)
-        self.assertIn("const featureTitlePrefix = '[feature]';", workflow)
-        enforce = workflow[workflow.index("async function enforce(issue)"):]
-        self.assertLess(
-            enforce.index("if (!isFeatureRequest(issue))"),
-            enforce.index("hasVerifiableStar(author, issue.number)"),
-        )
-        self.assertIn("!item.pull_request && isFeatureRequest(item)", workflow)
-        # 表单自动打的标签必须和门禁识别的标签一致。
-        self.assertIn('labels: ["增强功能"]', self.forms["feature-request.yml"])
-        self.assertIn('title: "[Feature] "', self.forms["feature-request.yml"])
-
-    def test_star_gate_feature_detection_behaves(self):
-        import shutil
-        import subprocess
-        node = shutil.which("node")
-        if node is None:
-            self.skipTest("node 不可用")
-        workflow = self.star_workflow
-        start = workflow.index("            const featureLabel")
-        end = workflow.index("            async function enforce(issue)")
-        snippet = "\n".join(line[12:] for line in workflow[start:end].splitlines())
-        cases = [
-            ({"labels": [{"name": "增强功能"}], "title": "x"}, True),
-            ({"labels": ["增强功能"], "title": "x"}, True),
-            ({"labels": [], "title": "  [Feature] 新功能"}, True),
-            ({"labels": [{"name": "错误反馈"}], "title": "[Bug] 崩溃"}, False),
-            ({"labels": [{"name": "求助"}], "title": "[Help] 怎么用"}, False),
-            ({"title": None}, False),
-        ]
-        import json
-        script = snippet + "\nconst cases = " + json.dumps(cases, ensure_ascii=False) + ";\n" + (
-            "for (const [issue, want] of cases) {"
-            " if (isFeatureRequest(issue) !== want) { console.error(JSON.stringify(issue)); process.exit(1); } }"
-        )
-        result = subprocess.run([node, "-e", script], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_star_gate_checks_new_reopened_and_existing_issues(self):
-        workflow = self.star_workflow
-        self.assertIn("types: [opened, reopened]", workflow)
-        self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("cancel-in-progress: true", workflow)
-        self.assertIn('paths:\n      - ".github/workflows/issue-star-gate.yml"', workflow)
-        self.assertIn("github.rest.issues.listForRepo", workflow)
-        self.assertIn("state: 'open'", workflow)
-        self.assertIn("!item.pull_request", workflow)
-
-    def test_star_gate_uses_public_user_stars_and_default_token(self):
-        workflow = self.star_workflow
-        self.assertIn("github.rest.activity.listReposStarredByUser", workflow)
-        self.assertNotIn("listStargazersForRepo", workflow)
-        self.assertIn("github-token: ${{ secrets.GITHUB_TOKEN }}", workflow)
-        self.assertNotIn("PRIVATE_SOURCE_TOKEN", workflow)
-        self.assertNotIn("STAR_GATE_TOKEN", workflow)
-        self.assertIn("permissions:\n  contents: read\n  issues: write", workflow)
-
-    def test_star_gate_warns_waits_rechecks_and_only_then_closes(self):
-        workflow = self.star_workflow
-        self.assertIn("fanqie-star-gate:v2", workflow)
-        self.assertIn("fanqie-star-gate:v1", workflow)
-        self.assertIn("const gracePeriodMs = 10 * 60 * 1000", workflow)
-        self.assertIn("ensureCurrentGateComment", workflow)
-        self.assertIn("context.payload.action === 'reopened'", workflow)
-        self.assertIn("status === 404 || status === 451", workflow)
-        self.assertIn("感谢你花时间提交功能建议", workflow)
-        self.assertIn("本 Issue 目前会保持开放", workflow)
-        self.assertIn("await new Promise((resolve) => setTimeout(resolve, waitMs))", workflow)
-        self.assertGreaterEqual(workflow.count("hasVerifiableStar(author, issue.number)"), 2)
-        self.assertLess(
-            workflow.index("ensureCurrentGateComment(issue, forceNewReminder)"),
-            workflow.index("state: 'closed'"),
-        )
-        self.assertIn("state: 'closed'", workflow)
-        self.assertIn("state_reason: 'not_planned'", workflow)
-
-    def test_star_gate_deletes_its_reminder_when_the_author_stars(self):
-        workflow = self.star_workflow
-        self.assertIn("deleteGateComments", workflow)
-        self.assertIn("github.rest.issues.deleteComment", workflow)
-        self.assertIn("已在宽限期内公开 Star", workflow)
-        self.assertIn("保持开放", workflow)
-        self.assertNotIn("重新打开本 Issue", workflow)
 
     def test_form_field_ids_are_unique_and_well_formed(self):
         for name, form in self.forms.items():
