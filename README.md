@@ -281,7 +281,7 @@ xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
 
 <br>
 
-电脑版同一时间只运行一份：再次打开时，会直接唤出已经在运行的窗口（包括最小化到托盘、被快捷键隐藏的窗口），窗口跑到屏幕外时会移回来，不会再开一个。从 {{NEWVER}} 起，Windows 上如果已经在运行的那份卡住了、唤醒后不出窗口，或者是以管理员身份运行的，再双击会弹框说明情况，可以选“结束卡住的那一份，重新打开”；第一次打开超过 30 秒还没出窗口，也会弹框提示。旧版本双击没反应时，先试试按一下 Ctrl+Alt+H（窗口可能被快捷键隐藏了），再看右下角托盘里有没有应用图标；再打开任务管理器搜索 `Fanqie`，把残留的 `Fanqie Novel Downloader` 进程全部结束后重新打开。启动失败（比如 WebView2 缺失或损坏）时会弹出“番茄小说下载器无法启动”的提示框，按提示安装或修复 WebView2 运行时即可。还是不行的话，请[提交错误反馈](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new?template=bug-report.yml)，写上完整版本号、Windows 版本，并附上日志文件夹 `%APPDATA%\com.pofl.fanqienoveldownloader\.log` 里最新的日志文件。
+电脑版同一时间只运行一份：再次打开时，会直接唤出已经在运行的窗口（包括最小化到托盘、被快捷键隐藏的窗口），窗口跑到屏幕外时会移回来，不会再开一个。从 2026.11.4-1451 起，Windows 上如果已经在运行的那份卡住了、唤醒后不出窗口，或者是以管理员身份运行的，再双击会弹框说明情况，可以选“结束卡住的那一份，重新打开”；第一次打开超过 30 秒还没出窗口，也会弹框提示。旧版本双击没反应时，先试试按一下 Ctrl+Alt+H（窗口可能被快捷键隐藏了），再看右下角托盘里有没有应用图标；再打开任务管理器搜索 `Fanqie`，把残留的 `Fanqie Novel Downloader` 进程全部结束后重新打开。启动失败（比如 WebView2 缺失或损坏）时会弹出“番茄小说下载器无法启动”的提示框，按提示安装或修复 WebView2 运行时即可。还是不行的话，请[提交错误反馈](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new?template=bug-report.yml)，写上完整版本号、Windows 版本，并附上日志文件夹 `%APPDATA%\com.pofl.fanqienoveldownloader\.log` 里最新的日志文件。
 
 </details>
 
