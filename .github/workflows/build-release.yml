@@ -244,8 +244,10 @@ jobs:
                   "platform": "macos-x64",
                   "target": "x86_64-apple-darwin",
                   "bundles": "app,dmg",
+                  # macOS runner 抢不到（排队 15 分钟被 GitHub 取消）或超时时，
+                  # 改在 Linux 上用 zig + macOS SDK 交叉编译（只用于未签名发布）。
                   "allow_fallback": True,
-                  "fallback_os": "macos-latest",
+                  "fallback_os": "ubuntu-24.04",
                   "fallback_bundles": "app,dmg",
                   "asset_substr": "darwin-x64",
               }),
@@ -254,7 +256,9 @@ jobs:
                   "platform": "macos-arm64",
                   "target": "aarch64-apple-darwin",
                   "bundles": "app,dmg",
-                  "allow_fallback": False,
+                  "allow_fallback": True,
+                  "fallback_os": "ubuntu-24.04",
+                  "fallback_bundles": "app,dmg",
                   "asset_substr": "darwin-aarch64",
               }),
           ]
@@ -1039,7 +1043,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     # Scarce ARM/Intel runners may fail; continue so desktop-fallback can cross-build.
     continue-on-error: ${{ matrix.allow_fallback == true }}
-    timeout-minutes: 90
+    # macOS 原生构建一般 10~20 分钟；超时就交给 desktop-fallback 在 Linux 交叉编译，
+    # 不让整个发布一直卡着。排队拿不到 runner 时 GitHub 约 15 分钟会自动取消。
+    timeout-minutes: ${{ startsWith(matrix.platform, 'macos-') && 45 || 90 }}
     name: Desktop ${{ matrix.platform }}
     steps:
       - name: Quiet cargo / rustc output in public logs
@@ -1423,18 +1429,41 @@ jobs:
               dmg = single(source / "dmg", ".dmg")
               shutil.copy2(dmg, output / f"{stem}.dmg")
               app = single_directory(source / "macos", ".app")
-              subprocess.run(
-                  [
-                      "ditto",
-                      "-c",
-                      "-k",
-                      "--sequesterRsrc",
-                      "--keepParent",
-                      str(app),
-                      str(output / f"{stem}.zip"),
-                  ],
-                  check=True,
-              )
+              if shutil.which("ditto"):
+                  subprocess.run(
+                      [
+                          "ditto",
+                          "-c",
+                          "-k",
+                          "--sequesterRsrc",
+                          "--keepParent",
+                          str(app),
+                          str(output / f"{stem}.zip"),
+                      ],
+                      check=True,
+                  )
+              else:
+                  # Linux 交叉编译时没有 ditto：用 zipfile 打包并保留 Unix 权限，
+                  # 解压后 Contents/MacOS 里的程序仍然可执行。
+                  import time
+                  import zipfile
+
+                  with zipfile.ZipFile(output / f"{stem}.zip", "w") as archive:
+                      for path in sorted([app, *app.rglob("*")]):
+                          name = path.relative_to(app.parent).as_posix()
+                          if path.is_dir():
+                              name += "/"
+                          info = zipfile.ZipInfo(
+                              name, time.localtime(path.lstat().st_mtime)[:6]
+                          )
+                          info.create_system = 3
+                          info.external_attr = (path.lstat().st_mode & 0xFFFF) << 16
+                          if path.is_dir():
+                              info.external_attr |= 0x10
+                              archive.writestr(info, b"")
+                          else:
+                              info.compress_type = zipfile.ZIP_DEFLATED
+                              archive.writestr(info, path.read_bytes())
           else:
               raise SystemExit(f"unsupported unsigned target: {target}")
 
@@ -1709,7 +1738,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install ARM64 cross-compile environment (multiarch)
-        if: steps.need.outputs.run == 'true' && runner.os == 'Linux'
+        if: steps.need.outputs.run == 'true' && runner.os == 'Linux' && !endsWith(matrix.target, '-apple-darwin')
         # 以前只装了 x64 的 WebKitGTK，pkg-config 给出的是 x64 库，arm64 链接找不到
         # glib 等库。脚本改用 multiarch 装 arm64 开发包，并只对 aarch64 目标设 pkg-config。
         run: bash release-wrapper/scripts/setup-linux-arm64-cross.sh
@@ -1794,8 +1823,77 @@ jobs:
             } >> "${GITHUB_ENV}"
           done
 
+      - name: Refuse signed macOS builds on Linux
+        if: steps.need.outputs.run == 'true' && runner.os == 'Linux' && endsWith(matrix.target, '-apple-darwin') && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release
+        shell: bash
+        run: |
+          echo "::error::Linux 交叉编译只能出 ad-hoc 签名的 macOS 包，不能做 Developer ID 签名和公证；正式签名版请等 macOS runner 空出来后重跑。"
+          exit 1
+
+      - name: Install macOS cross toolchain (zig + macOS SDK)
+        if: steps.need.outputs.run == 'true' && runner.os == 'Linux' && endsWith(matrix.target, '-apple-darwin')
+        shell: bash
+        run: bash release-wrapper/scripts/setup-macos-cross.sh
+
+      - name: Cross-build macOS app on Linux, sign updater artifacts and upload
+        if: steps.need.outputs.run == 'true' && runner.os == 'Linux' && endsWith(matrix.target, '-apple-darwin')
+        shell: bash
+        working-directory: ${{ env.PRIVATE_SOURCE_PATH }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          RELEASE_ID: ${{ (inputs.publish_release || inputs.publish_unsigned_prerelease || inputs.publish_unsigned_release) && needs.release-bootstrap.outputs.release_id || '' }}
+          APP_VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          CREATE_UPDATER_ARTIFACTS: ${{ needs.prepare.outputs.create_updater_artifacts }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          FANQIE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.update_channel }}
+        run: |
+          set -euo pipefail
+          wrapper="${GITHUB_WORKSPACE}/release-wrapper/scripts"
+          if [[ "${TARGET}" == aarch64-* ]]; then
+            arch=aarch64
+            export MACOSX_DEPLOYMENT_TARGET=11.0
+          else
+            arch=x64
+            export MACOSX_DEPLOYMENT_TARGET=10.13
+          fi
+          if ! command -v tauri >/dev/null; then
+            npm install --global --silent "@tauri-apps/cli@${TAURI_CLI_VERSION}" >/dev/null
+          fi
+          # 和原生构建一样走 silent-run：公开日志只有通过/失败和用时。
+          node "${wrapper}/silent-run.mjs" --tauri build \
+            --target "${TARGET}" --no-bundle --runner cargo-zigbuild \
+            --config src-tauri/tauri.release.conf.json
+          binary="$(python3 -c "import tomllib; d = tomllib.load(open('src-tauri/Cargo.toml', 'rb')); print(next(b['name'] for b in d['bin'] if 'desktop-app' in b.get('required-features', [])))")"
+          bundle="src-tauri/target/${TARGET}/release/bundle"
+          # 生成和原生构建相同结构的 .app（ad-hoc 签名）、updater 用的 .app.tar.gz 和 DMG，
+          # 并检查 Mach-O 架构、最低系统版本、只链接系统库、签名类型。
+          python3 "${wrapper}/bundle-macos-cross.py" \
+            --tauri-dir src-tauri \
+            --target "${TARGET}" \
+            --binary "src-tauri/target/${TARGET}/release/${binary}" \
+            --version "${APP_VERSION}" \
+            --config src-tauri/tauri.release.conf.json \
+            --bundle-dir "${bundle}"
+          if [[ "${CREATE_UPDATER_ARTIFACTS}" == "true" && -n "${RELEASE_ID}" ]]; then
+            updater="${RUNNER_TEMP}/macos-cross-updater"
+            rm -rf "${updater}"
+            mkdir -p "${updater}"
+            archive="${updater}/FanqieNovelDownloader-tauri-darwin-${arch}.app.tar.gz"
+            cp "$(find "${bundle}/macos" -maxdepth 1 -name '*.app.tar.gz' -print -quit)" "${archive}"
+            tauri signer sign "${archive}" >/dev/null
+            test -s "${archive}.sig"
+            # latest.json 由 finalize 里的 normalize-updater-metadata.py 按附件和 .sig 重建。
+            python3 "${wrapper}/release-assets.py" upload \
+              --repo "${GH_REPO}" --release-id "${RELEASE_ID}" --tag "${TAG_NAME}" \
+              "${archive}" "${archive}.sig"
+          fi
+
       - name: Cross-build, sign updater artifacts and upload
-        if: steps.need.outputs.run == 'true'
+        if: steps.need.outputs.run == 'true' && !(runner.os == 'Linux' && endsWith(matrix.target, '-apple-darwin'))
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1991,18 +2089,41 @@ jobs:
               dmg = single(source / "dmg", ".dmg")
               shutil.copy2(dmg, output / f"{stem}.dmg")
               app = single_directory(source / "macos", ".app")
-              subprocess.run(
-                  [
-                      "ditto",
-                      "-c",
-                      "-k",
-                      "--sequesterRsrc",
-                      "--keepParent",
-                      str(app),
-                      str(output / f"{stem}.zip"),
-                  ],
-                  check=True,
-              )
+              if shutil.which("ditto"):
+                  subprocess.run(
+                      [
+                          "ditto",
+                          "-c",
+                          "-k",
+                          "--sequesterRsrc",
+                          "--keepParent",
+                          str(app),
+                          str(output / f"{stem}.zip"),
+                      ],
+                      check=True,
+                  )
+              else:
+                  # Linux 交叉编译时没有 ditto：用 zipfile 打包并保留 Unix 权限，
+                  # 解压后 Contents/MacOS 里的程序仍然可执行。
+                  import time
+                  import zipfile
+
+                  with zipfile.ZipFile(output / f"{stem}.zip", "w") as archive:
+                      for path in sorted([app, *app.rglob("*")]):
+                          name = path.relative_to(app.parent).as_posix()
+                          if path.is_dir():
+                              name += "/"
+                          info = zipfile.ZipInfo(
+                              name, time.localtime(path.lstat().st_mtime)[:6]
+                          )
+                          info.create_system = 3
+                          info.external_attr = (path.lstat().st_mode & 0xFFFF) << 16
+                          if path.is_dir():
+                              info.external_attr |= 0x10
+                              archive.writestr(info, b"")
+                          else:
+                              info.compress_type = zipfile.ZIP_DEFLATED
+                              archive.writestr(info, path.read_bytes())
           else:
               raise SystemExit(f"unsupported unsigned target: {target}")
 
