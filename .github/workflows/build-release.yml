@@ -1559,6 +1559,9 @@ jobs:
 
   # When scarce native runners fail (resource pressure / OOM / unavailable),
   # cross-compile the same targets on more available x64/arm64 runners.
+  # GitHub 会把 15 分钟内分不到构建机的 macOS 任务直接取消，矩阵结果记为
+  # failure；此时只要回退成功，两个 finalizer 照常运行，并由它们逐个平台核对
+  # 附件，缺任何一个平台都会失败，不会发出不完整的版本。
   desktop-fallback:
     needs: [prepare, verify, release-bootstrap, desktop]
     if: >-
@@ -2708,7 +2711,7 @@ jobs:
       needs.prepare.result == 'success' &&
       needs.verify.result == 'success' &&
       needs.release-bootstrap.result == 'success' &&
-      (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') &&
+      (needs.desktop.result == 'success' || needs.desktop.result == 'skipped' || (needs.desktop.result == 'failure' && needs.desktop-fallback.result == 'success')) &&
       (needs.desktop-fallback.result == 'success' || needs.desktop-fallback.result == 'skipped') &&
       (needs.android.result == 'success' || needs.android.result == 'skipped') &&
       (needs.ios.result == 'success' || needs.ios.result == 'skipped' || needs.ios.result == 'failure')
@@ -2787,7 +2790,7 @@ jobs:
       needs.prepare.result == 'success' &&
       needs.verify.result == 'success' &&
       needs.release-bootstrap.result == 'success' &&
-      (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') &&
+      (needs.desktop.result == 'success' || needs.desktop.result == 'skipped' || (needs.desktop.result == 'failure' && needs.desktop-fallback.result == 'success')) &&
       (needs.desktop-fallback.result == 'success' || needs.desktop-fallback.result == 'skipped') &&
       (needs.android.result == 'success' || needs.android.result == 'skipped') &&
       (needs.ios.result == 'success' || needs.ios.result == 'skipped' || needs.ios.result == 'failure')

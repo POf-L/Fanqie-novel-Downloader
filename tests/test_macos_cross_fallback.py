@@ -52,6 +52,19 @@ class MacosCrossWorkflowTest(unittest.TestCase):
         self.assertIn('tauri signer sign "${archive}"', WORKFLOW)
         self.assertIn("FanqieNovelDownloader-tauri-darwin-${arch}.app.tar.gz", WORKFLOW)
 
+    def test_finalizers_accept_native_failure_covered_by_fallback(self):
+        # GitHub cancels macOS jobs that wait 15 minutes for a runner; the
+        # matrix then reports failure even though the fallback filled the gap.
+        accepted = (
+            "(needs.desktop.result == 'success' || needs.desktop.result == 'skipped' || "
+            "(needs.desktop.result == 'failure' && needs.desktop-fallback.result == 'success')) &&"
+        )
+        self.assertEqual(WORKFLOW.count(accepted), 2)
+        self.assertNotIn(
+            "(needs.desktop.result == 'success' || needs.desktop.result == 'skipped') &&",
+            WORKFLOW,
+        )
+
     def test_signed_macos_release_never_uses_cross_build(self):
         self.assertIn("Refuse signed macOS builds on Linux", WORKFLOW)
 
