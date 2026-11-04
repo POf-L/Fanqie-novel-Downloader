@@ -1,0 +1,111 @@
+name: 错误反馈日志检查
+
+# 错误反馈必须附诊断日志文件（2026-11 起的规则，见 CONTRIBUTING.md）。
+# 这个 workflow 只做两件事，不关闭、不锁定、不改任何人写的内容：
+# - 新的错误反馈没有日志时，打上“需要日志”标签，并留一条说明（只留一次）；
+# - 作者补上日志（编辑正文或在评论里上传）后，去掉这个标签。
+# 只在新建、重新打开或刚被标成“错误反馈”时才会加标签，编辑和评论只会去标签，
+# 所以维护者手动去掉标签后不会被加回来。仓库所有者和机器人提的 issue 不检查。
+# 正文和评论只通过 GitHub API 读取，从不拼进脚本。
+
+on:
+  issues:
+    types: [opened, reopened, edited, labeled]
+  issue_comment:
+    types: [created, edited]
+
+permissions: {}
+
+concurrency:
+  group: issue-log-check-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.issue.state == 'open' &&
+      contains(github.event.issue.labels.*.name, '错误反馈') &&
+      github.event.issue.user.type != 'Bot' &&
+      github.event.issue.user.login != github.repository_owner &&
+      (github.event.action != 'labeled' || github.event.label.name == '错误反馈')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: 检查是否附了诊断日志
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+          label='需要日志'
+          marker='<!-- fanqie-log-check -->'
+          # 上传到 issue 的文件链接（图片不算），或者直接粘贴的日志内容。
+          file_link='github\.com/(user-attachments/files/[0-9]+/|[^/[:space:]]+/[^/[:space:]]+/files/[0-9]+/)[^)[:space:]]*\.(log|txt|zip|7z|gz)'
+          pasted_log='event=safe_log_started|event=startup_step|fanqie-diagnostic-'
+
+          body="$(gh api "repos/$GH_REPO/issues/$ISSUE" --jq '.body // ""')"
+          # shellcheck disable=SC2016 # $ENV.AUTHOR 是 jq 表达式，不是 shell 变量
+          author_comments="$(gh api --paginate "repos/$GH_REPO/issues/$ISSUE/comments" \
+            --jq '.[] | select(.user.login == $ENV.AUTHOR) | .body')"
+          labels="$(gh api "repos/$GH_REPO/issues/$ISSUE/labels" --jq '.[].name')"
+          # 先把输出存进变量再 grep：grep -q 提前退出会让管道前面的命令收到 SIGPIPE，
+          # 在 pipefail 下把“找到了”误判成“没找到”。
+          has_log=false
+          if grep -Eiq "$file_link|$pasted_log" <<< "$body"$'\n'"$author_comments"; then
+            has_log=true
+          fi
+          labelled=false
+          if grep -Fxq "$label" <<< "$labels"; then
+            labelled=true
+          fi
+          echo "event=$EVENT action=$ACTION has_log=$has_log labelled=$labelled"
+
+          if [ "$has_log" = true ]; then
+            if [ "$labelled" = true ]; then
+              gh issue edit "$ISSUE" --remove-label "$label"
+            fi
+            exit 0
+          fi
+
+          # 编辑和评论不加标签，尊重维护者手动去掉的结果。
+          case "$EVENT/$ACTION" in
+            issues/opened|issues/reopened|issues/labeled) ;;
+            *) exit 0 ;;
+          esac
+
+          gh label create "$label" --color FBCA04 \
+            --description "错误反馈缺少诊断日志文件，补交前不处理" >/dev/null 2>&1 || true
+          if [ "$labelled" = false ]; then
+            gh issue edit "$ISSUE" --add-label "$label"
+          fi
+          all_comments="$(gh api --paginate "repos/$GH_REPO/issues/$ISSUE/comments" --jq '.[].body')"
+          if grep -Fq "$marker" <<< "$all_comments"; then
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/log-check.md" <<'MSG'
+          <!-- fanqie-log-check -->
+          你好，这条错误反馈里没有找到诊断日志文件。按仓库规则，没有日志的错误反馈不会处理，麻烦补一下：
+
+          1. 更新到最新版后重现一次问题（诊断日志始终开启，不用手动打开）。
+          2. 打开“设置 → 系统 → 高级 → 诊断日志”，点“导出诊断日志”。
+          3. 把生成的 `fanqie-diagnostic-*.txt` 拖进这条 issue 的评论框上传，或者编辑正文加上。
+
+          程序打不开时，直接上传日志文件夹里最新的 `.log` 文件：
+
+          - Windows：`%APPDATA%\com.pofl.fanqienoveldownloader\.log`（复制到资源管理器地址栏回车）
+          - macOS：`~/Library/Application Support/com.pofl.fanqienoveldownloader/.log`
+          - Linux：`~/.local/share/com.pofl.fanqienoveldownloader/.log`
+          - Android：系统“下载”目录下的 `.log` 文件夹
+
+          日志会自动脱敏账号、Cookie 和链接。上传后“需要日志”标签会自动去掉。截图不能代替日志。
+
+          （这条回复由自动检查生成。如果已经附了日志但没有被识别，留言说明即可。）
+          MSG
+          gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/log-check.md"

@@ -107,3 +107,67 @@ class IssueTemplateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BugReportLogRuleTest(unittest.TestCase):
+    """错误反馈必须附诊断日志文件（2026-11 起），模板、文档和自动检查保持一致。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bug = (TEMPLATE_DIR / "bug-report.yml").read_text(encoding="utf-8")
+        cls.workflow = (WORKFLOW_DIR / "issue-log-check.yml").read_text(encoding="utf-8")
+
+    def test_bug_form_requires_a_log_file(self):
+        block = self.bug[self.bug.index("id: logs"):]
+        block = block[: block.index("  - type:")] if "  - type:" in block else block
+        self.assertIn("诊断日志文件（必填）", block)
+        self.assertIn("required: true", block)
+        # 带 render 的文本框不能上传附件，日志框必须能拖文件进去。
+        self.assertNotIn("render:", block)
+        self.assertIn("我已在下面附上诊断日志文件（不是截图），知道没有日志的错误反馈不会处理。", self.bug)
+        self.assertIn("**错误反馈必须附上诊断日志文件，没有日志的反馈不会处理。**", self.bug)
+
+    def test_bug_form_says_where_the_log_is(self):
+        self.assertIn("设置 → 系统 → 高级 → 诊断日志", self.bug)
+        self.assertIn("导出诊断日志", self.bug)
+        self.assertIn("fanqie-diagnostic-*.txt", self.bug)
+        for path in (
+            "%APPDATA%\\com.pofl.fanqienoveldownloader\\.log",
+            "~/Library/Application Support/com.pofl.fanqienoveldownloader/.log",
+            "~/.local/share/com.pofl.fanqienoveldownloader/.log",
+        ):
+            with self.subTest(path=path):
+                self.assertIn(path, self.bug)
+                self.assertIn(path, self.workflow)
+
+    def test_docs_state_the_rule(self):
+        for doc in ("README.md", "CONTRIBUTING.md"):
+            with self.subTest(doc=doc):
+                text = (ROOT / doc).read_text(encoding="utf-8")
+                self.assertIn("没有日志的错误反馈不会处理", text)
+                self.assertIn("始终开启", text)
+
+    def test_log_check_only_labels_and_comments_once(self):
+        wf = self.workflow
+        self.assertIn("permissions: {}", wf)
+        self.assertIn("issues: write", wf)
+        self.assertNotIn("contents: write", wf)
+        # 只看错误反馈，跳过 PR、仓库所有者和机器人。
+        self.assertIn("contains(github.event.issue.labels.*.name, '错误反馈')", wf)
+        self.assertIn("github.event.issue.pull_request == null", wf)
+        self.assertIn("github.event.issue.user.login != github.repository_owner", wf)
+        self.assertIn("github.event.issue.user.type != 'Bot'", wf)
+        # 不关闭、不锁定。
+        for verb in ("issue close", "issue lock", "state=closed", "--state closed"):
+            with self.subTest(verb=verb):
+                self.assertNotIn(verb, wf)
+        # 用户写的内容不直接拼进脚本。
+        run = wf[wf.index("run: |"):]
+        self.assertNotIn("${{", run)
+        self.assertIn("<!-- fanqie-log-check -->", wf)
+        # 编辑和评论只会去标签。
+        self.assertIn("issues/opened|issues/reopened|issues/labeled) ;;", wf)
+        # 图片不算日志，上传的文件或粘贴的日志才算。
+        self.assertIn("user-attachments/files/", wf)
+        self.assertNotIn("user-attachments/assets/", wf)
+        self.assertIn("event=safe_log_started", wf)

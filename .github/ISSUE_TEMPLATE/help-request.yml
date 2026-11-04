@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        这里适合提交安装、配置和使用问题。能够稳定复现的软件故障请改用“错误反馈”。
+        这里适合提交安装、配置和使用问题。程序报错、闪退、打不开、功能失效等软件故障请改用“错误反馈”，并附上诊断日志文件；在这里提交的故障同样需要日志才会处理。
 
         请勿提交 token、签名、私钥、设备标识、Cookie 或其他个人数据。
   - type: checkboxes
@@ -63,5 +63,5 @@ body:
   - type: textarea
     id: additional
     attributes:
-      label: 脱敏日志或截图
-      description: 可附完整的报错文字和截图；请先删掉账号、Cookie、token 等个人信息。
+      label: 诊断日志或截图
+      description: 涉及报错时请上传“设置 → 系统 → 高级 → 诊断日志 → 导出诊断日志”生成的文件，也可附截图；请先删掉账号、Cookie、token 等个人信息。

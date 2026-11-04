@@ -8,6 +8,15 @@ body:
       value: |
         感谢你花时间反馈问题。信息越完整，定位通常越快。请如实勾选下面的确认项并填写完整版本号。
 
+        **错误反馈必须附上诊断日志文件，没有日志的反馈不会处理。** 诊断日志始终开启，导出方法：打开“设置 → 系统 → 高级 → 诊断日志”，点“导出诊断日志”，把生成的 `fanqie-diagnostic-*.txt` 拖进下面的“诊断日志文件”框。程序打不开时，直接把日志文件夹里最新的 `.log` 文件拖进去：
+
+        - Windows：`%APPDATA%\com.pofl.fanqienoveldownloader\.log`（复制到资源管理器地址栏回车即可打开）
+        - macOS：`~/Library/Application Support/com.pofl.fanqienoveldownloader/.log`
+        - Linux：`~/.local/share/com.pofl.fanqienoveldownloader/.log`
+        - Android：系统“下载”目录下的 `.log` 文件夹（隐藏文件夹，建议直接用应用里的“导出诊断日志”）
+
+        日志会自动脱敏账号、Cookie 和链接，上传前仍可自行检查。
+
         请勿提交 token、签名、私钥、设备标识、Cookie 或其他个人数据。安全漏洞请使用私密报告入口。
   - type: checkboxes
     id: preflight
@@ -19,6 +28,8 @@ body:
         - label: 我已更新到 Releases 中的最新版本，并在最新版本上确认问题仍然存在。
           required: true
         - label: 我已删除日志、截图和链接中的敏感信息。
+          required: true
+        - label: 我已在下面附上诊断日志文件（不是截图），知道没有日志的错误反馈不会处理。
           required: true
   - type: input
     id: version
@@ -79,9 +90,11 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: 脱敏日志
-      description: 粘贴完整的报错文字，或在“设置 → 系统 → 高级 → 诊断日志”导出的日志；请先删掉账号、Cookie、token 等个人信息。没有可留空。
-      render: shell
+      label: 诊断日志文件（必填）
+      description: 把“设置 → 系统 → 高级 → 诊断日志 → 导出诊断日志”生成的 fanqie-diagnostic-*.txt 拖到这里上传；程序打不开时上传日志文件夹里最新的 .log 文件，位置见本页顶部。请在出问题之后再导出。截图不能代替日志。
+      placeholder: 把日志文件拖到这里，上传完成后会显示一个文件链接。
+    validations:
+      required: true
   - type: textarea
     id: additional
     attributes:

@@ -9,10 +9,28 @@
 
 - **错误反馈 / 使用求助**：表单里的确认项（已更新到最新版、已搜索过现有 Issue）和完整
   版本号是必填的，请如实填写，否则很难定位。
+- **错误反馈必须附诊断日志文件，没有日志的错误反馈不会处理**，见下一节。
 - **功能建议**：请先确认读过下面的“产品边界”，并说清实际使用场景。
 
 对于官方 API 的 JSON 错误，请保留 endpoint 路径、HTTP 状态码、
 Content-Type 和简短响应预览；删除 query、签名、token、Cookie 和设备标识。
+
+## 错误反馈必须附诊断日志
+
+诊断日志始终开启，没法关闭，所以出问题时一定有日志可交。
+
+1. 更新到最新版，重现一次问题。
+2. 打开“设置 → 系统 → 高级 → 诊断日志”，点“导出诊断日志”，得到 `fanqie-diagnostic-*.txt`。
+3. 用“错误反馈”模板提交，把这个文件拖进“诊断日志文件”框。截图不能代替日志。
+
+程序打不开时，上传日志文件夹里最新的 `.log` 文件：Windows 在
+`%APPDATA%\com.pofl.fanqienoveldownloader\.log`，macOS 在
+`~/Library/Application Support/com.pofl.fanqienoveldownloader/.log`，Linux 在
+`~/.local/share/com.pofl.fanqienoveldownloader/.log`，Android 在系统“下载”目录下的 `.log` 文件夹。
+
+没附日志的错误反馈会被 `issue-log-check.yml` 自动打上“需要日志”标签并收到一条说明；
+在评论里上传日志或编辑正文补上后，标签会自动去掉。这个检查只加减标签、留一次说明，
+不会关闭 Issue。日志会自动脱敏账号、Cookie 和链接，上传前仍可自己检查一遍。
 
 ## 产品边界
 

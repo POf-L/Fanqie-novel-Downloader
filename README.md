@@ -90,7 +90,7 @@
 
 ### 🎨 个性化
 
-经典、浅色、深色随心切换，可调强调色、界面密度和按钮大小；支持中文、English、Русский。
+经典、浅色、深色随心切换，可调强调色、界面密度和按钮大小；用不到的短剧、漫画、书架、历史入口可以从导航栏（手机上是底栏）隐藏；支持中文、English、Русский。
 
 </td>
 <td valign="top">
@@ -281,7 +281,7 @@ xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
 
 <br>
 
-电脑版同一时间只运行一份：再次打开时，会直接唤出已经在运行的窗口（包括最小化到托盘、被快捷键隐藏的窗口），不会再开一个。如果双击没反应，先试试按一下 Ctrl+Alt+H（窗口可能被快捷键隐藏了），再看右下角托盘里有没有应用图标；再打开任务管理器搜索 `Fanqie`，把残留的 `Fanqie Novel Downloader` 进程全部结束后重新打开。启动失败（比如 WebView2 缺失或损坏）时会弹出“番茄小说下载器无法启动”的提示框，按提示安装或修复 WebView2 运行时即可。还是不行的话，请[提交错误反馈](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new?template=bug-report.yml)，写上完整版本号、Windows 版本，以及有没有弹过提示框。
+电脑版同一时间只运行一份：再次打开时，会直接唤出已经在运行的窗口（包括最小化到托盘、被快捷键隐藏的窗口），窗口跑到屏幕外时会移回来，不会再开一个。从 {{NEWVER}} 起，Windows 上如果已经在运行的那份卡住了、唤醒后不出窗口，或者是以管理员身份运行的，再双击会弹框说明情况，可以选“结束卡住的那一份，重新打开”；第一次打开超过 30 秒还没出窗口，也会弹框提示。旧版本双击没反应时，先试试按一下 Ctrl+Alt+H（窗口可能被快捷键隐藏了），再看右下角托盘里有没有应用图标；再打开任务管理器搜索 `Fanqie`，把残留的 `Fanqie Novel Downloader` 进程全部结束后重新打开。启动失败（比如 WebView2 缺失或损坏）时会弹出“番茄小说下载器无法启动”的提示框，按提示安装或修复 WebView2 运行时即可。还是不行的话，请[提交错误反馈](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new?template=bug-report.yml)，写上完整版本号、Windows 版本，并附上日志文件夹 `%APPDATA%\com.pofl.fanqienoveldownloader\.log` 里最新的日志文件。
 
 </details>
 
@@ -350,6 +350,22 @@ xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
 
 </details>
 
+<details>
+<summary><b>反馈问题时怎么导出诊断日志？</b></summary>
+
+<br>
+
+诊断日志始终开启，不用手动打开，也不能关闭；日志只保存在本机，账号、Cookie 和链接会自动脱敏。出问题之后打开“设置 → 系统 → 高级 → 诊断日志”，点“导出诊断日志”，会在下载目录生成一个 `fanqie-diagnostic-*.txt`，把它拖进 Issue 就行；“打开日志目录”可以直接看原始日志。
+
+程序打不开时，直接上传日志文件夹里最新的 `.log` 文件：
+
+- Windows：`%APPDATA%\com.pofl.fanqienoveldownloader\.log`（复制到资源管理器地址栏回车即可打开）
+- macOS：`~/Library/Application Support/com.pofl.fanqienoveldownloader/.log`
+- Linux：`~/.local/share/com.pofl.fanqienoveldownloader/.log`
+- Android：系统“下载”目录下的 `.log` 文件夹（隐藏文件夹）
+
+</details>
+
 ## 💬 反馈与交流
 
 遇到问题或有想法，欢迎[提交 Issue](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose)，按情况选一个模板：
@@ -359,6 +375,8 @@ xattr -dr com.apple.quarantine "/Applications/Fanqie Novel Downloader.app"
 - 🙋 **使用求助**：安装、设置或使用上的问题
 
 > [!IMPORTANT]
+> **错误反馈必须附上诊断日志文件，没有日志的错误反馈不会处理。** 导出方法见上面的“[反馈问题时怎么导出诊断日志？](#-常见问题)”。没附日志的反馈会被自动打上“需要日志”标签，补上后标签会自动去掉。
+>
 > **错误反馈和使用求助**请先更新到最新版、搜一下有没有相同的 Issue，并填写完整版本号。
 >
 > **功能建议**请先读一下[产品边界](CONTRIBUTING.md#产品边界)，表里列出的方向不会做。
