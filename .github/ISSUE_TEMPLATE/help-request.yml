@@ -23,7 +23,7 @@ body:
     attributes:
       label: 应用版本
       description: 请填写完整版本号；尚未安装时填写“未安装”。
-      placeholder: 例如 2026.10.23-557
+      placeholder: 例如 2026.11.3-1650
     validations:
       required: true
   - type: dropdown
