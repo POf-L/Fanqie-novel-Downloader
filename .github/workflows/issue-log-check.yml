@@ -6,6 +6,8 @@ name: 错误反馈日志检查
 # - 作者补上日志（编辑正文或在评论里上传）后，去掉这个标签。
 # 只在新建、重新打开或刚被标成“错误反馈”时才会加标签，编辑和评论只会去标签，
 # 所以维护者手动去掉标签后不会被加回来。仓库所有者和机器人提的 issue 不检查。
+# 被 issue-auto-close.yml 自动关闭的 issue，作者在评论里补上日志时也会去掉标签
+# （重新打开由 issue-auto-close.yml 负责）。
 # 正文和评论只通过 GitHub API 读取，从不拼进脚本。
 
 on:
@@ -24,7 +26,7 @@ jobs:
   check:
     if: >-
       github.event.issue.pull_request == null &&
-      github.event.issue.state == 'open' &&
+      (github.event.issue.state == 'open' || github.event_name == 'issue_comment') &&
       contains(github.event.issue.labels.*.name, '错误反馈') &&
       github.event.issue.user.type != 'Bot' &&
       github.event.issue.user.login != github.repository_owner &&

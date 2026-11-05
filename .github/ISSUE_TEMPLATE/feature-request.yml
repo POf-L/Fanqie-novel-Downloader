@@ -9,6 +9,8 @@ body:
         感谢你的建议。请先说清要解决的实际问题，再描述希望采用的方案。
 
         提交前请先读一下[产品边界](https://github.com/POf-L/Fanqie-novel-Downloader/blob/main/CONTRIBUTING.md#产品边界)：表里列出的方向不会做，相关建议会直接关闭。
+
+        维护者回复后超过 24 小时没有回音的 Issue 会自动关闭，之后再留言会自动重新打开。
   - type: checkboxes
     id: preflight
     attributes:

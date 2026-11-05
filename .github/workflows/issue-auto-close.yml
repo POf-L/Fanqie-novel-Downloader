@@ -1,0 +1,87 @@
+name: Issue 24 小时自动关闭
+
+# 维护者回复后，Issue 作者超过 24 小时没有回音就自动关闭；作者之后再留言会自动重新打开。
+# 完整规则见 CONTRIBUTING.md 的“Issue 自动关闭”和 scripts/issue-auto-close.py。
+# - 只关维护者已经回复过、最后一条评论来自维护者或机器人的 Issue。新提交还没处理的
+#   （包括只收到 issue-log-check.yml 自动说明的）不会被关。
+# - 打了“保持开启”标签的不关；仓库所有者和机器人提的不关。
+# - 只关闭，不删除、不锁定；维护者手动关闭的不会被自动重新打开。
+# 正文和评论只通过 GitHub API 读取，从不拼进脚本。
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只列出会被关闭的 Issue，不实际关闭"
+        required: false
+        default: false
+        type: boolean
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  sweep:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: issue-auto-close-sweep
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: 关闭超过 24 小时没有回音的 Issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          gh label create "保持开启" --color 0E8A16 \
+            --description "不会被 24 小时自动关闭" >/dev/null 2>&1 || true
+          args=()
+          if [ "$DRY_RUN" = true ]; then
+            args+=(--dry-run)
+          fi
+          python3 scripts/issue-auto-close.py "${args[@]}" sweep
+
+  reopen:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request == null &&
+      github.event.issue.state == 'closed' &&
+      github.event.comment.user.type != 'Bot' &&
+      github.event.comment.user.login == github.event.issue.user.login
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: issue-auto-close-reopen-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: 作者在自动关闭后留言时重新打开
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          python3 scripts/issue-auto-close.py reopen --issue "$ISSUE" --commenter "$COMMENTER"
