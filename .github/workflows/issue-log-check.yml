@@ -2,8 +2,8 @@ name: 错误反馈日志检查
 
 # 错误反馈必须附诊断日志文件（2026-11 起的规则，见 CONTRIBUTING.md）。
 # 这个 workflow 只做两件事，不关闭、不锁定、不改任何人写的内容：
-# - 新的错误反馈没有日志时，打上“需要日志”标签，并留一条说明（只留一次）；
-# - 作者补上日志（编辑正文或在评论里上传）后，去掉这个标签。
+# - 新的错误反馈没有日志时，打上“需要日志”“等待反馈”标签，并留一条说明（只留一次）；
+# - 作者补上日志（编辑正文或在评论里上传）后，去掉这两个标签。
 # 只在新建、重新打开或刚被标成“错误反馈”时才会加标签，编辑和评论只会去标签，
 # 所以维护者手动去掉标签后不会被加回来。仓库所有者和机器人提的 issue 不检查。
 # 被 issue-auto-close.yml 自动关闭的 issue，作者在评论里补上日志时也会去掉标签
@@ -47,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           label='需要日志'
+          waiting_label='等待反馈'
           marker='<!-- fanqie-log-check -->'
           # 上传到 issue 的文件链接（图片不算），或者直接粘贴的日志内容。
           file_link='github\.com/(user-attachments/files/[0-9]+/|[^/[:space:]]+/[^/[:space:]]+/files/[0-9]+/)[^)[:space:]]*\.(log|txt|zip|7z|gz)'
@@ -71,7 +72,7 @@ jobs:
 
           if [ "$has_log" = true ]; then
             if [ "$labelled" = true ]; then
-              gh issue edit "$ISSUE" --remove-label "$label"
+              gh issue edit "$ISSUE" --remove-label "$label" --remove-label "$waiting_label"
             fi
             exit 0
           fi
@@ -84,8 +85,17 @@ jobs:
 
           gh label create "$label" --color FBCA04 \
             --description "错误反馈缺少诊断日志文件，补交前不处理" >/dev/null 2>&1 || true
+          gh label create "$waiting_label" --color FBCA04 \
+            --description "等待提交者补充信息；24 小时无回复后自动关闭" >/dev/null 2>&1 || true
           if [ "$labelled" = false ]; then
             gh issue edit "$ISSUE" --add-label "$label"
+          fi
+          waiting_labelled=false
+          if grep -Fxq "$waiting_label" <<< "$labels"; then
+            waiting_labelled=true
+          fi
+          if [ "$waiting_labelled" = false ]; then
+            gh issue edit "$ISSUE" --add-label "$waiting_label"
           fi
           all_comments="$(gh api --paginate "repos/$GH_REPO/issues/$ISSUE/comments" --jq '.[].body')"
           if grep -Fq "$marker" <<< "$all_comments"; then

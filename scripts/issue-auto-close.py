@@ -1,22 +1,10 @@
 #!/usr/bin/env python3
-"""维护者回复后 24 小时没有回音的 Issue 自动关闭；作者再留言时自动重新打开。
+"""只关闭明确标记为“等待反馈”且作者 24 小时未回应的 Issue。
 
-规则（与 CONTRIBUTING.md 的“Issue 自动关闭”一节保持一致）：
-
-关闭（sweep，定时每小时跑一次）需要同时满足：
-- Issue 开着，不是仓库所有者或机器人提的，没有“保持开启”标签；
-- 作者最后一次发言（提交、评论、自己编辑正文或评论）之后，至少有一条维护者的评论；
-- 那之后的评论全部来自维护者或机器人（有其他人参与讨论时不关）；
-- 最后一条评论（或最近一次重新打开，取较晚的）距今超过 24 小时。
-
-关闭原因：
-- 有“已修复待确认”标签 -> completed；
-- 有“需要日志”标签，或维护者最后一条回复在等日志、等补充信息 -> not planned；
-- 维护者最后一条回复附了发布链接（功能已实现、问题已修复）-> completed；
-- 其余判断不了的 -> not planned。
-
-重新打开（reopen，由 issue_comment 触发）：Issue 是被机器人关闭的，评论人是 Issue 作者。
-维护者手动关闭的不会被重新打开。
+定时任务每 30 分钟检查一次。仅当 Issue 带“等待反馈”标签、维护者/自动检查
+在作者最近发言之后已回复、且之后没有用户继续发言并满 24 小时才关闭；
+“保持开启”、仓库所有者、机器人和维护者自己提交的 Issue 不自动关闭。
+作者在自动关闭后再次评论会自动重新打开。
 
 正文和评论只通过 GitHub API 读取，不会拼进命令行。
 """
@@ -34,29 +22,14 @@ from typing import NamedTuple
 
 GRACE = timedelta(hours=24)
 EXEMPT_LABEL = "保持开启"
-NEEDS_LOG_LABEL = "需要日志"
-FIXED_LABEL = "已修复待确认"
+WAITING_LABEL = "等待反馈"
 MARKER = "<!-- fanqie-auto-close -->"
 REOPEN_MARKER = "<!-- fanqie-auto-reopen -->"
 MAINTAINER_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 
-# 维护者在等对方补日志、补信息时的说法。
-WAITING_PATTERN = re.compile(
-    r"诊断日志|附上[^\n]{0,12}日志|补交|补充以下|麻烦补|先保持打开|收到[^\n]{0,20}后我再"
-    r"|attach[^\n]{0,30}log|diagnostic log|please provide",
-    re.IGNORECASE,
-)
-RELEASE_LINK = re.compile(r"/releases/tag/")
-
-CLOSE_COMPLETED = (
+CLOSE_WAITING = (
     f"{MARKER}\n"
-    "超过 24 小时没有收到回复，按规则自动关闭（已处理）。"
-    "更新后还有问题，直接在这里留言就会自动重新打开。"
-)
-CLOSE_NOT_PLANNED = (
-    f"{MARKER}\n"
-    "超过 24 小时没有收到回复，已自动关闭。"
-    "补充信息（例如诊断日志）后直接在这里留言，会自动重新打开。"
+    "超过 24 小时没有收到回复，已自动关闭。如仍有问题可重新打开。"
 )
 REOPEN_BODY = f"{REOPEN_MARKER}\n收到回复，已自动重新打开，维护者会继续跟进。"
 
@@ -91,19 +64,11 @@ class Decision(NamedTuple):
     state_reason: str = ""
 
 
-def close_reason(labels: set[str], last_maintainer_body: str) -> str:
-    if FIXED_LABEL in labels:
-        return "completed"
-    if NEEDS_LOG_LABEL in labels or WAITING_PATTERN.search(last_maintainer_body):
-        return "not_planned"
-    if RELEASE_LINK.search(last_maintainer_body):
-        return "completed"
-    return "not_planned"
-
-
 def decide(issue: dict, now: datetime, owner: str) -> Decision:
     """判断一条开着的 Issue 现在该不该自动关闭。issue 是 GraphQL 返回的节点。"""
     labels = {node["name"] for node in issue.get("labels", {}).get("nodes", [])}
+    if WAITING_LABEL not in labels:
+        return Decision(False, f"没有“{WAITING_LABEL}”标签")
     if EXEMPT_LABEL in labels:
         return Decision(False, f"有“{EXEMPT_LABEL}”标签")
     author = issue.get("author")
@@ -114,37 +79,40 @@ def decide(issue: dict, now: datetime, owner: str) -> Decision:
         return Decision(False, "维护者自己提的")
 
     comments = issue.get("comments", {}).get("nodes", [])
-
-    # 作者最后一次发言：提交、评论、自己编辑正文或评论。
-    activity = [parse_time(issue["createdAt"])]
+    author_activity = [parse_time(issue.get("createdAt"))]
     if login_of(issue.get("editor")) == author_login:
-        activity.append(parse_time(issue.get("lastEditedAt")))
-    for c in comments:
-        if login_of(c.get("author")) == author_login:
-            activity.append(parse_time(c["createdAt"]))
-            if login_of(c.get("editor")) == author_login:
-                activity.append(parse_time(c.get("lastEditedAt")))
-    last_author = max(t for t in activity if t)
+        author_activity.append(parse_time(issue.get("lastEditedAt")))
+    for comment in comments:
+        if login_of(comment.get("author")) == author_login:
+            author_activity.append(parse_time(comment.get("createdAt")))
+            if login_of(comment.get("editor")) == author_login:
+                author_activity.append(parse_time(comment.get("lastEditedAt")))
+    author_times = [value for value in author_activity if value is not None]
+    last_author = max(author_times) if author_times else None
 
-    after = [c for c in comments if parse_time(c["createdAt"]) > last_author]
-    if not after:
-        return Decision(False, "最后发言的是作者，或者还没人回复")
-    if any(not is_maintainer(c, owner) and not is_bot(c.get("author")) for c in after):
-        return Decision(False, "作者之后有其他人参与讨论")
-    maintainer_replies = [c for c in after if is_maintainer(c, owner)]
-    if not maintainer_replies:
-        return Decision(False, "维护者还没回复（只有机器人的自动说明）")
+    # 由“等待反馈”标签明确限定自动关闭范围。最近一次维护者/自动回复
+    # 必须晚于作者的最新发言，且其后没有其他非维护者参与讨论。
+    staff_comments = [
+        comment for comment in comments
+        if is_maintainer(comment, owner) or is_bot(comment.get("author"))
+    ]
+    if not staff_comments:
+        return Decision(False, "还没有维护者回复")
+    latest_staff = max(staff_comments, key=lambda item: parse_time(item["createdAt"]))
+    since = parse_time(latest_staff.get("createdAt"))
+    if since is None or (last_author is not None and last_author >= since):
+        return Decision(False, "作者在最近一次等待反馈后仍有发言")
+    after = [comment for comment in comments if parse_time(comment["createdAt"]) > since]
+    if any(not is_maintainer(comment, owner) and not is_bot(comment.get("author")) for comment in after):
+        return Decision(False, "等待反馈后有其他人参与讨论")
 
-    since = parse_time(after[-1]["createdAt"])
     for node in issue.get("timelineItems", {}).get("nodes", []):
         reopened = parse_time((node or {}).get("createdAt"))
-        if reopened and reopened > since:
-            since = reopened
+        if reopened and reopened >= since:
+            return Decision(False, "Issue 在最近回复后重新打开，需要重新等待维护者回复")
     if now - since < GRACE:
-        return Decision(False, f"距离最后一条回复不到 24 小时（{since.isoformat()}）")
-
-    reason = close_reason(labels, maintainer_replies[-1].get("body") or "")
-    return Decision(True, f"维护者回复后超过 24 小时没有回音（{since.isoformat()}）", reason)
+        return Decision(False, f"距离等待反馈回复不到 24 小时（{since.isoformat()}）")
+    return Decision(True, f"“{WAITING_LABEL}”后超过 24 小时没有作者回复（{since.isoformat()}）", "not_planned")
 
 
 def should_reopen(issue: dict, commenter: str) -> bool:
@@ -253,9 +221,8 @@ def sweep(repo: str, dry_run: bool, now: datetime) -> int:
             print(f"#{number} 关闭（{decision.state_reason}）：{decision.why}")
             if dry_run:
                 continue
-            body = CLOSE_COMPLETED if decision.state_reason == "completed" else CLOSE_NOT_PLANNED
             try:
-                comment(repo, number, body)
+                comment(repo, number, CLOSE_WAITING)
                 set_state(repo, number, "closed", decision.state_reason)
             except RuntimeError as error:
                 failures += 1
