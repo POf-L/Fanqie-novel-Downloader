@@ -341,6 +341,41 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn("releases/download/vprevious/", notes)
         self.assertNotIn("## 下载地址", notes)
 
+    def test_default_dispatch_publishes_unsigned_formal_release(self):
+        input_block = self.workflow.split("permissions:", 1)[0]
+        release_input = input_block.split("      publish_release:\n", 1)[1].split(
+            "      publish_unsigned_prerelease:\n", 1
+        )[0]
+        unsigned_input = input_block.split(
+            "      publish_unsigned_release:\n", 1
+        )[1].split("      prerelease:\n", 1)[0]
+        prerelease_input = input_block.split("      prerelease:\n", 1)[1].split(
+            "      platforms:\n", 1
+        )[0]
+        self.assertIn("        default: true\n", release_input)
+        self.assertIn("        default: true\n", unsigned_input)
+        self.assertIn("        default: false\n", prerelease_input)
+        self.assertIn("默认发布", unsigned_input)
+        self.assertIn("Apple Secrets", unsigned_input)
+        # Apple credentials are required only in the explicit signed-release path;
+        # the default unsigned formal release skips both native and fallback gates.
+        self.assertIn(
+            "if: runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release",
+            self.workflow,
+        )
+        self.assertIn(
+            "if: steps.need.outputs.run == 'true' && runner.os == 'macOS' && inputs.publish_release == true && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release",
+            self.workflow,
+        )
+        self.assertIn(
+            "if: steps.need.outputs.run == 'true' && runner.os == 'Linux' && endsWith(matrix.target, '-apple-darwin') && !inputs.publish_unsigned_prerelease && !inputs.publish_unsigned_release",
+            self.workflow,
+        )
+        self.assertIn(
+            "Unsigned releases require TAURI_SIGNING_PRIVATE_KEY",
+            self.workflow,
+        )
+
     def test_unsigned_formal_release_is_latest_and_uses_isolated_updater_channel(self):
         input_block = self.workflow.split("permissions:", 1)[0]
         self.assertIn("      publish_unsigned_release:\n", input_block)

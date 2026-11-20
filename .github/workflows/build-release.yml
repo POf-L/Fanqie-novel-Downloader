@@ -21,9 +21,9 @@ on:
         default: false
         type: boolean
       publish_unsigned_release:
-        description: "发布无厂商/系统签名正式 Release（仍生成加密校验的 updater；请同时将 publish_release 设为 true）"
+        description: "默认发布无厂商/系统签名正式版；仍需 updater 签名密钥。关闭此项可选择 Apple 签名/公证（需配置完整 Apple Secrets）"
         required: true
-        default: false
+        default: true
         type: boolean
       prerelease:
         description: "标记为预发布（预发布不会被稳定版自动更新检测到）"
