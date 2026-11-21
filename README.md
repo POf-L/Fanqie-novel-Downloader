@@ -99,7 +99,7 @@ Android 只允许同一签名证书的应用直接覆盖升级。如果现有安
 
 ## 反馈与交流
 
-遇到问题或有改进建议，请到 [Issues](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose) 选择合适的模板。错误反馈请附诊断日志，并提供版本号、操作系统和复现步骤；提交前请移除账号、Cookie 等个人信息。发布记录见 [Releases](https://github.com/POf-L/Fanqie-novel-Downloader/releases)。安全问题请使用 [GitHub 私密安全报告](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)，不要公开发布。
+遇到问题或有改进建议，请到 [Issues](https://github.com/POf-L/Fanqie-novel-Downloader/issues/new/choose) 选择合适的模板。诊断日志始终开启；错误反馈请附诊断日志，没有日志的错误反馈不会处理，收到日志后再排查。也请提供版本号、操作系统和复现步骤，并在提交前移除账号、Cookie 等个人信息。发布记录见 [Releases](https://github.com/POf-L/Fanqie-novel-Downloader/releases)。安全问题请使用 [GitHub 私密安全报告](https://github.com/POf-L/Fanqie-novel-Downloader/security/advisories/new)，不要公开发布。
 
 欢迎查看[贡献指南](CONTRIBUTING.md)和[产品边界](CONTRIBUTING.md#产品边界)。
 
