@@ -72,7 +72,7 @@ for entry in "${checks[@]}"; do
     printf '失败  %-15s 退出码 %-3s 用时 %ss\n' "${name}" "${code}" "${elapsed}"
     if [[ "${name}" == "test-desktop" || "${name}" == "test-cli" ]]; then
       # Temporary diagnosis: expose only Rust test identifiers, never captured output.
-      test_names="$(grep -E '^test .+ \\.\\.\\. FAILED$' "${log_dir}/${name}.log" | sed -E 's/^test (.+) \\.\\.\\. FAILED$/\1/' || true)"
+      test_names="$(grep -E '^test .+ \.\.\. FAILED$' "${log_dir}/${name}.log" | sed -E 's/^test (.+) \.\.\. FAILED$/\1/' || true)"
       if [[ -n "${test_names}" ]]; then
         while IFS= read -r test_name; do
           printf '::error::失败用例：%s\n' "${test_name}"
