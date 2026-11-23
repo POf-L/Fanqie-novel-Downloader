@@ -71,6 +71,12 @@ for entry in "${checks[@]}"; do
   else
     printf '失败  %-15s 退出码 %-3s 用时 %ss\n' "${name}" "${code}" "${elapsed}"
     failed+=("${name}")
+    if [[ "${name}" == "node-test" ]]; then
+      # Temporary diagnosis: publish failing test names only, never test output or stack traces.
+      grep -E '^(not ok [0-9]+ - |✖ )' "${log_dir}/${name}.log" \
+        | grep -v '^✖ failing tests:' \
+        | sed -E 's/^not ok [0-9]+ - /失败用例：/; s/^✖ /失败用例：/'
+    fi
   fi
 done
 
