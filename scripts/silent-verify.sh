@@ -71,11 +71,6 @@ for entry in "${checks[@]}"; do
   else
     printf '失败  %-15s 退出码 %-3s 用时 %ss\n' "${name}" "${code}" "${elapsed}"
     failed+=("${name}")
-    if [[ "${name}" == "node-test" ]]; then
-      # Temporary diagnosis: emit TAP failure titles only, never test output or stacks.
-      awk '/^not ok [0-9]+ - / { sub(/^not ok [0-9]+ - /, ""); print "失败用例：" $0 }' \
-        "${log_dir}/${name}.log"
-    fi
   fi
 done
 
